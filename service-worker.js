@@ -3,7 +3,7 @@
 
 const CACHE_NAME = 'jeonbi-app-v1'; // 파일 내용 크게 바꿀 때마다 v1 -> v2로 올려주세요 (안 올리면 캐시가 안 갱신됨)
 const urlsToCache = [
-  './app32.html',
+  './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

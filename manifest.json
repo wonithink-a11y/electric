@@ -2,12 +2,12 @@
   "name": "전기설비 업무앱",
   "short_name": "설비업무",
   "description": "CFBC 보일러 전기설비 유지보수 업무앱",
-  "start_url": "./app32.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#ffffff",
-  "theme_color": "#1e40af",
+  "background_color": "#0e1626",
+  "theme_color": "#0e1626",
   "icons": [
     {
       "src": "icon-192.png",
