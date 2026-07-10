@@ -1,6 +1,6 @@
 {
-  "name": "전기설비 업무앱",
-  "short_name": "설비업무",
+  "name": "electric",
+  "short_name": "electric",
   "description": "CFBC 보일러 전기설비 유지보수 업무앱",
   "start_url": "./index.html",
   "scope": "./",
