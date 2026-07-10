@@ -5,6 +5,25 @@
   전력계통과 업무앱 app_v2.html
   ============================================================
   변경 이력
+  v37 (2026-07-11) : 초기 데이터에 계통 트리 지원
+    - importSeed가 tree(계통 트리 노드)도 병합 지원 → '계통설비_seed.json'으로 설비 마스터 69건
+      + 계통 트리 121노드(PB·DH 수전~MCC, KEY 단선도 판독 기반) 주입 가능
+    - 동일 id 재가져오기 시 덮어쓰기(중복 생성 없음). DB 스키마 변경 없음(DB_VER=9)
+  v36 (2026-07-11) : 홈 주간/월간 할일 + 도면 탭 2번째 + 기본일정 seed
+    - 홈 달력 바로 아래 '📌 이번주 할 일'(지난 미완료+이번주 할일·법정검사·일/주간 주기업무),
+      그 아래 '🗓️ 이번달 할 일'(이번주 이후 이번달 할일·검사·월간+ 주기업무) 카드 배치
+    - 하단 내비 순서 변경: 홈 → 도면 → 설비 → 계통 → 검사 → 체크 → 더보기
+    - 초기 데이터 가져오기(importSeed) 확장: issues(현안)·todos 필드도 병합 지원
+    - 계통 탭 빈 상태 안내 개선: 트리는 차단범위용 직접 입력임을 설명 + 도면 탭 바로가기
+    - 별도 파일 '기본일정_광주전남.json' 제공: 법정검사 11건 + 주기업무 + 현안 (가져오기로 주입,
+      코드에 실데이터 하드코딩 안 함 — 보안 원칙 유지). DB 스키마 변경 없음(DB_VER=9)
+  v35 (2026-07-10) : 도면 전용 탭 + PDF 줌 깜빡임 수정 + 도면명 전체 표시
+    - 하단 내비에 '📐 도면' 탭 신설: 검색 + 연계 도면 지도(SVG) + 해석 노트 + 상세 결과(도면별
+      전체 매치 페이지·스니펫 하이라이트)를 한 화면에 통합. 기존 '도면 바로찾기' 모달은 이 탭으로 연결
+    - 연계 지도 노드를 전폭 2줄 노드로 변경 → 도면 이름 전체 표시 (기존 26자 잘림 해소)
+    - PDF 뷰어 줌/페이지 전환 시 검은 깜빡임 수정: 오프스크린 캔버스에 먼저 렌더 후 교체(더블 버퍼)
+      + 렌더 중 재요청 대기열 처리. 흰 배경 선채움
+    - DB 스키마 변경 없음(DB_VER=9 유지)
   v34 (2026-07-10) : 계통 연결 뷰(태그 그래프) + 도면 해석 노트
     - '🕸️ 계통 연결 뷰': 기기번호(LC-202, vcb501 등) 입력 → 그 태그가 나오는 도면을
       단선도/로직도/스키매틱/루프도/문서·기타 그룹으로 묶어 SVG 그래프로 표시, 노드 탭 → 해당 페이지 열람
@@ -394,10 +413,11 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 .tg-l{stroke:var(--line);stroke-width:2;}
 .tg-l2{stroke:var(--line);stroke-width:1;}
 .tg-n rect{fill:var(--panel);stroke:var(--line);cursor:pointer;}
-.tg-n text{fill:var(--txt);font-size:10px;cursor:pointer;}
+.tg-n text{fill:var(--txt);font-size:9.5px;cursor:pointer;}
 .tg-n .tg-sub{fill:var(--dim);font-size:8.5px;}
 .tg-n:active rect{stroke:var(--accent);}
 .tg-more{fill:var(--dim);font-size:10px;text-anchor:middle;}
+mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 </style>
 </head>
 <body>
@@ -409,6 +429,7 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 <main id="app"></main>
 <nav id="nav">
   <button data-v="home"><span class="ic">🏠</span>홈</button>
+  <button data-v="docfind"><span class="ic">📐</span>도면</button>
   <button data-v="equip"><span class="ic">⚡</span>설비</button>
   <button data-v="tree"><span class="ic">🔌</span>계통</button>
   <button data-v="insp"><span class="ic">📋</span>검사</button>
@@ -550,9 +571,14 @@ function importSeed(){
       await dbBulkPut('equipment',eq);
       await dbBulkPut('inspections',ins);
       await dbBulkPut('checklists',chk);
+      const iss=(data.issues||[]).filter(x=>x.id);const tds=(data.todos||[]).filter(x=>x.id);
+      const trn=(data.tree||[]).filter(x=>x.id);
+      if(iss.length)await dbBulkPut('issues',iss);
+      if(tds.length)await dbBulkPut('todos',tds);
+      if(trn.length)await dbBulkPut('tree',trn);
       if(data.responsibleAreas)await dbPut('meta',{id:'areas',value:data.responsibleAreas});
       await loadAll();render();
-      toast(`가져오기 완료: 설비 ${eq.length} / 검사 ${ins.length} / 체크 ${chk.length}`);
+      toast(`가져오기 완료: 설비 ${eq.length} / 검사 ${ins.length} / 체크 ${chk.length}`+(iss.length?` / 현안 ${iss.length}`:'')+(tds.length?` / 할일 ${tds.length}`:'')+(trn.length?` / 계통 ${trn.length}노드`:''));
     }catch(e){
       console.error('importSeed 실패',e);
       toast('가져오기 실패: '+e.message);
@@ -646,7 +672,56 @@ function vHome(){
   <div class="botpad"></div>`;
 }
 function homeCalTab(){
-  return `${calHtml()}${todoTodayHtml()}`;
+  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}`;
+}
+function _weekRange(){
+  const t=new Date();const ts=todayStr();
+  const mon=new Date(t);mon.setDate(t.getDate()-((t.getDay()+6)%7));
+  const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  const f=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return [f(mon),f(sun),ts];
+}
+function _inspRow(i){return `<div class="item click" onclick="go('insp')"><span class="badge b-red" style="flex:none">검사</span>
+  <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)}${i.target?' · '+esc(i.target):''}</div></div>${ddayBadge(i.dd)}</div>`;}
+function _todoRow(x,ts){return `<div class="item"><div class="chk" onclick="toggleTodo('${x.id}',0)"></div>
+  <div class="t click" onclick="openDay('${x.date}')"><div class="n">${esc(x.title)}</div>
+  <div class="d">${x.date===ts?'오늘':esc(x.date)+(x.date<ts?' · 지남':'')}</div></div></div>`;}
+function _chkRow(c){return `<div class="item"><div class="chk" onclick="toggleChk('${c.id}')"></div>
+  <div class="t"><div class="n">${esc(c.name)}</div><div class="d">주기업무${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
+  <span class="badge b-gray">${CYCLE_KO[c.cycle]||''}</span></div>`;}
+function todoWeekHtml(){
+  const [ws,we,ts]=_weekRange();
+  const todos=S.todos.filter(x=>!x.done&&x.date<=we).sort((a,b)=>a.date.localeCompare(b.date));
+  const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we)
+    .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
+  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c));
+  const n=todos.length+insp.length+chks.length;
+  return `<div class="card"><h2>📌 이번주 할 일 <span class="cnt">${n}건</span></h2>
+    ${insp.map(_inspRow).join('')}
+    ${todos.slice(0,14).map(x=>_todoRow(x,ts)).join('')}
+    ${chks.map(_chkRow).join('')}
+    ${n?'':'<div class="empty">이번주 할 일 없음 👍</div>'}
+    <button class="btn ghost sm full" onclick="openDay('${ts}')">＋ 오늘 할 일 추가</button></div>`;
+}
+function todoMonthHtml(){
+  const [ws,we,ts]=_weekRange();
+  const m=ts.slice(0,7);
+  const todos=S.todos.filter(x=>!x.done&&x.date>we&&x.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
+  const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>we&&i.nextDue.startsWith(m))
+    .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
+  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')!=='A'&&!isChkDone(c));
+  const n=todos.length+insp.length+chks.length;
+  const done=S.todos.filter(x=>x.done&&(x.date||'').startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
+  return `<div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${n}건</span></h2>
+    ${insp.map(_inspRow).join('')}
+    ${todos.slice(0,14).map(x=>_todoRow(x,ts)).join('')}
+    ${chks.map(_chkRow).join('')}
+    ${n?'':'<div class="empty">이번주 이후 이번달 할 일 없음</div>'}
+    ${done.length?`<details class="donebox"><summary>✅ 이번 달 완료 ${done.length}건 (펼치기)</summary>
+      ${done.map(x=>`<div class="item"><div class="chk done" onclick="toggleTodo('${x.id}',0)">✓</div>
+        <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(x.title)}</div><div class="d">${esc(x.date)}</div></div>
+        <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
+    </div>`;
 }
 function homeWorkTab(){
   const dueChk=S.checklists.filter(c=>!isChkDone(c));
@@ -1107,7 +1182,7 @@ function vTree(){
   const roots=S.tree.filter(n=>!n.parentId);
   return `
   <div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
-    ${roots.length?roots.map(r=>renderNode(r,0)).join(''):'<div class="empty">단선도를 보며 인입 전원부터 입력하세요.<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터</div>'}
+    ${roots.length?roots.map(r=>renderNode(r,0)).join(''):'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'}
     <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
     <div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>
   </div>
@@ -1449,8 +1524,7 @@ function moreDoc(){
     <div class="muted">폴더째 가져와 자동 분류(계통·전압·종류). 기기 로컬(IndexedDB)에만 저장. JPG는 앱 핀치줌, PDF는 앱 내장 pdf.js 뷰어로 열람.</div>
     <button class="btn full" onclick="importDocs()">📥 폴더에서 도면 일괄 가져오기</button>
     <button class="btn full" onclick="registerDoc()">📎 문서·매뉴얼 등록 (여러 개 선택 가능)</button>
-    <button class="btn full" onclick="openDocSearch('')">🔎 설비명으로 도면 바로찾기</button>
-    <button class="btn full" onclick="openTagGraph('')">🕸️ 계통 연결 뷰 (태그 → 연계 도면 그래프)</button>
+    <button class="btn full" onclick="go('docfind')">📐 도면 검색·연계·해석 (도면 탭)</button>
     <button class="btn ghost full" onclick="openDocLibrary()">🗂️ 도면·문서 문서함 열기(찾아보기·열람)</button>
     <button class="btn full" onclick="go('proc')">📋 매뉴얼 진행 추적 (단계·다음할일·AI질의)</button>
     <button class="btn ghost sm full" onclick="importOcrIndex()">📇 OCR 인덱스(JSON) 가져오기 — 오프라인 즉시 색인</button>
@@ -2452,21 +2526,28 @@ async function viewPdf(blob,label,startPage){
     <div class="vwrap" id="p-wrap" style="overflow:auto"><canvas id="p-cv" style="display:block;margin:0 auto"></canvas></div>`;
   document.body.appendChild(v);
   const cv=v.querySelector('#p-cv'),wrap=v.querySelector('#p-wrap'),ind=v.querySelector('#p-ind');
-  let page=(startPage&&startPage>=1)?startPage:1,scale=1,fit=true,busy=false;
+  let page=(startPage&&startPage>=1)?startPage:1,scale=1,fit=true,busy=false,pend=false;
+  const off=document.createElement('canvas'); // v35: 더블 버퍼 — 새 렌더 완성 전까지 이전 화면 유지(검은 깜빡임 제거)
   async function render(){
-    if(busy)return;busy=true;
+    if(busy){pend=true;return;}
+    busy=true;
     try{
       const pg=await pdf.getPage(page);
       const base=pg.getViewport({scale:1});
       if(fit)scale=Math.min((wrap.clientWidth-8)/base.width,1.8);
       const dpr=window.devicePixelRatio||1;
       const vp=pg.getViewport({scale:scale*dpr});
-      cv.width=vp.width;cv.height=vp.height;
+      off.width=vp.width;off.height=vp.height;
+      const octx=off.getContext('2d');
+      octx.fillStyle='#fff';octx.fillRect(0,0,off.width,off.height);
+      await pg.render({canvasContext:octx,viewport:vp}).promise;
+      cv.width=off.width;cv.height=off.height;
       cv.style.width=(base.width*scale)+'px';cv.style.height=(base.height*scale)+'px';
-      await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      cv.getContext('2d').drawImage(off,0,0);
       ind.textContent=page+'/'+pdf.numPages;
     }catch(e){toast('렌더 오류: '+e.message);}
     busy=false;
+    if(pend){pend=false;render();}
   }
   v.querySelector('#p-prev').onclick=()=>{if(page>1){page--;fit=true;render();wrap.scrollTop=0;}};
   v.querySelector('#p-next').onclick=()=>{if(page<pdf.numPages){page++;fit=true;render();wrap.scrollTop=0;}};
@@ -2843,7 +2924,7 @@ async function importOcrIndex(){
   };
   inp.click();
 }
-function openDocSearch(term){window._docSearchQ=term||'';renderDocSearch();}
+function openDocSearch(term){S.docQ=term||'';go('docfind');setTimeout(()=>{const el=$('#dfq');if(el)el.focus();},60);}
 function renderDocSearch(){
   const q=window._docSearchQ||'';
   const res=findInDocs(q);
@@ -2902,26 +2983,25 @@ function _tagGroups(q){
   return groups.filter(g=>g.items.length);
 }
 function _tgSvg(q,groups){
-  const W=360,nodeW=170,nodeH=30,col=2;
-  let y=64;const parts=[];const cx=W/2;
+  const W=360,nodeW=336,nodeH=36,left=(W-nodeW)/2;
+  let y=60;const parts=[];const cx=W/2;
   parts.push(`<rect x="${cx-72}" y="8" rx="16" width="144" height="34" class="tg-c"/><text x="${cx}" y="30" class="tg-ct">${esc(q.toUpperCase().slice(0,14))}</text>`);
   for(const g of groups){
     const gy=y;
     parts.push(`<line x1="${cx}" y1="42" x2="${cx}" y2="${gy}" class="tg-l"/>`);
     parts.push(`<rect x="${cx-62}" y="${gy}" rx="13" width="124" height="26" class="tg-g"/><text x="${cx}" y="${gy+17}" class="tg-gt">${esc(g.name)} · ${g.items.length}</text>`);
-    y=gy+36;
-    const shown=g.items.slice(0,10);
-    const left=(W-col*nodeW-8)/2;
+    y=gy+34;
+    const shown=g.items.slice(0,8);
     shown.forEach((h,idx)=>{
-      const c=idx%col,r=Math.floor(idx/col);
-      const x=left+c*(nodeW+8),yy=y+r*(nodeH+7);
-      parts.push(`<line x1="${cx}" y1="${gy+26}" x2="${x+nodeW/2}" y2="${yy}" class="tg-l2"/>`);
-      const label=(h.doc.docNo||h.doc.title||h.doc.name||'').slice(0,26);
-      const sub=('p.'+h.page+(h.cnt>1?' 외'+(h.cnt-1):'')+(h.doc.plant?' · '+h.doc.plant:'')+(h.doc.level?' · '+h.doc.level:'')).slice(0,34);
-      parts.push(`<g class="tg-n" onclick="viewDocAt('${h.doc.id}',${h.page})"><rect x="${x}" y="${yy}" rx="8" width="${nodeW}" height="${nodeH}"/><text x="${x+7}" y="${yy+13}">${esc(label)}</text><text x="${x+7}" y="${yy+25}" class="tg-sub">${esc(sub)}</text></g>`);
+      const yy=y+idx*(nodeH+6);
+      parts.push(`<line x1="${cx}" y1="${gy+26}" x2="${left+12}" y2="${yy+nodeH/2}" class="tg-l2"/>`);
+      const full=(h.doc.name||h.doc.title||'').replace(/\.pdf$/i,'');
+      const l1=full.slice(0,52),l2=full.slice(52,104);
+      const sub='p.'+h.page+(h.cnt>1?' 외'+(h.cnt-1):'');
+      parts.push(`<g class="tg-n" onclick="viewDocAt('${h.doc.id}',${h.page})"><rect x="${left}" y="${yy}" rx="8" width="${nodeW}" height="${nodeH}"/><text x="${left+8}" y="${yy+14}">${esc(l1)}</text><text x="${left+8}" y="${yy+27}">${esc(l2)}<tspan class="tg-sub">${l2?' · ':''}${esc(sub)}</tspan></text></g>`);
     });
-    y+=Math.ceil(shown.length/col)*(nodeH+7)+10;
-    if(g.items.length>10){parts.push(`<text x="${cx}" y="${y}" class="tg-more">… 외 ${g.items.length-10}건은 🔎 검색에서 확인</text>`);y+=16;}
+    y+=shown.length*(nodeH+6)+12;
+    if(g.items.length>8){parts.push(`<text x="${cx}" y="${y-2}" class="tg-more">… 외 ${g.items.length-8}건은 아래 상세 결과에</text>`);y+=14;}
   }
   return `<svg viewBox="0 0 ${W} ${y}" style="width:100%">${parts.join('')}</svg>`;
 }
@@ -2978,6 +3058,73 @@ async function importDwgNotes(){
     toast('해석 노트 '+n+'건 반영');renderTagGraphInline();
   };
   inp.click();
+}
+
+/* ================= PART 9.13 : 도면 탭 (검색·연계·해석 통합, v35) ================= */
+function vDocFind(){
+  const q=S.docQ||'';
+  const indexed=S.docs.filter(d=>d.ext==='pdf'&&d.pages&&d.pages.length).length;
+  const pdfTot=S.docs.filter(d=>d.ext==='pdf').length;
+  return `
+  <div class="card"><h2>📐 도면 검색·연계·해석</h2>
+    <div class="searchwrap"><input id="dfq" placeholder="설비명·태그·피더 (예: LC-202, vcb501, RETURN PUMP)" value="${esc(q)}"
+      oninput="S.docQ=this.value;clearTimeout(window._dft);window._dft=setTimeout(()=>{const b=$('#dfres');if(b)b.innerHTML=docFindResults(S.docQ);},250)"></div>
+    <div class="muted">텍스트 색인 ${indexed}/${pdfTot}건 · 하이픈 없이 가능(vcb501) · 여러 단어 AND · 결과 탭 → 해당 페이지 열람</div>
+    <div class="row" style="margin-top:6px">
+      <button class="btn ghost sm" onclick="importDwgNotes()">📖 해석 노트 가져오기</button>
+      ${pdfTot>indexed?`<button class="btn ghost sm" onclick="reindexDocs()">미색인 ${pdfTot-indexed}건 재색인</button>`:''}
+    </div>
+  </div>
+  <div id="dfres">${docFindResults(q)}</div>
+  <div class="botpad"></div>`;
+}
+function _snipHtml(raw,hit,terms){
+  const a=Math.max(0,hit.pos-46),b=Math.min(raw.length,hit.pos+hit.len+60);
+  let s=(a>0?'…':'')+raw.slice(a,b)+(b<raw.length?'…':'');
+  s=esc(s);
+  for(const t of terms){if(t.length<2)continue;
+    s=s.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),m=>'<mark>'+m+'</mark>');}
+  return s;
+}
+function docFindResults(q){
+  if(!(q||'').trim())return '<div class="empty">검색어를 입력하세요 — 예: LC-202, VCB-501, 압입송풍기</div>';
+  const terms=q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const tcs=terms.map(t=>t.replace(/[-_.\s()\/]/g,''));
+  let h='';
+  const groups=_tagGroups(q);
+  if(groups&&groups.length)h+=`<div class="card"><h2>🕸️ 연계 도면 지도</h2>${_tgSvg(q.trim(),groups)}</div>`;
+  h+=_notesFor(q).map(n=>`<div class="card"><h2>📖 ${esc(n.title||n.tag)}</h2>
+    ${n.dwg?`<div class="muted">${esc(n.dwg)}</div>`:''}
+    <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:6px">${esc(n.body||'')}</div>
+    <div class="section-note">AI 해석 노트 — 참고용. 조작 전 원본 도면·현장 확인.</div></div>`).join('');
+  const out=[];
+  for(const d of S.docs){
+    if(!(d.pages&&d.pages.length)){
+      const nm=((d.title||'')+' '+(d.name||'')+' '+(d.docNo||'')).toLowerCase();const nc=_compact(nm);
+      if(terms.every((t,k)=>_findTerm(nm,nc,t,tcs[k])))out.push({d,pages:[]});
+      continue;
+    }
+    const pages=[];
+    for(let i=0;i<d.pages.length;i++){
+      const hits=terms.map((t,k)=>_findTerm(d.pages[i],_pageCompact(d,i),t,tcs[k]));
+      if(hits.every(x=>x))pages.push({p:i+1,hit:hits[0]});
+    }
+    if(pages.length)out.push({d,pages});
+  }
+  if(!out.length)return h+(groups&&groups.length?'':'<div class="empty">일치 도면 없음 — OCR 인덱스 가져오기 여부 확인</div>');
+  out.sort((a,b)=>b.pages.length-a.pages.length);
+  h+=`<div class="card"><h2>📄 상세 결과 <span class="cnt">${out.length}개 도면</span></h2>`+
+    out.slice(0,30).map(({d,pages})=>`
+    <div style="border-top:1px solid var(--line);padding:8px 0 4px">
+      <div class="click" onclick="viewDocAt('${d.id}',${pages[0]?pages[0].p:1})" style="font-weight:700;font-size:13px;word-break:break-all;line-height:1.45">📄 ${esc(d.name||d.title)}</div>
+      <div class="muted" style="font-size:11px;margin:2px 0 4px">${esc([d.kind,d.plant,d.level,d.docNo].filter(Boolean).join(' · '))}${pages.length?` · 매치 ${pages.length}페이지`:''}</div>
+      ${pages.slice(0,6).map(pp=>`<div class="item click" onclick="viewDocAt('${d.id}',${pp.p})" style="padding:5px 8px">
+        <span class="badge b-blue" style="flex:none">p.${pp.p}</span>
+        <div class="t"><div class="d" style="word-break:break-all;line-height:1.5">${_snipHtml(d.pages[pp.p-1],pp.hit,terms)}</div></div></div>`).join('')}
+      ${pages.length>6?`<div class="muted" style="font-size:11px">… 외 ${pages.length-6}개 페이지</div>`:''}
+    </div>`).join('')+
+    (out.length>30?`<div class="muted">… 외 ${out.length-30}개 도면</div>`:'')+`</div>`;
+  return h;
 }
 
 /* ================= PART 8.1 : 주기 업무 그룹화 + 월별 이력 (v13) ================= */
@@ -3519,7 +3666,7 @@ function genProcAsk(id){
 }
 
 /* ================= PART 10 : 라우팅 & 초기화 ================= */
-const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc};
+const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc};
 const TITLES={home:'전력계통과 업무',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적'};
 function go(v){S.view=v;render();window.scrollTo(0,0)}
 function render(){
