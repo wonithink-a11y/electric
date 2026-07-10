@@ -514,28 +514,45 @@ function pickFile(cb){
 // seed_data_v1.json 가져오기 (설비/검사/체크리스트 초기 주입)
 function importSeed(){
   pickFile(async data=>{
-    if(!data.equipment||!data.inspections){toast('seed 형식이 아닙니다');return}
-    const eq=data.equipment.map(e=>({...e,location:e.location||'',feeder:e.feeder||'',spare:e.spare||'',memo:e.memo||''}));
-    const ins=data.inspections.map(i=>({...i,history:i.history||[]}));
-    const chk=(data.checklists||[]).map(c=>({...c}));
-    await dbBulkPut('equipment',eq);
-    await dbBulkPut('inspections',ins);
-    await dbBulkPut('checklists',chk);
-    if(data.responsibleAreas)await dbPut('meta',{id:'areas',value:data.responsibleAreas});
-    await loadAll();render();
-    toast(`가져오기 완료: 설비 ${eq.length} / 검사 ${ins.length} / 체크 ${chk.length}`);
+    try{
+      if(!data.equipment||!data.inspections){toast('seed 형식이 아닙니다 (equipment/inspections 필드 없음)');return}
+      const eq=data.equipment.map(e=>({...e,location:e.location||'',feeder:e.feeder||'',spare:e.spare||'',memo:e.memo||''}));
+      const ins=data.inspections.map(i=>({...i,history:i.history||[]}));
+      const chk=(data.checklists||[]).map(c=>({...c}));
+      const noId=[...eq,...ins,...chk].find(x=>x.id===undefined||x.id===null);
+      if(noId){toast('가져오기 실패: id 없는 항목이 있습니다');console.error('seed import: missing id',noId);return}
+      await dbBulkPut('equipment',eq);
+      await dbBulkPut('inspections',ins);
+      await dbBulkPut('checklists',chk);
+      if(data.responsibleAreas)await dbPut('meta',{id:'areas',value:data.responsibleAreas});
+      await loadAll();render();
+      toast(`가져오기 완료: 설비 ${eq.length} / 검사 ${ins.length} / 체크 ${chk.length}`);
+    }catch(e){
+      console.error('importSeed 실패',e);
+      toast('가져오기 실패: '+e.message);
+    }
   });
 }
 // 전체 백업 복원
 function importBackup(){
   pickFile(async data=>{
-    if(data.app!=='pwr_work'){toast('이 앱의 백업 파일이 아닙니다');return}
-    if(!confirm('기존 데이터를 백업 파일 내용으로 덮어씁니다. 계속할까요?'))return;
-    for(const s of BACKUP_STORES){
-      if(Array.isArray(data[s])&&data[s].length){await dbClear(s);await dbBulkPut(s,data[s]);}
+    try{
+      if(data.app!=='pwr_work'){toast('이 앱의 백업 파일이 아닙니다 (app 필드: '+(data.app||'없음')+')');return}
+      if(!confirm('기존 데이터를 백업 파일 내용으로 덮어씁니다. 계속할까요?'))return;
+      let restored=0;
+      for(const s of BACKUP_STORES){
+        if(Array.isArray(data[s])&&data[s].length){
+          const noId=data[s].find(x=>x.id===undefined||x.id===null);
+          if(noId){console.warn('스토어 '+s+'에 id 없는 항목, 건너뜀',noId);continue}
+          await dbClear(s);await dbBulkPut(s,data[s]);restored+=data[s].length;
+        }
+      }
+      await loadAll();render();
+      toast(restored>0?`복원 완료 (${restored}건)`:'복원할 데이터가 없습니다 (백업 파일이 비어있음)');
+    }catch(e){
+      console.error('importBackup 실패',e);
+      toast('복원 실패: '+e.message);
     }
-    await loadAll();render();
-    toast('복원 완료');
   });
 }
 
@@ -3365,6 +3382,52 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./service-worker.js').catch(e=>console.warn('SW 등록 실패',e));
   });
 }
+
+/* ===== 뒤로가기(back) 처리: 모달/뷰어 닫기 → 이전 화면 → 종료 확인 =====
+   항상 history에 'guard' 항목 하나를 깔아둔다. 뒤로가기(popstate)가 오면
+   현재 열려있는 레이어(뷰어 > 모달 > 종료확인 자체)를 확인해 하나만 닫고,
+   guard를 다시 채워 넣어 다음 뒤로가기도 감지되게 한다.
+   맨 앞(홈) 화면에서 더 닫을 게 없으면 종료 확인 팝업을 띄운다. */
+history.replaceState({t:'root'},'',location.href);
+history.pushState({t:'guard'},'',location.href);
+
+function _refillGuard(){ history.pushState({t:'guard'},'',location.href); }
+
+function showExitConfirm(){
+  _refillGuard();
+  if(document.getElementById('exit-confirm'))return;
+  const box=document.createElement('div');
+  box.id='exit-confirm';
+  box.innerHTML=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:95;display:flex;align-items:center;justify-content:center">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:280px;width:80%;text-align:center">
+      <p style="margin:0 0 16px">electric 앱을 종료할까요?</p>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" id="exit-cancel" style="flex:1">취소</button>
+        <button class="btn" id="exit-ok" style="flex:1">종료</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(box);
+  document.getElementById('exit-cancel').onclick=()=>box.remove();
+  document.getElementById('exit-ok').onclick=()=>{ box.remove(); history.go(-2); };
+}
+
+window.addEventListener('popstate',()=>{
+  const exitBox=document.getElementById('exit-confirm');
+  if(exitBox){ exitBox.remove(); _refillGuard(); return; }
+
+  const viewerEl=document.querySelector('.viewer');
+  if(viewerEl){ viewerEl.remove(); _refillGuard(); return; }
+
+  const modalRoot=document.getElementById('modal-root');
+  if(modalRoot && modalRoot.innerHTML.trim()!==''){ modalRoot.innerHTML=''; _refillGuard(); return; }
+
+  if(typeof S!=='undefined' && S.view && S.view!=='home'){
+    S.view='home'; render(); _refillGuard(); return;
+  }
+
+  showExitConfirm();
+});
 /* v2 end */
 </script>
 </body>
