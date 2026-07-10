@@ -5,6 +5,20 @@
   전력계통과 업무앱 app_v2.html
   ============================================================
   변경 이력
+  v34 (2026-07-10) : 계통 연결 뷰(태그 그래프) + 도면 해석 노트
+    - '🕸️ 계통 연결 뷰': 기기번호(LC-202, vcb501 등) 입력 → 그 태그가 나오는 도면을
+      단선도/로직도/스키매틱/루프도/문서·기타 그룹으로 묶어 SVG 그래프로 표시, 노드 탭 → 해당 페이지 열람
+      · 문서·기타 그룹은 벤더프린트·매뉴얼 등 추후 가져오는 문서도 자동 포함(태그 매칭 기반)
+    - 해석 노트(dwgnotes 스토어, DB_VER 8→9 자동 마이그레이션): AI가 해석한 도면 동작설명 JSON을
+      가져오기로 주입 → 연결 뷰에서 해당 태그 검색 시 도면 그래프 아래에 해석문 표시. 백업 포함
+    - 더보기 문서·도면 탭에 진입 버튼, 도면 바로찾기 모달에서 연결 뷰 전환 버튼
+  v33 (2026-07-10) : OCR 인덱스 연동 + 도면검색 강화
+    - 'OCR 인덱스(JSON) 가져오기' 신설: 일괄 OCR로 만든 도면검색인덱스.json을 파일명 매칭으로
+      docs.pages/text에 주입 → pdf.js·인터넷 없이 전 도면 텍스트검색 (스캔·아웃라인·인코딩 깨진 PDF 포함)
+      · OCR검색본 PDF(투명 텍스트 레이어)를 가져오면 앱 내장 색인도 동작. 원본 대신 OCR검색본 사용 권장
+    - 도면 검색 개선: 하이픈·공백 무시 매칭(vcb501 → VCB-501), 여러 단어 AND 검색
+    - 가져오기 필터·분류 보강: 로직 도면번호 인식(602-x-E-LG, x-I-LG), '단일기기 Logic' 파일 포함
+    - DB 스키마 변경 없음(DB_VER=8 유지, pages/text·ocrIndexed는 docs의 선택 필드) → 마이그레이션 불필요
   v32 (2026-07-05) : 문서 열람 명확화 + 매뉴얼 진행 추적
     - 문서함 표기 명확화: 모달 제목 '도면·문서 문서함', 검색 placeholder·하단 안내(PDF/이미지 앱열람, hwp/ppt/xlsx 다운로드)
     - 매뉴얼 진행 추적(procs 스토어, DB_VER 7→8): 절차 단계 체크·진행률·다음단계 강조,
@@ -373,6 +387,17 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 .viewer img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;user-select:none;-webkit-user-drag:none}
 .loto-step{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid var(--line)}
 .loto-step:last-child{border-bottom:none}
+.tg-c{fill:var(--accent2);}
+.tg-ct{fill:#fff;font-size:15px;font-weight:700;text-anchor:middle;}
+.tg-g{fill:var(--panel2);stroke:var(--accent);stroke-width:1;}
+.tg-gt{fill:var(--accent);font-size:11px;font-weight:700;text-anchor:middle;}
+.tg-l{stroke:var(--line);stroke-width:2;}
+.tg-l2{stroke:var(--line);stroke-width:1;}
+.tg-n rect{fill:var(--panel);stroke:var(--line);cursor:pointer;}
+.tg-n text{fill:var(--txt);font-size:10px;cursor:pointer;}
+.tg-n .tg-sub{fill:var(--dim);font-size:8.5px;}
+.tg-n:active rect{stroke:var(--accent);}
+.tg-more{fill:var(--dim);font-size:10px;text-anchor:middle;}
 </style>
 </head>
 <body>
@@ -393,8 +418,8 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const DB_NAME='pwr_work_v1', DB_VER=8; // v8: procs 스토어 추가 (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
-const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs'];
+const DB_NAME='pwr_work_v1', DB_VER=9; // v9: dwgnotes(도면 해석 노트) 추가 (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
+const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes'];
 let db=null;
 
 function openDB(){
@@ -425,7 +450,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -433,6 +458,7 @@ async function loadAll(){
   try{S._hwpxTpl=await dbGet('meta','hwpxTpl');}catch(e){S._hwpxTpl=null;}
   try{S.docs=(await dbAll('docs')).map(d=>{const{blob,...m}=d;return m;});}catch(e){S.docs=[];}
   try{[S.photos,S.spares,S.budget,S.todos,S.measurements,S.permits,S.procs]=await Promise.all(['photos','spares','budget','todos','measurements','permits','procs'].map(dbAll));}catch(e){}
+  try{S.dwgnotes=await dbAll('dwgnotes');}catch(e){S.dwgnotes=[];}
 }
 const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -490,7 +516,7 @@ function isChkDone(c){
 }
 
 /* ================= PART 3 : 내보내기 / 가져오기 ================= */
-const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs'];
+const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes'];
 async function exportJSON(){
   const incDraw=S.drawings.length?confirm('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
   const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
@@ -1424,8 +1450,10 @@ function moreDoc(){
     <button class="btn full" onclick="importDocs()">📥 폴더에서 도면 일괄 가져오기</button>
     <button class="btn full" onclick="registerDoc()">📎 문서·매뉴얼 등록 (여러 개 선택 가능)</button>
     <button class="btn full" onclick="openDocSearch('')">🔎 설비명으로 도면 바로찾기</button>
+    <button class="btn full" onclick="openTagGraph('')">🕸️ 계통 연결 뷰 (태그 → 연계 도면 그래프)</button>
     <button class="btn ghost full" onclick="openDocLibrary()">🗂️ 도면·문서 문서함 열기(찾아보기·열람)</button>
     <button class="btn full" onclick="go('proc')">📋 매뉴얼 진행 추적 (단계·다음할일·AI질의)</button>
+    <button class="btn ghost sm full" onclick="importOcrIndex()">📇 OCR 인덱스(JSON) 가져오기 — 오프라인 즉시 색인</button>
     ${S.docs.filter(d=>d.ext==='pdf'&&!(d.pages&&d.pages.length)).length?`<button class="btn ghost sm full" onclick="reindexDocs()">미색인 PDF 텍스트 재색인</button>`:''}
     ${S.docs.length?`<div class="muted" style="margin-top:6px">${docCountSummary()}</div>`:''}
     <div class="section-note">단선도는 반(盤)·계통 단위라 설비엔 '연결'로 참조합니다(설비 카드 → 관련 도면). 원본은 폴더에 유지, GitHub 코드엔 미포함. 도면 blob은 평문 백업 제외 → 기기 교체 시 재가져오기.</div>
@@ -2268,7 +2296,7 @@ async function genHwpxMonthly(){
 function classifyDoc(name,folder){
   const base=name.replace(/\.[^.]+$/,'');
   const up=base.toUpperCase();
-  const noM=base.match(/602-\d-E-SL-\d{3}-\d{3}/);
+  const noM=base.match(/602-\d-E-(?:SL|LG)-\d{3}-\d{3}/)||base.match(/\d-I-LG-\d{3}(?:-\d{3})?/);
   const docNo=noM?noM[0]:'';
   const f=folder||'';
   let plant='';
@@ -2283,15 +2311,16 @@ function classifyDoc(name,folder){
   let kind='단선도';
   if(/LOGIC/i.test(up))kind='로직도';
   else if(/LOOP/i.test(up))kind='루프도';
+  else if(/-LG-\d/.test(up))kind='로직도';
   else if(/SCHEMATIC/i.test(up))kind='스키매틱';
   else if(/CONFIGURATION.*(CONTROL|MONITORING)/i.test(up))kind='제어·감시';
   else if(/SYNCHRO|PHASING/i.test(up))kind='동기·위상';
   else if(/SINGLE LINE|KEY SINGLE/i.test(up))kind='단선도';
-  let title=base.replace(/^602-\d-E-SL-\d{3}-\d{3}\s*\(?D?\)?_?\s*/,'').replace(/_/g,' ').trim();
+  let title=base.replace(/^602-\d-E-(?:SL|LG)-\d{3}-\d{3}\s*\(?D?\)?_?\s*/,'').replace(/_/g,' ').trim();
   if(!title)title=base.replace(/_/g,' ').trim();
   return {docNo,plant,level,kind,title};
 }
-const _isDrawFile=n=>/(602-\d-E-SL|SINGLE LINE|LOGIC|LOAD CENTER|\bMCC\b|SWITCHGEAR|LIGHTING|UPS|SCHEMATIC|LOOP|CONFIGURATION|수처리동)/i.test(n)&&/\.(pdf|jpe?g|png)$/i.test(n);
+const _isDrawFile=n=>/(602-\d-E-(SL|LG)|\d-I-LG-|SINGLE LINE|LOGIC|LOAD CENTER|\bMCC\b|SWITCHGEAR|LIGHTING|UPS|SCHEMATIC|LOOP|CONFIGURATION|ACB|수처리동)/i.test(n)&&/\.(pdf|jpe?g|png)$/i.test(n);
 async function importDocs(){
   const inp=document.createElement('input');inp.type='file';inp.multiple=true;
   try{inp.webkitdirectory=true;}catch(e){}
@@ -2756,23 +2785,63 @@ async function reindexDocs(){
   }
   await loadAll();render();toast('색인 완료: '+ok+'/'+pend.length+'건 텍스트 있음');
 }
-function _snippet(text,q){
-  const i=text.indexOf(q);if(i<0)return '';
-  const a=Math.max(0,i-18);return (a>0?'…':'')+text.slice(a,i+q.length+34).trim()+'…';
+/* v33: 하이픈·공백 무시(압축) 매칭 + 여러 단어 AND */
+function _compact(s){const m=[];let c='';for(let i=0;i<s.length;i++){const ch=s[i];if(!/[-_.\s()\/]/.test(ch)){c+=ch;m.push(i);}}return{c,m};}
+function _pageCompact(d,i){d._pc=d._pc||{};if(!d._pc[i])d._pc[i]=_compact(d.pages[i]);return d._pc[i];}
+function _findTerm(low,cobj,t,tc){
+  let i=low.indexOf(t);if(i>=0)return{pos:i,len:t.length};
+  if(tc.length>=2&&cobj&&cobj.c){const j=cobj.c.indexOf(tc);if(j>=0)return{pos:cobj.m[j],len:cobj.m[j+tc.length-1]-cobj.m[j]+1};}
+  return null;
+}
+function _snippet(text,hit){
+  if(!hit)return '';
+  const a=Math.max(0,hit.pos-18);return (a>0?'…':'')+text.slice(a,hit.pos+hit.len+34).trim()+'…';
 }
 function findInDocs(term){
   const q=(term||'').toLowerCase().trim();if(!q)return [];
+  const terms=q.split(/\s+/).filter(Boolean);
+  const tcs=terms.map(t=>t.replace(/[-_.\s()\/]/g,''));
   const res=[];
   for(const d of S.docs){
     if(d.pages&&d.pages.length){
       for(let i=0;i<d.pages.length;i++){
-        if(d.pages[i].includes(q)){res.push({doc:d,page:i+1,snip:_snippet(d.pages[i],q)});break;}
+        const hits=terms.map((t,k)=>_findTerm(d.pages[i],_pageCompact(d,i),t,tcs[k]));
+        if(hits.every(h=>h)){res.push({doc:d,page:i+1,snip:_snippet(d.pages[i],hits[0])});break;}
       }
-    }else if(((d.title||'')+' '+(d.name||'')+' '+(d.docNo||'')).toLowerCase().includes(q)){
-      res.push({doc:d,page:1,snip:''});
+    }else{
+      const nm=((d.title||'')+' '+(d.name||'')+' '+(d.docNo||'')).toLowerCase();
+      const nc=_compact(nm);
+      if(terms.every((t,k)=>_findTerm(nm,nc,t,tcs[k])))res.push({doc:d,page:1,snip:''});
     }
   }
   return res.slice(0,40);
+}
+/* v33: OCR 인덱스(도면검색인덱스.json) 가져오기 — 파일명 매칭으로 pages/text 주입 */
+async function importOcrIndex(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const f=inp.files[0];if(!f)return;
+    let data;try{data=JSON.parse(await f.text());}catch(e){toast('JSON 파싱 실패: '+e.message);return;}
+    const list=Array.isArray(data)?data:(data.files||[]);
+    if(!list.length||!list[0].n||!list[0].g){toast('도면검색인덱스.json 형식이 아닙니다');return;}
+    const norm=s=>{try{s=(s||'').normalize('NFC');}catch(e){}return s.toLowerCase().trim();};
+    const map={};for(const e of list)map[norm(e.n)]=e;
+    let hit=0,miss=[];
+    for(const meta of S.docs){
+      if(meta.ext!=='pdf')continue;
+      const e=map[norm(meta.name)];
+      if(!e){miss.push(meta.name);continue;}
+      const full=await dbGet('docs',meta.id);if(!full){miss.push(meta.name);continue;}
+      full.pages=e.g.map(t=>String(t).toLowerCase());
+      full.text=full.pages.join(' \n ');
+      full.ocrIndexed=true;
+      await dbPut('docs',full);hit++;
+    }
+    await loadAll();render();
+    if(hit)toast('OCR 색인 연결 완료: '+hit+'건'+(miss.length?' · 불일치 '+miss.length+'건':''));
+    else alert('일치하는 파일명이 없습니다.\n문서함 PDF 파일명과 인덱스 파일명이 같아야 합니다.\n(도면모음/OCR검색본 폴더를 [폴더에서 도면 일괄 가져오기]로 넣은 뒤 다시 시도)');
+  };
+  inp.click();
 }
 function openDocSearch(term){window._docSearchQ=term||'';renderDocSearch();}
 function renderDocSearch(){
@@ -2787,6 +2856,7 @@ function renderDocSearch(){
     <div id="dsres">${docSearchRows(q,res)}</div>
     <div class="row" style="margin-top:10px">
       ${indexed<pdfTot?`<button class="btn ghost sm" onclick="reindexDocs()">미색인 ${pdfTot-indexed}건 재색인</button>`:''}
+      <button class="btn ghost sm" onclick="openTagGraph(window._docSearchQ||'')">🕸️ 연결 뷰</button>
       <div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
   const el=document.getElementById('dsq');if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length)}catch(e){}}
 }
@@ -2802,6 +2872,112 @@ function renderDocSearchInline(){
   const q=window._docSearchQ||'';
   const box=document.getElementById('dsres');
   if(box)box.innerHTML=docSearchRows(q,findInDocs(q));
+}
+
+/* ================= PART 9.12 : 계통 연결 뷰 + 해석 노트 (v34) ================= */
+const _TG_GROUPS=[['단선도',['단선도','동기·위상']],['로직도',['로직도','제어·감시']],['스키매틱',['스키매틱']],['루프도',['루프도']],['문서·기타',null]];
+function _tagGroups(q){
+  const query=(q||'').toLowerCase().trim();if(!query)return null;
+  const terms=query.split(/\s+/).filter(Boolean);
+  const tcs=terms.map(t=>t.replace(/[-_.\s()\/]/g,''));
+  const hits=[];
+  for(const d of S.docs){
+    if(d.pages&&d.pages.length){
+      let first=0,cnt=0;
+      for(let i=0;i<d.pages.length;i++){
+        const hs=terms.map((t,k)=>_findTerm(d.pages[i],_pageCompact(d,i),t,tcs[k]));
+        if(hs.every(h=>h)){cnt++;if(!first)first=i+1;}
+      }
+      if(cnt)hits.push({doc:d,page:first,cnt});
+    }else{
+      const nm=((d.title||'')+' '+(d.name||'')).toLowerCase();const nc=_compact(nm);
+      if(terms.every((t,k)=>_findTerm(nm,nc,t,tcs[k])))hits.push({doc:d,page:1,cnt:1});
+    }
+  }
+  const groups=_TG_GROUPS.map(g=>({name:g[0],kinds:g[1],items:[]}));
+  for(const h of hits){
+    const g=groups.find(x=>x.kinds&&x.kinds.includes(h.doc.kind));
+    (g||groups[groups.length-1]).items.push(h);
+  }
+  return groups.filter(g=>g.items.length);
+}
+function _tgSvg(q,groups){
+  const W=360,nodeW=170,nodeH=30,col=2;
+  let y=64;const parts=[];const cx=W/2;
+  parts.push(`<rect x="${cx-72}" y="8" rx="16" width="144" height="34" class="tg-c"/><text x="${cx}" y="30" class="tg-ct">${esc(q.toUpperCase().slice(0,14))}</text>`);
+  for(const g of groups){
+    const gy=y;
+    parts.push(`<line x1="${cx}" y1="42" x2="${cx}" y2="${gy}" class="tg-l"/>`);
+    parts.push(`<rect x="${cx-62}" y="${gy}" rx="13" width="124" height="26" class="tg-g"/><text x="${cx}" y="${gy+17}" class="tg-gt">${esc(g.name)} · ${g.items.length}</text>`);
+    y=gy+36;
+    const shown=g.items.slice(0,10);
+    const left=(W-col*nodeW-8)/2;
+    shown.forEach((h,idx)=>{
+      const c=idx%col,r=Math.floor(idx/col);
+      const x=left+c*(nodeW+8),yy=y+r*(nodeH+7);
+      parts.push(`<line x1="${cx}" y1="${gy+26}" x2="${x+nodeW/2}" y2="${yy}" class="tg-l2"/>`);
+      const label=(h.doc.docNo||h.doc.title||h.doc.name||'').slice(0,26);
+      const sub=('p.'+h.page+(h.cnt>1?' 외'+(h.cnt-1):'')+(h.doc.plant?' · '+h.doc.plant:'')+(h.doc.level?' · '+h.doc.level:'')).slice(0,34);
+      parts.push(`<g class="tg-n" onclick="viewDocAt('${h.doc.id}',${h.page})"><rect x="${x}" y="${yy}" rx="8" width="${nodeW}" height="${nodeH}"/><text x="${x+7}" y="${yy+13}">${esc(label)}</text><text x="${x+7}" y="${yy+25}" class="tg-sub">${esc(sub)}</text></g>`);
+    });
+    y+=Math.ceil(shown.length/col)*(nodeH+7)+10;
+    if(g.items.length>10){parts.push(`<text x="${cx}" y="${y}" class="tg-more">… 외 ${g.items.length-10}건은 🔎 검색에서 확인</text>`);y+=16;}
+  }
+  return `<svg viewBox="0 0 ${W} ${y}" style="width:100%">${parts.join('')}</svg>`;
+}
+function _notesFor(q){
+  const nq=(q||'').toUpperCase().replace(/[-_.\s]/g,'');if(!nq)return[];
+  return (S.dwgnotes||[]).filter(n=>{
+    const t=((n.tag||'')+'').toUpperCase().replace(/[-_.\s]/g,'');
+    return t&&t===nq;
+  });
+}
+function tagGraphHtml(q){
+  if(!(q||'').trim())return '<div class="empty">기기번호를 입력하세요 (예: LC-202)</div>';
+  const groups=_tagGroups(q);
+  const notes=_notesFor(q);
+  let h='';
+  if(groups&&groups.length)h+=_tgSvg(q.trim(),groups);
+  else h+='<div class="empty">일치 도면 없음 (OCR 인덱스 가져오기 후 사용 가능)</div>';
+  h+=notes.map(n=>`<div class="card" style="margin-top:10px"><h2>📖 ${esc(n.title||n.tag)}</h2>
+    ${n.dwg?`<div class="muted">${esc(n.dwg)}</div>`:''}
+    <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:6px">${esc(n.body||'')}</div>
+    <div class="section-note">AI 해석 노트 — 참고용. 실제 조작 전 반드시 원본 도면·현장 확인.</div></div>`).join('');
+  if((q||'').trim()&&!notes.length)h+='<div class="section-note" style="margin-top:8px">이 태그의 해석 노트 없음 — Claude에게 해석을 요청해 JSON으로 받으면 [해석 노트 가져오기]로 추가됩니다.</div>';
+  return h;
+}
+function openTagGraph(term){window._tgQ=term||'';renderTagGraph();}
+function renderTagGraph(){
+  const q=window._tgQ||'';
+  openModal(`<h3>🕸️ 계통 연결 뷰</h3>
+    <div class="searchwrap"><input id="tgq" placeholder="기기번호·태그 (예: LC-202, vcb501, ACB-407)" value="${esc(q)}"
+      oninput="window._tgQ=this.value;clearTimeout(window._tgt);window._tgt=setTimeout(renderTagGraphInline,250)"></div>
+    <div class="muted">태그가 나오는 도면을 종류별로 묶어 표시. 노드를 누르면 해당 페이지가 열립니다. 벤더프린트 등 문서를 추가 가져오면 '문서·기타' 그룹으로 자동 포함됩니다.</div>
+    <div id="tgres">${tagGraphHtml(q)}</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost sm" onclick="importDwgNotes()">📖 해석 노트 가져오기</button>
+      <div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+  const el=document.getElementById('tgq');if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length)}catch(e){}}
+}
+function renderTagGraphInline(){const b=document.getElementById('tgres');if(b)b.innerHTML=tagGraphHtml(window._tgQ||'');}
+async function importDwgNotes(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const f=inp.files[0];if(!f)return;
+    let data;try{data=JSON.parse(await f.text());}catch(e){toast('JSON 파싱 실패: '+e.message);return;}
+    const list=Array.isArray(data)?data:(data.notes||[]);
+    if(!list.length||!list[0].tag){toast('해석 노트 형식 아님 — {notes:[{tag,title,body}]}');return;}
+    let n=0;
+    for(const it of list){
+      const key=((it.tag||'')+'|'+(it.dwg||'')).toUpperCase();
+      const ex=(S.dwgnotes||[]).find(x=>(((x.tag||'')+'|'+(x.dwg||'')).toUpperCase())===key);
+      const obj=ex||{id:'DN'+uid()};
+      Object.assign(obj,{tag:it.tag,dwg:it.dwg||'',title:it.title||'',body:it.body||'',added:todayStr()});
+      await dbPut('dwgnotes',obj);if(!ex)S.dwgnotes.push(obj);n++;
+    }
+    toast('해석 노트 '+n+'건 반영');renderTagGraphInline();
+  };
+  inp.click();
 }
 
 /* ================= PART 8.1 : 주기 업무 그룹화 + 월별 이력 (v13) ================= */
