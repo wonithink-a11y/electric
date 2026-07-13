@@ -2,9 +2,20 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v40.html
+  전력계통과 업무앱 app_v41.html
   ============================================================
   변경 이력
+  v41 (2026-07-13) : 전원계통 트리를 박스+연결선 SVG 다이어그램으로 교체 (가독성 개선)
+    - 기존 renderNode(들여쓰기 텍스트 리스트)를 treeSvg(조직도 형태 SVG)로 교체 — 전원(위)에서
+      부하(아래)로 박스가 배치되고 부모→자식 사이를 꺾은선(엘보 커넥터)으로 연결, 형제 노드가
+      여러 개면 가로 버스선으로 한 번에 묶어 보여줌. 화면이 좁으면 가로 스크롤(overflow-x)
+    - 박스 안 이름은 11자로 축약 표시(…) — 탭하면 기존 nodeMenu 모달이 열려 전체 이름·전압·
+      차단경로·하위 정전영향을 그대로 보여줌(기능 변경 없음, 표시 방식만 개선)
+    - 차단기 노드는 빨간 테두리로 강조(기존 blockPathSvg와 동일 시각언어), 설비 연결된 노드는
+      박스 우상단에 점 표시. 하단에 유형별 범례(전원/모선/차단기/부하설비) 추가
+    - 노드 유형 아이콘 교체(차단기 ⏻→⚡, 모선 ▤→🔌): 실사용 화면(갤럭시)에서 ⏻·▤가 빈 네모(폰트
+      미지원)로 깨져 보이던 문제 수정 — 이미 앱 다른 곳에서도 쓰는 안전한 이모지로 통일
+    - collectSubtree/treeSvg 함수 신설, nodeKids 그대로 재사용. 데이터/스키마 변경 없음
   v40 (2026-07-13) : Firebase 실시간 동기화 (PC↔모바일) — 로드맵 §1 하이브리드 저장 아키텍처 구현
     - 동기화 대상은 "일반 데이터"만: 할일(todos)·현안(issues)·법정검사(inspections)·
       체크리스트 정의(checklists)·완료이력(checklogs) 5개 스토어. 설비마스터·계통트리·도면·
@@ -434,6 +445,9 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 .item.l4{margin-left:30px}
 .tnode .cnt{margin-left:6px;font-weight:500;color:var(--dim)}
 .tkids{border-left:1px dashed var(--line);margin-left:16px;padding-left:6px}
+.tree-legend{margin-top:10px;font-size:11px;color:var(--dim);display:flex;gap:12px;flex-wrap:wrap}
+.tleg-ic{margin-right:4px}
+.tleg-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:4px}
 .path-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.9;margin:8px 0;word-break:break-all}
 .path-box b{color:var(--warn)}
 /* 도면 뷰어 */
@@ -1402,7 +1416,7 @@ function noteListHtml(){
     <button class="btn ghost sm full" onclick="go('more')" style="margin-top:10px">← 더보기</button>`;
 }
 /* ================= PART 6.5 : 계통 트리 & 차단범위 (모듈②) ================= */
-const NODE_TYPES={source:['🔺','전원(인입)'],bus:['▤','모선/판넬'],breaker:['⏻','차단기'],load:['⚙️','부하설비']};
+const NODE_TYPES={source:['🔺','전원(인입)'],bus:['🔌','모선/판넬'],breaker:['⚡','차단기'],load:['⚙️','부하설비']};
 const nodeById=id=>S.tree.find(n=>n.id===id);
 const nodeKids=id=>S.tree.filter(n=>n.parentId===id);
 // 상위 방향 경로 (leaf → root)
@@ -1446,9 +1460,13 @@ function vTree(){
   const roots=S.tree.filter(n=>!n.parentId);
   return `
   <div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
-    ${roots.length?roots.map(r=>renderNode(r,0)).join(''):'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'}
+    ${roots.length?roots.map(r=>treeSvg(r)).join(''):'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'}
     <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
-    <div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>
+    <div class="tree-legend">
+      ${Object.entries(NODE_TYPES).map(([k,v])=>`<span><span class="tleg-ic">${v[0]}</span>${v[1]}</span>`).join('')}
+      <span><span class="tleg-dot"></span>설비 연결됨</span>
+    </div>
+    <div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 박스를 탭하면 전체 이름·차단경로·메모를 볼 수 있습니다. 도면 원본은 이 기기에만 저장됩니다.</div>
   </div>
   <div class="card"><h2>🔒 LOTO 시행 이력 <span class="cnt">${S.lotologs.length}건</span></h2>
     ${S.lotologs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>`
@@ -1456,18 +1474,56 @@ function vTree(){
       <div class="d">${l.steps.filter(s=>s.done).length}/${l.steps.length} 단계 완료</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
   </div>`;
 }
-function renderNode(n,depth){
-  const kids=nodeKids(n.id);
-  const[ic]=NODE_TYPES[n.type]||['·'];
-  return `<div>
-    <div class="tnode" onclick="nodeMenu('${n.id}')">
-      <span class="ti">${ic}</span>
-      <span class="tn">${esc(n.name)}</span>
-      <span class="tv">${esc(n.voltage||'')}</span>
-      ${n.equipId?'<span class="badge b-green">설비연결</span>':''}
-    </div>
-    ${kids.length?`<div class="tkids">${kids.map(k=>renderNode(k,depth+1)).join('')}</div>`:''}
-  </div>`;
+// 전원계통 트리를 박스+연결선 SVG 다이어그램으로 렌더 (누가 봐도 알아보는 조직도 형태)
+// 이름은 박스 안에서 짧게 줄이고, 박스를 탭하면 nodeMenu가 전체 이름·차단경로를 보여줌
+function collectSubtree(root){
+  const out=[root];const stack=[root];
+  while(stack.length){const cur=stack.pop();for(const k of nodeKids(cur.id)){out.push(k);stack.push(k);}}
+  return out;
+}
+function treeSvg(root){
+  const boxW=116,boxH=44,hGap=14,vGap=34,pad=16;
+  const positions={};let leafCounter=0;
+  function walk(node,depth){
+    const kids=nodeKids(node.id);
+    if(!kids.length){positions[node.id]={slot:leafCounter,depth};leafCounter++;return positions[node.id].slot;}
+    const slots=kids.map(k=>walk(k,depth+1));
+    const slot=(Math.min(...slots)+Math.max(...slots))/2;
+    positions[node.id]={slot,depth};
+    return slot;
+  }
+  walk(root,0);
+  const nodes=collectSubtree(root);
+  const maxDepth=Math.max(...nodes.map(n=>positions[n.id].depth));
+  const slotW=boxW+hGap;
+  const px=id=>pad+positions[id].slot*slotW+boxW/2;
+  const py=id=>pad+positions[id].depth*(boxH+vGap);
+  const totalW=pad*2+Math.max(leafCounter,1)*boxW+Math.max(leafCounter-1,0)*hGap;
+  const totalH=pad*2+(maxDepth+1)*boxH+maxDepth*vGap;
+  let edges='';
+  nodes.forEach(n=>{
+    const kids=nodeKids(n.id);if(!kids.length)return;
+    const x0=px(n.id),yBottom=py(n.id)+boxH,busY=yBottom+vGap/2;
+    const childXs=kids.map(k=>px(k.id));
+    edges+=`<line x1="${x0}" y1="${yBottom}" x2="${x0}" y2="${busY}" stroke="var(--line)" stroke-width="2"/>`;
+    if(kids.length>1)edges+=`<line x1="${Math.min(...childXs)}" y1="${busY}" x2="${Math.max(...childXs)}" y2="${busY}" stroke="var(--line)" stroke-width="2"/>`;
+    kids.forEach(k=>{const cx=px(k.id);edges+=`<line x1="${cx}" y1="${busY}" x2="${cx}" y2="${py(k.id)}" stroke="var(--line)" stroke-width="2"/>`;});
+  });
+  let boxes='';
+  nodes.forEach(n=>{
+    const x=px(n.id)-boxW/2,y=py(n.id);
+    const isBrk=n.type==='breaker';
+    const [ic]=NODE_TYPES[n.type]||['·'];
+    const full=n.name||'';
+    const label=full.length>12?full.slice(0,11)+'…':full;
+    boxes+=`<g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
+      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${isBrk?'var(--danger)':'var(--accent)'}" stroke-width="${isBrk?2.5:1.4}"/>
+      <text x="${x+boxW/2}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
+      ${n.voltage?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
+      ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
+    </g>`;
+  });
+  return `<div style="overflow-x:auto;margin:8px 0"><svg viewBox="0 0 ${totalW} ${totalH}" style="min-width:${totalW}px;height:${totalH}px;max-width:none">${edges}${boxes}</svg></div>`;
 }
 function nodeMenu(id){
   const n=nodeById(id);if(!n)return;
