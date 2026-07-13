@@ -2,9 +2,20 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v43.html
+  전력계통과 업무앱 app_v44.html
   ============================================================
   변경 이력
+  v44 (2026-07-13) : 계통트리 전압탭(22.9kV/6.9kV/460V/제어) 분리 보기
+    - 전원계통 트리를 한 화면에 전부 펼치던 방식 대신, 전압등급 탭(전체/22.9kV/6.9kV/460V/제어)으로
+      구간을 나눠 볼 수 있도록 개선. 탭을 누르면 해당 전압 구간의 시작 노드(들)만 루트로 삼아 그
+      아래만 렌더링 — 22.9kV 수전측과 6.9kV 이하 부하측을 분리해서 보므로 도면 폭이 줄어들어 찾기 쉬움
+    - 노드 자신의 전압등급(voltage) 또는 상위 노드에서 상속한 전압등급(effVolt)으로 각 노드를
+      4구간(22.9kV/6.9kV/460V/제어(110V)) 중 하나로 자동 분류(nodeVoltClass) — 기존 노드 데이터
+      그대로 사용, 별도 입력 불필요(단, 전압등급을 입력해둔 노드가 있어야 정확히 분리됨)
+    - 전압이 바뀌는 지점(예: 6.9kV VCB)은 점선 테두리 박스로 표시되고, 하단 "▶ ○○kV 보기" 배지를
+      탭하면 그 다음 전압탭으로 자동 전환 + 해당 박스로 스크롤 이동
+    - 이름·번호 검색(findTreeNode)도 찾은 노드가 속한 전압탭으로 자동 전환하도록 개선
+    - 데이터 스키마 변경 없음(기존 tree.voltage 필드 그대로 활용)
   v43 (2026-07-13) : 삭제창 주소 노출 제거 + 계통트리 줌/접기/찾기 + 완료이력 통합 + 하단 여백
     - [버그] 삭제 확인창 위에 깃허브 주소(wonithink-a11y.github.io)가 함께 뜨던 문제 수정:
       브라우저 기본 confirm()/prompt()는 주소 표시를 JS로 숨길 수 없어, 앱 자체 오버레이
@@ -549,7 +560,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null,_treeVoltTab:'전체'};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -1462,6 +1473,32 @@ function noteListHtml(){
 const NODE_TYPES={source:['🔺','전원(인입)'],bus:['🔌','모선/판넬'],breaker:['⚡','차단기'],load:['⚙️','부하설비']};
 const nodeById=id=>S.tree.find(n=>n.id===id);
 const nodeKids=id=>S.tree.filter(n=>n.parentId===id);
+/* 전압탭 분리(v44): 트리 노드의 전압등급 문자열 → 표준 구간으로 분류, 없으면 상위 노드에서 상속 */
+const TREE_VOLT_TABS=['전체','22.9kV','6.9kV','460V','제어(110V)'];
+function nodeVoltClass(raw){
+  const t=(raw||'').toUpperCase();if(!t)return '';
+  if(/22\.9|수전|INCOMING|특고/.test(t))return '22.9kV';
+  if(/6\.9|6\.6|6900|6600|SWGR|SWITCHGEAR/.test(t))return '6.9kV';
+  if(/460|380|220|저압/.test(t))return '460V';
+  if(/110|제어/.test(t))return '제어(110V)';
+  return '기타';
+}
+function effVolt(node,guard){
+  guard=guard||0;if(!node||guard>60)return '';
+  const own=nodeVoltClass(node.voltage);if(own)return own;
+  if(node.parentId){const p=nodeById(node.parentId);if(p)return effVolt(p,guard+1);}
+  return '';
+}
+// 특정 전압탭에서 "루트"가 되는 노드들: 이 탭에 속하면서, 부모가 없거나 부모는 다른 탭인 노드(=구간 시작점)
+function treeRootsForTab(tab){
+  if(!tab||tab==='전체')return S.tree.filter(n=>!n.parentId);
+  return S.tree.filter(n=>{
+    if(effVolt(n)!==tab)return false;
+    if(!n.parentId)return true;
+    const p=nodeById(n.parentId);
+    return !p||effVolt(p)!==tab;
+  });
+}
 // 상위 방향 경로 (leaf → root)
 function pathUp(id){
   const out=[];let n=nodeById(id),guard=0;
@@ -1500,10 +1537,15 @@ function descendants(id){
   return out;
 }
 function vTree(){
-  const roots=S.tree.filter(n=>!n.parentId);
+  const allRoots=S.tree.filter(n=>!n.parentId);
+  const tab=S._treeVoltTab||'전체';
+  const roots=treeRootsForTab(tab);
   return `
   <div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
-    ${roots.length?`
+    ${allRoots.length?`
+    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      ${TREE_VOLT_TABS.map(t=>`<button class="btn ${tab===t?'':'ghost'} sm" onclick="treeVoltTab('${t}')">${esc(t)}</button>`).join('')}
+    </div>
     <div class="row" style="gap:6px;margin-bottom:6px">
       <input id="tree-find" placeholder="이름·번호로 찾기 (예: VCB-504)" style="flex:1" onkeydown="if(event.key==='Enter')findTreeNode()">
       <button class="btn sm" onclick="findTreeNode()">찾기</button>
@@ -1517,19 +1559,31 @@ function vTree(){
       <button class="btn ghost sm" onclick="expandAllTree()">전체 펼치기</button>
       <button class="btn ghost sm" onclick="collapseAllTree()">기본 보기</button>
     </div>`:''}
-    ${roots.length?roots.map(r=>treeSvg(r)).join(''):'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'}
+    ${!allRoots.length?'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'
+      :(roots.length?roots.map(r=>treeSvg(r,tab)).join(''):`<div class="empty">'${esc(tab)}' 구간에 해당하는 노드가 없습니다.<br>노드 수정에서 전압등급을 '${esc(tab)}'(또는 관련 표기)로 지정하면 이 탭에 나타납니다.</div>`)}
     <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
     <div class="tree-legend">
       ${Object.entries(NODE_TYPES).map(([k,v])=>`<span><span class="tleg-ic">${v[0]}</span>${v[1]}</span>`).join('')}
       <span><span class="tleg-dot"></span>설비 연결됨</span>
     </div>
-    ${roots.length?'<div class="section-note">💡 갈래가 많은 지점(분기)은 기본적으로 접혀 보입니다 — 박스 왼쪽 아래 ＋ 배지를 탭하면 펼쳐집니다. 박스 본체를 탭하면 전체 이름·차단경로·메모. 두 손가락 대신 ＋/－ 버튼으로 확대·축소, 이름/번호로 찾기 가능.</div>':'<div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>'}
+    ${allRoots.length?'<div class="section-note">💡 위 탭으로 22.9kV/6.9kV/저압 구간을 나눠 볼 수 있습니다 — 전압이 바뀌는 지점(예: 6.9kV VCB)은 점선 박스로 표시되고, 탭 배지를 누르면 그 아래 구간으로 이동합니다. 분기가 많은 지점은 기본적으로 접혀 보이며 ＋ 배지로 펼칩니다. 박스 본체를 탭하면 전체 이름·차단경로·메모. ＋/－ 버튼으로 확대·축소, 이름/번호로 찾기 가능.</div>':'<div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>'}
   </div>
   <div class="card"><h2>🔒 LOTO 시행 이력 <span class="cnt">${S.lotologs.length}건</span></h2>
     ${S.lotologs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>`
       <div class="item"><div class="t"><div class="n">${esc(l.date)} ${esc(l.target)}</div>
       <div class="d">${l.steps.filter(s=>s.done).length}/${l.steps.length} 단계 완료</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
   </div>`;
+}
+function treeVoltTab(t){
+  S._treeVoltTab=t;S._treeHighlight=null;
+  render();
+}
+function jumpToVoltTab(id){
+  const n=nodeById(id);if(!n)return;
+  S._treeVoltTab=effVolt(n)||'전체';
+  S._treeHighlight=id;
+  render();
+  setTimeout(()=>{const el=document.getElementById('tn-'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});},60);
 }
 function treeZoom(delta){
   S._treeZoom=Math.max(0.5,Math.min(2.5,Math.round(((S._treeZoom||1)+delta)*100)/100));
@@ -1562,6 +1616,7 @@ function findTreeNode(){
   if(!q){toast('찾을 이름이나 번호를 입력하세요');return;}
   const match=S.tree.find(n=>(n.name||'').toLowerCase().includes(q));
   if(!match){toast('일치하는 노드를 찾지 못했습니다');return;}
+  S._treeVoltTab=effVolt(match)||'전체';
   let cur=nodeById(match.parentId),guard=0;
   while(cur&&guard++<50){ _ensureExpanded(cur); cur=cur.parentId?nodeById(cur.parentId):null; }
   S._treeHighlight=match.id;
@@ -1570,20 +1625,22 @@ function findTreeNode(){
 }
 // 전원계통 트리를 박스+연결선 SVG 다이어그램으로 렌더 (누가 봐도 알아보는 조직도 형태)
 // 이름은 박스 안에서 짧게 줄이고, 박스를 탭하면 nodeMenu가 전체 이름·차단경로를 보여줌
-function collectSubtree(root){
+function collectSubtree(root,tab){
   const out=[root];const stack=[root];
   while(stack.length){
     const cur=stack.pop();
     if(isTreeCollapsed(cur))continue;
+    if(tab&&tab!=='전체'&&cur.id!==root.id&&effVolt(cur)!==tab)continue;
     for(const k of nodeKids(cur.id)){out.push(k);stack.push(k);}
   }
   return out;
 }
-function treeSvg(root){
+function treeSvg(root,tab){
   const boxW=116,boxH=44,hGap=14,vGap=34,pad=16;
   const positions={};let leafCounter=0;
   function walk(node,depth){
-    const kids=isTreeCollapsed(node)?[]:nodeKids(node.id);
+    const boundary=tab&&tab!=='전체'&&node.id!==root.id&&effVolt(node)!==tab;
+    const kids=(isTreeCollapsed(node)||boundary)?[]:nodeKids(node.id);
     if(!kids.length){positions[node.id]={slot:leafCounter,depth};leafCounter++;return positions[node.id].slot;}
     const slots=kids.map(k=>walk(k,depth+1));
     const slot=(Math.min(...slots)+Math.max(...slots))/2;
@@ -1591,7 +1648,7 @@ function treeSvg(root){
     return slot;
   }
   walk(root,0);
-  const nodes=collectSubtree(root);
+  const nodes=collectSubtree(root,tab);
   const maxDepth=Math.max(...nodes.map(n=>positions[n.id].depth));
   const slotW=boxW+hGap;
   const px=id=>pad+positions[id].slot*slotW+boxW/2;
@@ -1601,6 +1658,7 @@ function treeSvg(root){
   let edges='';
   nodes.forEach(n=>{
     if(isTreeCollapsed(n))return;
+    if(tab&&tab!=='전체'&&n.id!==root.id&&effVolt(n)!==tab)return;
     const kids=nodeKids(n.id);if(!kids.length)return;
     const x0=px(n.id),yBottom=py(n.id)+boxH,busY=yBottom+vGap/2;
     const childXs=kids.map(k=>px(k.id));
@@ -1616,19 +1674,24 @@ function treeSvg(root){
     const full=n.name||'';
     const label=full.length>12?full.slice(0,11)+'…':full;
     const kidsAll=nodeKids(n.id);
-    const collapsed=kidsAll.length&&isTreeCollapsed(n);
+    const boundary=tab&&tab!=='전체'&&n.id!==root.id&&effVolt(n)!==tab;
+    const collapsed=!boundary&&kidsAll.length&&isTreeCollapsed(n);
     const highlighted=n.id===S._treeHighlight;
+    const nextTab=boundary?effVolt(n):'';
     boxes+=`<g id="tn-${n.id}">
       <g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
-        <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${highlighted?'var(--warn)':(isBrk?'var(--danger)':'var(--accent)')}" stroke-width="${highlighted?3:(isBrk?2.5:1.4)}"/>
+        <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${highlighted?'var(--warn)':(boundary?'var(--dim)':(isBrk?'var(--danger)':'var(--accent)'))}" stroke-width="${highlighted?3:(boundary?1.4:(isBrk?2.5:1.4))}" stroke-dasharray="${boundary?'4,3':'0'}"/>
         <text x="${x+boxW/2}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
-        ${n.voltage?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
+        ${(n.voltage&&!boundary)?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
         ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
       </g>
-      ${kidsAll.length?`<g onclick="event.stopPropagation();toggleTreeNode('${n.id}')" style="cursor:pointer">
+      ${boundary?`<g onclick="event.stopPropagation();jumpToVoltTab('${n.id}')" style="cursor:pointer">
+        <rect x="${x}" y="${y+boxH-15}" width="${boxW}" height="15" rx="7" fill="var(--panel)" stroke="var(--accent)" stroke-width="1"/>
+        <text x="${x+boxW/2}" y="${y+boxH-4}" font-size="9" text-anchor="middle" fill="var(--accent)">▶ ${esc(nextTab||'다음')} 보기</text>
+      </g>`:(kidsAll.length?`<g onclick="event.stopPropagation();toggleTreeNode('${n.id}')" style="cursor:pointer">
         <circle cx="${x+11}" cy="${y+boxH-11}" r="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"/>
         <text x="${x+11}" y="${y+boxH-7}" font-size="12" text-anchor="middle" fill="var(--accent)">${collapsed?'+':'–'}</text>
-      </g>`:''}
+      </g>`:'')}
     </g>`;
   });
   const zoom=S._treeZoom||1;
