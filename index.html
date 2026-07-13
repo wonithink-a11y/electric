@@ -2,9 +2,19 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v44.html
+  전력계통과 업무앱 app_v45.html
   ============================================================
   변경 이력
+  v45 (2026-07-13) : 홈 '이번달 할 일' 카드에서 분기·반기·연간 주기업무 분리
+    - 기존 '🗓️ 이번달 할 일' 카드는 월간·분기·반기·연간·격년 주기업무 체크리스트를 전부 한데
+      섞어서 보여줬음 → 이번달과 무관한 분기/반기/연간 항목이 계속 '이번달 할 일'로 표시되던 문제
+    - todoMonthHtml()의 체크리스트 필터를 cycle==='monthly'만 남기도록 변경 (todos·법정검사는
+      기존대로 '이번주 이후 이번달 due' 기준 유지, 변경 없음)
+    - 새 함수 todoLongHtml() 추가: quarterly/halfyear/yearly/biennial 체크리스트를
+      '📆 분기·반기·연간 할 일' 카드로 분리 표시(미완료만, 완료된 항목은 숨김)
+    - homeCalTab()에 todoLongHtml() 호출 추가 — 달력 → 이번주 할 일 → 이번달 할 일 →
+      분기·반기·연간 할 일 순서로 배치
+    - 데이터 스키마 변경 없음(기존 checklists.cycle 필드 그대로 사용)
   v44 (2026-07-13) : 계통트리 전압탭(22.9kV/6.9kV/460V/제어) 분리 보기
     - 전원계통 트리를 한 화면에 전부 펼치던 방식 대신, 전압등급 탭(전체/22.9kV/6.9kV/460V/제어)으로
       구간을 나눠 볼 수 있도록 개선. 탭을 누르면 해당 전압 구간의 시작 노드(들)만 루트로 삼아 그
@@ -864,7 +874,7 @@ function vHome(){
   <div class="botpad"></div>`;
 }
 function homeCalTab(){
-  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}`;
+  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}${todoLongHtml()}`;
 }
 function _weekRange(){
   const t=new Date();const ts=todayStr();
@@ -901,7 +911,7 @@ function todoMonthHtml(){
   const todos=S.todos.filter(x=>!x.done&&x.date>we&&x.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
   const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>we&&i.nextDue.startsWith(m))
     .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
-  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')!=='A'&&!isChkDone(c));
+  const chks=S.checklists.filter(c=>c.cycle==='monthly'&&!isChkDone(c));
   const n=todos.length+insp.length+chks.length;
   const done=S.todos.filter(x=>x.done&&(x.date||'').startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
   return `<div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${n}건</span></h2>
@@ -914,6 +924,15 @@ function todoMonthHtml(){
         <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(x.title)}</div><div class="d">${esc(x.date)}</div></div>
         <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
     </div>`;
+}
+function todoLongHtml(){
+  const chks=S.checklists.filter(c=>['quarterly','halfyear','yearly','biennial'].includes(c.cycle)&&!isChkDone(c))
+    .sort((a,b)=>(CHK_TIER[a.cycle]||'B').localeCompare(CHK_TIER[b.cycle]||'B'));
+  const n=chks.length;
+  return `<div class="card"><h2>📆 분기·반기·연간 할 일 <span class="cnt">${n}건</span></h2>
+    ${chks.map(_chkRow).join('')}
+    ${n?'':'<div class="empty">분기·반기·연간 할 일 없음 👍</div>'}
+    <button class="btn ghost sm full" onclick="go('chk')">주기 업무 전체 관리 →</button></div>`;
 }
 function homeWorkTab(){
   const dueChk=S.checklists.filter(c=>!isChkDone(c));
@@ -1162,7 +1181,7 @@ function voltLine(e){
   const t=((e.group||'')+' '+(e.name||'')+' '+(e.category||'')).toUpperCase();
   if(/22\.9|수전|INCOMING|특고/.test(t))return '22.9kV';
   if(/6\.9|6\.6|6900|6600|SWGR|SWITCHGEAR/.test(t))return '6.9kV';
-  if(/460|380|MCC|LOAD CENTER|저압|LC-/.test(t))return '460V';
+  if(/460|380|MCC|LOAD CENTER|저압|LC-/.test(t))return '460V';
   if(/110V|제어|CONTROL|DC110/.test(t))return '제어(110V)';
   return '미분류';
 }
@@ -2369,10 +2388,10 @@ function docSafetyDay(){
 12. 소방·피난 통로 확보, 위험표지 부착:                (   )
 
 ■ 지적사항 / 조치계획
- - 
- - 
+ -
+ -
 ■ 특이사항
- - 
+ -
 
 작성: ${todayStr()}   확인:            (서명)`;
   openDoc('안전점검의 날 점검표',t);
@@ -2395,7 +2414,7 @@ function docLotoGen(nodeId){
 근거: 산업안전보건기준에 관한 규칙 제318·319조 (정전전로에서의 전기작업)
 
 작업일자: ${todayStr()}       작업시간:    :    ~    :
-작업명: 
+작업명:
 작업대상 설비: ${target}
 작업책임자(관리감독자):            작업인원:    명
 전기안전관리자 확인:               (서명)
@@ -2419,7 +2438,7 @@ function docLotoGen(nodeId){
  [ ] 절연장갑  [ ] 절연화  [ ] 검전기  [ ] 단락접지기구  [ ] 절연덮개  [ ] 안전모
 
 ■ 비상연락 / 특이사항
- - 
+ -
 
 작성: ${todayStr()}`;
   closeModal(); openDoc('정전작업 절차서',t);
@@ -2464,15 +2483,15 @@ function rptRepairGen(equipId){
     if(e)name=e.name; if(tn)block=blockPathPlain(tn.id);}
   const t=`[수리계획 / 업무지시전]
 1. 대상 설비: ${name}
-2. 작업 개요: 
-3. 원인 / 필요성: 
+2. 작업 개요:
+3. 원인 / 필요성:
 4. 차단범위(정전 영향): ${block}
 5. 필요 인력: 사내    명 / 외주    명
-6. 필요 자재·예비품: 
-7. 개략 비용: 
+6. 필요 자재·예비품:
+7. 개략 비용:
 8. 설비 정지 필요 여부: [ ] 필요(정지시간      )  [ ] 불필요(활선/무정전)
 9. 안전조치: 정전작업 절차서 별첨, 위험성평가·TBM 실시
-10. 작업 예정일: 
+10. 작업 예정일:
 
 작성일: ${todayStr()}   작성자: 허남원 (전력계통과)`;
   closeModal(); openDoc('수리계획_업무지시전',t);
@@ -2515,9 +2534,9 @@ function rptInspGen(id){
 3. 근거 법령: ${i.law||''}
 4. 검사 주기: ${i.cycle||''}
 5. 수검(예정)일: ${last?last.date:(i.nextDue||'')}
-6. 검사기관: 
+6. 검사기관:
 7. 검사 결과: [ ] 적합  [ ] 부적합(지적사항 별기)
-8. 지적사항 / 조치계획: 
+8. 지적사항 / 조치계획:
 9. 다음 검사 예정: ${i.nextDue||''}
 10. 비고: ${i.note||''}
 
@@ -3895,7 +3914,7 @@ function annualReport(){
 4. 예산 집행: ${_won(exec)}원
 5. 설비 측정: ${mY.length}건 (주의 ${mW}건)
 6. 특이사항 / 개선계획:
-   - 
+   -
 
 ※ 상세 내역은 앱의 고장·점검 이력, 예산 집계 참조. 차년도 계획 수립 시 활용.`;
   openDoc('연간 실적 보고 '+Y,t);
@@ -4187,7 +4206,7 @@ function applyTheme(t){
   if(t==='light')document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   window._theme=(t==='light')?'light':'dark';
-  const b=document.getElementById('theme-btn');if(b)b.textContent=(window._theme==='light')?'\u2600\ufe0f':'\ud83c\udf19';
+  const b=document.getElementById('theme-btn');if(b)b.textContent=(window._theme==='light')?'☀️':'🌙';
   const mc=document.querySelector('meta[name=theme-color]');if(mc)mc.setAttribute('content',(window._theme==='light')?'#ffffff':'#0e1626');
 }
 async function toggleTheme(){
