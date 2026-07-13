@@ -2,9 +2,25 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v42.html
+  전력계통과 업무앱 app_v43.html
   ============================================================
   변경 이력
+  v43 (2026-07-13) : 삭제창 주소 노출 제거 + 계통트리 줌/접기/찾기 + 완료이력 통합 + 하단 여백
+    - [버그] 삭제 확인창 위에 깃허브 주소(wonithink-a11y.github.io)가 함께 뜨던 문제 수정:
+      브라우저 기본 confirm()/prompt()는 주소 표시를 JS로 숨길 수 없어, 앱 자체 오버레이
+      confirmModal()/promptModal()(Promise 기반)을 새로 만들어 삭제 확인 23곳 + 백업 암호
+      입력 2곳 전부 교체 — 이제 어디서든 앱 문구만 뜨고 주소는 보이지 않음
+    - 전원계통 트리 개선: ＋/－/100% 버튼으로 확대·축소, 분기(자식 2개 이상)는 기본적으로
+      접혀 보이고 박스 좌하단 ＋/－ 배지를 탭하면 그 갈래만 펼쳐짐(전체 펼치기/기본 보기 버튼도 추가)
+      · 이름·번호 검색창 신설(findTreeNode) — 입력 후 찾기를 누르면 상위 경로를 자동으로 펼치고
+        해당 박스로 스크롤 이동 + 노란 테두리로 강조. 도면이 가로로 넓어 보기 어렵던 문제 해결
+    - [버그] 승강기 정기점검 등 법정검사 수검완료 기록이 어디서도 안 보이던 문제 수정:
+      기존엔 그 검사 카드를 다시 열어야만 보였음 → 검사에 "연결 설비" 선택 필드 추가해
+      설비 카드(openEquip)의 "📝 점검·특이사항 이력"에 메모와 함께 통합 표시(📋/📝 아이콘으로 구분),
+      홈 > 이력 탭(homeHistHtml)에도 주기체크 완료이력과 함께 월별로 합쳐서 표시
+    - [버그] 하단 내비바(홈·도면·설비·계통·검사·체크·더보기)에 화면 마지막 내용이 가려지던 문제 수정:
+      main 영역 하단 padding을 내비바 높이만큼 추가(safe-area 포함)
+    - 데이터 스키마: inspections에 선택 필드 equipId 추가(기존 데이터 영향 없음, DB_VER 그대로)
   v42 (2026-07-13) : 캘린더 버그 수정 + 표시 개선 + 삭제 확인창 전체 통일
     - [버그] 2박3일 등 여러 날 할일 추가 시 2·3일차가 달력에 안 보이던 문제 수정: 원인은
       openDay(모달)만 갱신하고 배경 홈 화면(#app)은 render()가 호출되지 않아 계속 예전 상태로
@@ -322,7 +338,7 @@ header .sub{font-size:12px;color:var(--dim)}
 .theme-btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;width:38px;height:38px;font-size:17px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .theme-btn:active{transform:scale(.92)}
 /* 메인 */
-main{padding:14px;max-width:760px;margin:0 auto}
+main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:760px;margin:0 auto}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px;margin-bottom:13px;box-shadow:var(--shadow-sm)}
 .card h2{font-size:15px;margin-bottom:11px;display:flex;align-items:center;gap:8px;letter-spacing:-.2px}
 .card h2 .cnt{font-size:12px;color:var(--dim);font-weight:500}
@@ -533,7 +549,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -603,7 +619,7 @@ function isChkDone(c){
 /* ================= PART 3 : 내보내기 / 가져오기 ================= */
 const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes','notes'];
 async function exportJSON(){
-  const incDraw=S.drawings.length?confirm('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
+  const incDraw=S.drawings.length?await confirmModal('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
   const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
   for(const s of BACKUP_STORES)
     data[s]=(s==='drawings'&&!incDraw)?[]:await dbAll(s);
@@ -654,7 +670,7 @@ function importBackup(){
   pickFile(async data=>{
     try{
       if(data.app!=='pwr_work'){toast('이 앱의 백업 파일이 아닙니다 (app 필드: '+(data.app||'없음')+')');return}
-      if(!confirm('기존 데이터를 백업 파일 내용으로 덮어씁니다. 계속할까요?'))return;
+      if(!(await confirmModal('기존 데이터를 백업 파일 내용으로 덮어씁니다. 계속할까요?')))return;
       let restored=0;
       for(const s of BACKUP_STORES){
         if(Array.isArray(data[s])&&data[s].length){
@@ -681,10 +697,10 @@ async function deriveKey(pw,salt){
     {name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 async function exportEncrypted(){
-  const pw=prompt('백업 암호를 입력하세요 (복원 시 동일 암호 필요, 분실 시 복구 불가)');
+  const pw=await promptModal('백업 암호를 입력하세요 (복원 시 동일 암호 필요, 분실 시 복구 불가)');
   if(!pw)return;
   if(pw.length<6){toast('암호는 6자 이상 권장 — 다시 시도');return}
-  const incDraw=S.drawings.length?confirm('도면 이미지를 포함할까요?\n(확인=포함 / 취소=도면 제외 백업)'):false;
+  const incDraw=S.drawings.length?await confirmModal('도면 이미지를 포함할까요?\n(확인=포함 / 취소=도면 제외 백업)'):false;
   const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
   for(const s of BACKUP_STORES)data[s]=(s==='drawings'&&!incDraw)?[]:await dbAll(s);
   const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
@@ -704,11 +720,11 @@ function importEncrypted(){
     try{
       const out=JSON.parse(await f.text());
       if(out.app!=='pwr_work_enc'){toast('암호화 백업 파일이 아닙니다');return}
-      const pw=prompt('백업 암호를 입력하세요');if(!pw)return;
+      const pw=await promptModal('백업 암호를 입력하세요');if(!pw)return;
       const key=await deriveKey(pw,unb64(out.salt));
       const dec=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(out.iv)},key,unb64(out.data));
       const data=JSON.parse(new TextDecoder().decode(dec));
-      if(!confirm('복호화 성공. 기존 데이터를 이 백업으로 덮어쓸까요?'))return;
+      if(!(await confirmModal('복호화 성공. 기존 데이터를 이 백업으로 덮어쓸까요?')))return;
       for(const s of BACKUP_STORES){
         if(Array.isArray(data[s])&&data[s].length){await dbClear(s);await dbBulkPut(s,data[s]);}
       }
@@ -954,7 +970,7 @@ async function saveIssue(id){
   closeModal();render();
 }
 async function delIssue(id){
-  if(!confirm('이 현안을 삭제할까요?'))return;
+  if(!(await confirmModal('이 현안을 삭제할까요?')))return;
   await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);
   closeModal();render();
 }
@@ -1016,7 +1032,7 @@ function todoTodayHtml(){
     </div>`;
 }
 async function delTodoHome(id){
-  if(!confirm('이 할 일을 삭제할까요?'))return;
+  if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
   await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);render();
 }
 function openDay(date){
@@ -1082,7 +1098,7 @@ async function toggleTodo(id,reopen){
   if(reopen)openDay(t.date);
 }
 async function delTodo(id,date){
-  if(!confirm('이 할 일을 삭제할까요?'))return;
+  if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
   const t=S.todos.find(x=>x.id===id);
   await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);
   render();openDay(date||(t&&t.date)||todayStr());
@@ -1186,6 +1202,9 @@ function openEquip(id){
   const e=S.equipment.find(x=>x.id===id);if(!e)return;
   const faults=S.faults.filter(f=>f.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
   const notes=S.notes.filter(n=>n.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
+  const inspHistRows=S.inspections.filter(x=>x.equipId===id).flatMap(x=>(x.history||[]).map(h=>({date:h.date,kind:'insp',inspId:x.id,label:x.name+(h.result?' · '+h.result:''),note:h.note||''})));
+  const noteRows=notes.map(n=>({date:n.date,kind:'note',noteId:n.id,label:n.content,tag:n.tag||'일반'}));
+  const histRows=[...inspHistRows,...noteRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const years=Object.keys(e.grades||{}).sort();
   openModal(`
     <h3>${esc(e.name)}</h3>
@@ -1249,12 +1268,17 @@ function openEquip(id){
       <div class="t"><div class="n">${esc(f.date)} ${esc(f.content)}</div>
       <div class="d">원인: ${esc(f.cause||'-')} / 조치: ${esc(f.action||'-')}</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
     <hr>
-    <div class="row"><h3 style="font-size:14px" class="grow">📝 점검·특이사항 메모 (${notes.length})</h3>
+    <div class="row"><h3 style="font-size:14px" class="grow">📝 점검·특이사항 이력 (${histRows.length})</h3>
       <button class="btn sm" onclick="editNote('','${e.id}')">+ 메모</button></div>
-    <div class="muted" style="margin-top:-4px">승강기·UPS 유지용역 등 정기 점검 중 특이사항을 여기에 계속 기록 — 고장·조치 이력과는 별도 관리</div>
-    ${notes.map(n=>`<div class="item click" onclick="editNote('${n.id}','${e.id}')">
-      <div class="t"><div class="n">${esc(n.date)} ${esc(n.content)}</div>
-      <div class="d">태그: ${esc(n.tag||'일반')}</div></div></div>`).join('')||'<div class="empty">메모 없음</div>'}
+    <div class="muted" style="margin-top:-4px">승강기·UPS 유지용역 등 정기 점검 특이사항 메모 + 이 설비에 연결된 법정검사 수검완료 기록을 함께 표시</div>
+    ${histRows.map(r=>r.kind==='insp'
+      ?`<div class="item click" onclick="openInsp('${r.inspId}')">
+        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
+        <div class="d">${esc(r.note||'수검완료')}</div></div><span class="badge b-red">📋 법정검사</span></div>`
+      :`<div class="item click" onclick="editNote('${r.noteId}','${e.id}')">
+        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
+        <div class="d">태그: ${esc(r.tag)}</div></div><span class="badge b-gray">📝 메모</span></div>`
+    ).join('')||'<div class="empty">이력 없음</div>'}
     <div class="row" style="margin-top:14px">
       <button class="btn ghost sm" onclick="editEquip('${e.id}')">정보 수정</button>
       <div class="grow"></div>
@@ -1334,7 +1358,7 @@ async function saveFault(id,equipId){
   openEquip(equipId);toast('저장 완료');
 }
 async function delFault(id,equipId){
-  if(!confirm('이 고장·조치 이력을 삭제할까요?'))return;
+  if(!(await confirmModal('이 고장·조치 이력을 삭제할까요?')))return;
   await dbDel('faults',id);S.faults=S.faults.filter(x=>x.id!==id);
   openEquip(equipId);
 }
@@ -1381,7 +1405,7 @@ async function saveNote(id,equipId){
   toast('저장 완료');
 }
 async function delNote(id){
-  if(!confirm('이 메모를 삭제할까요?'))return;
+  if(!(await confirmModal('이 메모를 삭제할까요?')))return;
   const n=S.notes.find(x=>x.id===id);if(!n)return;
   const eqId=n.equipId;
   await dbDel('notes',id);S.notes=S.notes.filter(x=>x.id!==id);
@@ -1479,13 +1503,27 @@ function vTree(){
   const roots=S.tree.filter(n=>!n.parentId);
   return `
   <div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
+    ${roots.length?`
+    <div class="row" style="gap:6px;margin-bottom:6px">
+      <input id="tree-find" placeholder="이름·번호로 찾기 (예: VCB-504)" style="flex:1" onkeydown="if(event.key==='Enter')findTreeNode()">
+      <button class="btn sm" onclick="findTreeNode()">찾기</button>
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn ghost sm" onclick="treeZoom(-0.15)">－</button>
+      <div class="muted" style="min-width:44px;text-align:center;align-self:center">${Math.round((S._treeZoom||1)*100)}%</div>
+      <button class="btn ghost sm" onclick="treeZoom(0.15)">＋</button>
+      <button class="btn ghost sm" onclick="S._treeZoom=1;render()">100%</button>
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="expandAllTree()">전체 펼치기</button>
+      <button class="btn ghost sm" onclick="collapseAllTree()">기본 보기</button>
+    </div>`:''}
     ${roots.length?roots.map(r=>treeSvg(r)).join(''):'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'}
     <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
     <div class="tree-legend">
       ${Object.entries(NODE_TYPES).map(([k,v])=>`<span><span class="tleg-ic">${v[0]}</span>${v[1]}</span>`).join('')}
       <span><span class="tleg-dot"></span>설비 연결됨</span>
     </div>
-    <div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 박스를 탭하면 전체 이름·차단경로·메모를 볼 수 있습니다. 도면 원본은 이 기기에만 저장됩니다.</div>
+    ${roots.length?'<div class="section-note">💡 갈래가 많은 지점(분기)은 기본적으로 접혀 보입니다 — 박스 왼쪽 아래 ＋ 배지를 탭하면 펼쳐집니다. 박스 본체를 탭하면 전체 이름·차단경로·메모. 두 손가락 대신 ＋/－ 버튼으로 확대·축소, 이름/번호로 찾기 가능.</div>':'<div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>'}
   </div>
   <div class="card"><h2>🔒 LOTO 시행 이력 <span class="cnt">${S.lotologs.length}건</span></h2>
     ${S.lotologs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>`
@@ -1493,18 +1531,59 @@ function vTree(){
       <div class="d">${l.steps.filter(s=>s.done).length}/${l.steps.length} 단계 완료</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
   </div>`;
 }
+function treeZoom(delta){
+  S._treeZoom=Math.max(0.5,Math.min(2.5,Math.round(((S._treeZoom||1)+delta)*100)/100));
+  render();
+}
+function defaultTreeCollapsed(node){ return nodeKids(node.id).length>1; }
+function isTreeCollapsed(node){
+  const def=defaultTreeCollapsed(node);
+  return S._treeToggled.has(node.id)?!def:def;
+}
+function toggleTreeNode(id){
+  if(S._treeToggled.has(id))S._treeToggled.delete(id);else S._treeToggled.add(id);
+  render();
+}
+function _ensureExpanded(node){
+  if(isTreeCollapsed(node)){
+    if(S._treeToggled.has(node.id))S._treeToggled.delete(node.id);else S._treeToggled.add(node.id);
+  }
+}
+function expandAllTree(){
+  S.tree.forEach(n=>{ if(nodeKids(n.id).length>1) S._treeToggled.add(n.id); });
+  render();
+}
+function collapseAllTree(){
+  S._treeToggled.clear();
+  render();
+}
+function findTreeNode(){
+  const q=($('#tree-find')?.value||'').trim().toLowerCase();
+  if(!q){toast('찾을 이름이나 번호를 입력하세요');return;}
+  const match=S.tree.find(n=>(n.name||'').toLowerCase().includes(q));
+  if(!match){toast('일치하는 노드를 찾지 못했습니다');return;}
+  let cur=nodeById(match.parentId),guard=0;
+  while(cur&&guard++<50){ _ensureExpanded(cur); cur=cur.parentId?nodeById(cur.parentId):null; }
+  S._treeHighlight=match.id;
+  render();
+  setTimeout(()=>{const el=document.getElementById('tn-'+match.id);if(el)el.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});},60);
+}
 // 전원계통 트리를 박스+연결선 SVG 다이어그램으로 렌더 (누가 봐도 알아보는 조직도 형태)
 // 이름은 박스 안에서 짧게 줄이고, 박스를 탭하면 nodeMenu가 전체 이름·차단경로를 보여줌
 function collectSubtree(root){
   const out=[root];const stack=[root];
-  while(stack.length){const cur=stack.pop();for(const k of nodeKids(cur.id)){out.push(k);stack.push(k);}}
+  while(stack.length){
+    const cur=stack.pop();
+    if(isTreeCollapsed(cur))continue;
+    for(const k of nodeKids(cur.id)){out.push(k);stack.push(k);}
+  }
   return out;
 }
 function treeSvg(root){
   const boxW=116,boxH=44,hGap=14,vGap=34,pad=16;
   const positions={};let leafCounter=0;
   function walk(node,depth){
-    const kids=nodeKids(node.id);
+    const kids=isTreeCollapsed(node)?[]:nodeKids(node.id);
     if(!kids.length){positions[node.id]={slot:leafCounter,depth};leafCounter++;return positions[node.id].slot;}
     const slots=kids.map(k=>walk(k,depth+1));
     const slot=(Math.min(...slots)+Math.max(...slots))/2;
@@ -1521,6 +1600,7 @@ function treeSvg(root){
   const totalH=pad*2+(maxDepth+1)*boxH+maxDepth*vGap;
   let edges='';
   nodes.forEach(n=>{
+    if(isTreeCollapsed(n))return;
     const kids=nodeKids(n.id);if(!kids.length)return;
     const x0=px(n.id),yBottom=py(n.id)+boxH,busY=yBottom+vGap/2;
     const childXs=kids.map(k=>px(k.id));
@@ -1535,14 +1615,24 @@ function treeSvg(root){
     const [ic]=NODE_TYPES[n.type]||['·'];
     const full=n.name||'';
     const label=full.length>12?full.slice(0,11)+'…':full;
-    boxes+=`<g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
-      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${isBrk?'var(--danger)':'var(--accent)'}" stroke-width="${isBrk?2.5:1.4}"/>
-      <text x="${x+boxW/2}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
-      ${n.voltage?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
-      ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
+    const kidsAll=nodeKids(n.id);
+    const collapsed=kidsAll.length&&isTreeCollapsed(n);
+    const highlighted=n.id===S._treeHighlight;
+    boxes+=`<g id="tn-${n.id}">
+      <g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
+        <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${highlighted?'var(--warn)':(isBrk?'var(--danger)':'var(--accent)')}" stroke-width="${highlighted?3:(isBrk?2.5:1.4)}"/>
+        <text x="${x+boxW/2}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
+        ${n.voltage?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
+        ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
+      </g>
+      ${kidsAll.length?`<g onclick="event.stopPropagation();toggleTreeNode('${n.id}')" style="cursor:pointer">
+        <circle cx="${x+11}" cy="${y+boxH-11}" r="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="${x+11}" y="${y+boxH-7}" font-size="12" text-anchor="middle" fill="var(--accent)">${collapsed?'+':'–'}</text>
+      </g>`:''}
     </g>`;
   });
-  return `<div style="overflow-x:auto;margin:8px 0"><svg viewBox="0 0 ${totalW} ${totalH}" style="min-width:${totalW}px;height:${totalH}px;max-width:none">${edges}${boxes}</svg></div>`;
+  const zoom=S._treeZoom||1;
+  return `<div style="overflow:auto;margin:8px 0;max-height:62vh"><svg viewBox="0 0 ${totalW} ${totalH}" style="width:${Math.round(totalW*zoom)}px;height:${Math.round(totalH*zoom)}px;max-width:none">${edges}${boxes}</svg></div>`;
 }
 function nodeMenu(id){
   const n=nodeById(id);if(!n)return;
@@ -1609,7 +1699,7 @@ async function saveNode(id,parentId){
 async function delNode(id){
   const kids=nodeKids(id);
   if(kids.length){toast(`하위 노드 ${kids.length}개를 먼저 삭제/이동하세요`);return}
-  if(!confirm('이 노드를 삭제할까요?'))return;
+  if(!(await confirmModal('이 노드를 삭제할까요?')))return;
   await dbDel('tree',id);S.tree=S.tree.filter(n=>n.id!==id);
   closeModal();render();
 }
@@ -1669,7 +1759,7 @@ async function uploadDrawing(equipId,type){
   inp.click();
 }
 async function delDrawing(id,equipId){
-  if(!confirm('이 도면을 삭제할까요?'))return;
+  if(!(await confirmModal('이 도면을 삭제할까요?')))return;
   await dbDel('drawings',id);S.drawings=S.drawings.filter(d=>d.id!==id);
   openEquip(equipId);
 }
@@ -1769,9 +1859,12 @@ async function confirmInsp(id){
 }
 function editInsp(id){
   const i=id?S.inspections.find(x=>x.id===id):null;
+  const eqOpts=S.equipment.slice().sort((a,b)=>a.name.localeCompare(b.name));
   openModal(`<h3>${i?'검사 수정':'검사 추가'}</h3>
     <label>검사명 *</label><input id="in-name" value="${esc(i?.name||'')}">
     <label>대상 설비</label><input id="in-target" value="${esc(i?.target||'')}">
+    <label>연결 설비 (선택 — 지정하면 수검완료 이력이 그 설비 카드 이력에도 표시됨)</label>
+    <select id="in-equip"><option value="">(연결 안 함)</option>${eqOpts.map(e=>`<option value="${e.id}" ${i?.equipId===e.id?'selected':''}>${esc(e.name)}${e.tagNo?' · '+esc(e.tagNo):''}</option>`).join('')}</select>
     <label>주기 (예: 4년, 2년, 매년, 3.5년)</label><input id="in-cycle" value="${esc(i?.cycle||'')}">
     <label>다음 검사일</label><input id="in-due" type="date" value="${esc(i?.nextDue||'')}">
     <label>근거 법령</label><input id="in-law" value="${esc(i?.law||'')}">
@@ -1786,14 +1879,14 @@ function editInsp(id){
 async function saveInsp(id){
   const name=$('#in-name').value.trim();if(!name){toast('검사명을 입력하세요');return}
   const obj=id?S.inspections.find(x=>x.id===id):{id:'UI'+uid(),history:[]};
-  Object.assign(obj,{name,target:$('#in-target').value.trim(),cycle:$('#in-cycle').value.trim(),
+  Object.assign(obj,{name,target:$('#in-target').value.trim(),equipId:$('#in-equip').value||'',cycle:$('#in-cycle').value.trim(),
     nextDue:$('#in-due').value,law:$('#in-law').value.trim(),note:$('#in-note').value.trim()});
   await dbPut('inspections',obj);fbPush('inspections',obj);
   if(!id)S.inspections.push(obj);
   closeModal();render();toast('저장 완료');
 }
 async function delInsp(id){
-  if(!confirm('이 검사를 삭제할까요?'))return;
+  if(!(await confirmModal('이 검사를 삭제할까요?')))return;
   await dbDel('inspections',id);S.inspections=S.inspections.filter(x=>x.id!==id);fbRemove('inspections',id);
   closeModal();render();
 }
@@ -1999,8 +2092,8 @@ function vLaw(){
   <div class="botpad"></div>`;
 }
 async function wipeAll(){
-  if(!confirm('이 기기의 모든 앱 데이터를 삭제합니다. 백업 하셨나요?'))return;
-  if(!confirm('정말 삭제할까요? 되돌릴 수 없습니다.'))return;
+  if(!(await confirmModal('이 기기의 모든 앱 데이터를 삭제합니다. 백업 하셨나요?')))return;
+  if(!(await confirmModal('정말 삭제할까요? 되돌릴 수 없습니다.')))return;
   for(const s of STORES)await dbClear(s);
   await loadAll();render();toast('전체 삭제 완료');
 }
@@ -2039,7 +2132,7 @@ async function saveLaw(id){
   closeModal();render();
 }
 async function delLaw(id){
-  if(!confirm('이 카드를 삭제할까요?'))return;
+  if(!(await confirmModal('이 카드를 삭제할까요?')))return;
   await dbDel('laws',id);S.laws=S.laws.filter(x=>x.id!==id);
   closeModal();render();
 }
@@ -2160,7 +2253,7 @@ const LAW_LIB=[
   link:'https://law.go.kr'}
 ];
 async function seedLaws(){
-  if(S.laws.length && !confirm('내장 라이브러리 30개를 주입/갱신합니다. 같은 ID 카드는 덮어씁니다(직접 수정한 LW-E01 등은 초기화됨). 계속할까요?'))return;
+  if(S.laws.length && !(await confirmModal('내장 라이브러리 30개를 주입/갱신합니다. 같은 ID 카드는 덮어씁니다(직접 수정한 LW-E01 등은 초기화됨). 계속할까요?')))return;
   await dbBulkPut('laws',LAW_LIB.map(x=>Object.assign({},x)));
   await loadAll();render();toast('법령 카드 '+LAW_LIB.length+'개 주입 — 요약은 원문으로 검증하세요');
 }
@@ -2617,7 +2710,7 @@ function registerHwpxTpl(){
   inp.click();
 }
 async function removeHwpxTpl(){
-  if(!confirm('등록된 hwpx 템플릿을 삭제할까요?'))return;
+  if(!(await confirmModal('등록된 hwpx 템플릿을 삭제할까요?')))return;
   await dbDel('meta','hwpxTpl');S._hwpxTpl=null;render();toast('템플릿 삭제');
 }
 function hwpxTokenGuide(){
@@ -2741,7 +2834,7 @@ async function importDocs(){
   inp.onchange=async()=>{
     let files=[...inp.files].filter(f=>_isDrawFile(f.name));
     if(!files.length){toast('도면 파일(단선도/로직 등)이 없습니다. PB/DH/SRF/설비 폴더를 선택하세요');return;}
-    if(!confirm(files.length+'개 도면을 이 기기(로컬)에 가져올까요?\n원본 폴더는 그대로 유지됩니다.'))return;
+    if(!(await confirmModal(files.length+'개 도면을 이 기기(로컬)에 가져올까요?\n원본 폴더는 그대로 유지됩니다.')))return;
     let n=0;
     for(const f of files){
       const folder=(f.webkitRelativePath||'').split('/')[0]||'';
@@ -2761,7 +2854,7 @@ function docCountSummary(){
   return Object.keys(by).map(k=>`${k} ${by[k]}`).join(' · ');
 }
 async function delDoc(id){
-  if(!confirm('이 도면을 문서함에서 삭제할까요? (연결도 해제됨)'))return;
+  if(!(await confirmModal('이 도면을 문서함에서 삭제할까요? (연결도 해제됨)')))return;
   await dbDel('docs',id);
   for(const e of S.equipment){if(e.docRefs&&e.docRefs.includes(id)){e.docRefs=e.docRefs.filter(x=>x!==id);await dbPut('equipment',e);}}
   await loadAll();renderDocLib();toast('삭제됨');
@@ -3045,7 +3138,7 @@ function addPhoto(refType,refId){
 }
 async function delPhoto(id){
   const p=S.photos.find(x=>x.id===id);if(!p)return;
-  if(!confirm('이 사진을 삭제할까요?'))return;
+  if(!(await confirmModal('이 사진을 삭제할까요?')))return;
   await dbDel('photos',id);S.photos=S.photos.filter(x=>x.id!==id);_photoBack(p.refType,p.refId);
 }
 function viewPhoto(id){const p=S.photos.find(x=>x.id===id);if(p)viewImageUrl(p.dataUrl,'사진 · '+esc(p.added),false);}
@@ -3110,7 +3203,7 @@ async function saveSpare(id){
   closeModal();render();toast('저장 완료');
 }
 async function delSpare(id){
-  if(!confirm('이 예비품을 삭제할까요?'))return;
+  if(!(await confirmModal('이 예비품을 삭제할까요?')))return;
   await dbDel('spares',id);S.spares=S.spares.filter(v=>v.id!==id);closeModal();render();
 }
 
@@ -3174,7 +3267,7 @@ async function saveBudget(id){
   closeModal();render();toast('저장 완료');
 }
 async function delBudget(id){
-  if(!confirm('이 항목을 삭제할까요?'))return;
+  if(!(await confirmModal('이 항목을 삭제할까요?')))return;
   await dbDel('budget',id);S.budget=S.budget.filter(v=>v.id!==id);closeModal();render();
 }
 
@@ -3197,7 +3290,7 @@ async function extractPdfText(file){
 async function reindexDocs(){
   const pend=S.docs.filter(d=>d.ext==='pdf'&&!(d.pages&&d.pages.length));
   if(!pend.length){toast('색인할 PDF 없음(이미 완료)');return;}
-  if(!confirm(pend.length+'개 PDF의 텍스트를 색인합니다.\n(pdf.js 로드에 인터넷 필요, 시간이 걸립니다) 계속?'))return;
+  if(!(await confirmModal(pend.length+'개 PDF의 텍스트를 색인합니다.\n(pdf.js 로드에 인터넷 필요, 시간이 걸립니다) 계속?')))return;
   let n=0,ok=0;
   for(const meta of pend){
     const full=await dbGet('docs',meta.id); if(!full||!full.blob){n++;continue;}
@@ -3504,15 +3597,20 @@ function cycleFromPeriod(l){
 }
 function homeHistHtml(){
   const byM={};
-  S.checklogs.forEach(l=>{const m=(l.date||'').slice(0,7);if(!m)return;(byM[m]=byM[m]||[]).push(l);});
+  S.checklogs.forEach(l=>{const m=(l.date||'').slice(0,7);if(!m)return;(byM[m]=byM[m]||[]).push({...l,_k:'chk'});});
+  S.inspections.forEach(i=>(i.history||[]).forEach(h=>{const m=(h.date||'').slice(0,7);if(!m)return;
+    (byM[m]=byM[m]||[]).push({_k:'insp',date:h.date,name:i.name+(h.result?' · '+h.result:''),note:h.note,inspId:i.id});}));
   const months=Object.keys(byM).sort().reverse();
-  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
-  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무를 월별로 정리 (날짜 · 이름 · 주기). 연말 실적·차년도 계획에 활용.</div>`+
+  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
+  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료를 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획에 활용.</div>`+
     months.map((m,idx)=>{
     const logs=byM[m].slice().sort((a,b)=>b.date.localeCompare(a.date));
     const [y,mo]=m.split('-');
     return `<details class="card histcard" ${idx===0?'open':''}><summary class="hist-sum">${y}년 ${parseInt(mo,10)}월 <span class="cnt">${logs.length}건</span></summary>
-      ${logs.map(l=>`<div class="histrow click" onclick="openCheckResult('${l.id}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">${esc(cycleFromPeriod(l))}</span></div>`).join('')}
+      ${logs.map(l=>l._k==='insp'
+        ?`<div class="histrow click" onclick="openInsp('${l.inspId}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">📋 검사</span></div>`
+        :`<div class="histrow click" onclick="openCheckResult('${l.id}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">${esc(cycleFromPeriod(l))}</span></div>`
+      ).join('')}
     </details>`;
   }).join('');
 }
@@ -3605,7 +3703,7 @@ async function saveMeas(equipId){
   openEquip(equipId);toast('측정값 저장');
 }
 async function delMeas(id,equipId){
-  if(!confirm('이 측정 기록을 삭제할까요?'))return;
+  if(!(await confirmModal('이 측정 기록을 삭제할까요?')))return;
   await dbDel('measurements',id);S.measurements=S.measurements.filter(m=>m.id!==id);
   const m=null;openEquip(equipId);
 }
@@ -3689,7 +3787,7 @@ function permitHistoryHtml(){
 }
 function viewPermit(id){const p=S.permits.find(x=>x.id===id);if(p)openDoc('작업허가서 · '+esc(p.date),p.text||'');}
 async function delPermit(id){
-  if(!confirm('이 작업허가서를 삭제할까요?'))return;
+  if(!(await confirmModal('이 작업허가서를 삭제할까요?')))return;
   await dbDel('permits',id);S.permits=S.permits.filter(x=>x.id!==id);render();
 }
 
@@ -3955,7 +4053,7 @@ async function saveProc(id){
   openProc(obj.id);
 }
 async function delProc(id){
-  if(!confirm('이 절차를 삭제할까요?'))return;
+  if(!(await confirmModal('이 절차를 삭제할까요?')))return;
   await dbDel('procs',id);S.procs=S.procs.filter(x=>x.id!==id);go('proc');
 }
 function openProc(id){
@@ -3976,7 +4074,7 @@ function openProc(id){
 }
 async function toggleProcStep(id,i){const p=S.procs.find(x=>x.id===id);if(!p||!p.steps[i])return;p.steps[i].done=!p.steps[i].done;p.updated=todayStr();await dbPut('procs',p);openProc(id);}
 async function addProcStep(id){const p=S.procs.find(x=>x.id===id);if(!p)return;const el=document.getElementById('ps-new');const t=el?el.value.trim():'';if(!t){toast('단계 내용을 입력하세요');return;}p.steps=p.steps||[];p.steps.push({t,done:false});p.updated=todayStr();await dbPut('procs',p);openProc(id);}
-async function delProcStep(id,i){if(!confirm('이 단계를 삭제할까요?'))return;const p=S.procs.find(x=>x.id===id);if(!p)return;p.steps.splice(i,1);await dbPut('procs',p);openProc(id);}
+async function delProcStep(id,i){if(!(await confirmModal('이 단계를 삭제할까요?')))return;const p=S.procs.find(x=>x.id===id);if(!p)return;p.steps.splice(i,1);await dbPut('procs',p);openProc(id);}
 async function importStepsFromDoc(id){
   const p=S.procs.find(x=>x.id===id);const doc=p&&p.docId?S.docs.find(d=>d.id===p.docId):null;
   if(!doc||!doc.pages||!doc.pages.length){toast('연결 문서에 텍스트가 없습니다(스캔 PDF/hwp는 수기 입력)');return;}
@@ -4079,6 +4177,50 @@ function showExitConfirm(){
   document.body.appendChild(box);
   document.getElementById('exit-cancel').onclick=()=>box.remove();
   document.getElementById('exit-ok').onclick=()=>{ box.remove(); history.go(-2); };
+}
+
+/* 브라우저 기본 confirm()/prompt()는 항상 사이트 주소(예: wonithink-a11y.github.io)를 함께
+   표시하는 브라우저 UI라 JS로 숨길 수 없음 — 앱 자체 오버레이로 대체 (v43) */
+function confirmModal(msg){
+  return new Promise(resolve=>{
+    const old=document.getElementById('cf-modal');if(old)old.remove();
+    const box=document.createElement('div');
+    box.id='cf-modal';
+    box.innerHTML=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;display:flex;align-items:center;justify-content:center">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:300px;width:82%;text-align:center">
+        <p style="margin:0 0 16px;white-space:pre-wrap">${esc(msg)}</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="cf-cancel" style="flex:1">취소</button>
+          <button class="btn" id="cf-ok" style="flex:1">확인</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(box);
+    document.getElementById('cf-cancel').onclick=()=>{box.remove();resolve(false);};
+    document.getElementById('cf-ok').onclick=()=>{box.remove();resolve(true);};
+  });
+}
+function promptModal(msg,defVal){
+  return new Promise(resolve=>{
+    const old=document.getElementById('pm-modal');if(old)old.remove();
+    const box=document.createElement('div');
+    box.id='pm-modal';
+    box.innerHTML=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:120;display:flex;align-items:center;justify-content:center">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:300px;width:82%;text-align:center">
+        <p style="margin:0 0 12px;white-space:pre-wrap">${esc(msg)}</p>
+        <input id="pm-input" type="password" value="${esc(defVal||'')}" style="width:100%;margin-bottom:16px;text-align:center">
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="pm-cancel" style="flex:1">취소</button>
+          <button class="btn" id="pm-ok" style="flex:1">확인</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(box);
+    const inp=document.getElementById('pm-input');inp.focus();
+    inp.onkeydown=ev=>{if(ev.key==='Enter'){box.remove();resolve(inp.value);}};
+    document.getElementById('pm-cancel').onclick=()=>{box.remove();resolve(null);};
+    document.getElementById('pm-ok').onclick=()=>{box.remove();resolve(inp.value);};
+  });
 }
 
 window.addEventListener('popstate',()=>{
