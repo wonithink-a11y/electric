@@ -2,9 +2,41 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v2.html
+  전력계통과 업무앱 app_v40.html
   ============================================================
   변경 이력
+  v40 (2026-07-13) : Firebase 실시간 동기화 (PC↔모바일) — 로드맵 §1 하이브리드 저장 아키텍처 구현
+    - 동기화 대상은 "일반 데이터"만: 할일(todos)·현안(issues)·법정검사(inspections)·
+      체크리스트 정의(checklists)·완료이력(checklogs) 5개 스토어. 설비마스터·계통트리·도면·
+      고장이력·업무메모(notes)는 절대 Firebase에 올리지 않고 기존처럼 IndexedDB+암호화 Drive만 사용
+      (판넬번호 등 실 설비정보 보호 — 보안 원칙 최우선)
+    - Firebase SDK는 CDN에서 지연 로드(loadFirebase, pdf.js/JSZip과 동일 패턴). config(JSON)는
+      더보기→동기화 화면에서 사용자가 직접 입력해 meta 스토어에 저장 — GitHub 소스에 키 하드코딩 없음
+    - Google 계정 로그인(Firebase Auth, 팝업 실패 시 리다이렉트 폴백) 후 onAuthStateChanged로
+      자동 연결 유지 — 앱 재실행 시 재로그인 없이 자동 재연결(fbEnsureInit을 init()에서 호출)
+    - Firestore 구조: elecApp/{uid}/{store}/{id}. 각 스토어에 onSnapshot 실시간 리스너(fbStartSync) +
+      로컬 변경 시 fbPush/fbRemove로 즉시 반영 — 저장 시 IndexedDB에도 그대로 남아 오프라인에서도 동작,
+      온라인 복귀 시 Firestore 오프라인 캐시가 자동 재동기화
+    - 기존 5개 스토어의 저장/삭제 지점(총 16곳: 할일 추가/토글/삭제, 현안 추가/완료/삭제, 검사
+      추가/수검완료/삭제, 체크리스트 추가, 점검완료/취소, 점검결과메모)에 fbPush·fbRemove 연동
+    - DB 스키마 변경 없음(DB_VER=10 유지, meta에 fbConfig 키만 추가)
+  v39 (2026-07-13) : 점검·업무 메모 이력(notes) 신설 — 용역 특이사항 기록
+    - notes 스토어 추가(DB_VER 9→10, 신규 빈 스토어라 기존 데이터 마이그레이션 불필요):
+      날짜/연결설비(선택)/태그(분류)/내용/사진. '고장·조치 이력(faults)'과 분리해
+      연간 실적의 고장 통계가 오염되지 않게 함
+    - 설비 카드(openEquip)에 '📝 점검·특이사항 메모' 섹션 신설 — 고장이력과 별도 표시, [+메모]로
+      즉시 기록. 승강기·UPS 등을 설비로 등록해두면 그 카드 클릭 시 지금까지의 메모 이력을 바로 확인
+    - 더보기 → 관리·도구에 '🗒️ 업무 메모' 진입점 신설(vNotes/noteListHtml). 태그 칩 필터는
+      다중 선택 지원(toggleNoteTag) — 예: '차단기'+'변압기' 칩을 동시에 켜서 묶어보기
+    - 🔀 태그 합치기(openMergeTags/doMergeTags): 따로 적어온 태그 2개 이상을 골라 새 이름으로
+      일괄 병합. 설비에 안 묶이는 일반 메모는 연결설비 없이 저장(더보기 목록에서 '일반' 태그로 조회)
+    - 사진 photoStrip('note', id) 재사용(기기 로컬 저장), 자가진단(_SELFTEST_GENS)에 '업무메모' 등록
+  v38 (2026-07-13) : 홈 달력 텍스트 표시 + 할일 기간(범위) 추가
+    - 달력 날짜 칸: 점(dot) 대신 할일·법정검사 실제 텍스트를 태그로 표시(최대 2개 + '+N').
+      칸이 좁으면 CSS ellipsis로 자동 축약, 클릭 시 기존과 동일하게 해당 날짜 상세보기(openDay) 열림
+    - 할 일 '상세 추가' 모달(신규 추가 시에만): 시작일 + 종료일 입력 지원 → 2박3일 교육처럼
+      여러 날에 걸친 일정을 한 번에 등록하면 날짜별로 todo 레코드가 자동 생성됨(같은 제목/메모)
+      · 기존 항목 수정 시에는 단일 날짜 필드 그대로 유지. 데이터/스키마 변경 없음(DB_VER 그대로)
   v37 (2026-07-11) : 초기 데이터에 계통 트리 지원
     - importSeed가 tree(계통 트리 노드)도 병합 지원 → '계통설비_seed.json'으로 설비 마스터 69건
       + 계통 트리 121노드(PB·DH 수전~MCC, KEY 단선도 판독 기반) 주입 가능
@@ -317,15 +349,20 @@ main{padding:14px;max-width:760px;margin:0 auto}
 .cal-dow{margin-bottom:3px}
 .cal-w{text-align:center;font-size:11px;color:var(--dim);padding:2px 0;font-weight:600}
 .cal-w.sun{color:var(--sun)}.cal-w.sat{color:var(--sat)}
-.cal-cell{position:relative;min-height:46px;border:1px solid var(--line);border-radius:9px;padding:4px;cursor:pointer;transition:background .12s}
+.cal-cell{position:relative;min-height:68px;border:1px solid var(--line);border-radius:9px;padding:3px 3px 4px;cursor:pointer;transition:background .12s;display:flex;flex-direction:column;overflow:hidden}
 .cal-cell:active{background:var(--panel2)}
 .cal-cell.empty{border:none;cursor:default;min-height:0}
 .cal-cell.today{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
-.cal-d{font-size:12px;color:var(--txt);font-weight:600}
-.cal-dots{position:absolute;bottom:4px;left:5px;display:flex;gap:2px}
+.cal-d{font-size:11px;color:var(--txt);font-weight:600;display:flex;align-items:center;justify-content:space-between;flex:none}
+.cal-tags{display:flex;flex-direction:column;gap:2px;margin-top:2px;overflow:hidden;flex:1;min-width:0}
+.cal-tag{font-size:9.5px;line-height:1.4;padding:1px 3px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-weight:600}
+.tag-todo{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent)}
+.tag-insp{background:color-mix(in srgb,#f59e0b 22%,transparent);color:#f59e0b}
+.cal-more{background:var(--panel2);color:var(--dim);text-align:center}
+.cal-tag.done{opacity:.5;text-decoration:line-through}
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .d-todo{background:var(--accent)}.d-insp{background:#f59e0b}
-.cal-badge{position:absolute;top:3px;right:4px;background:var(--grad);color:#fff;border-radius:9px;font-size:10px;padding:0 5px;line-height:1.6;font-weight:700}
+.cal-badge{background:var(--grad);color:#fff;border-radius:8px;font-size:9px;padding:0 5px;line-height:1.5;font-weight:700;flex:none}
 .cal-legend{margin-top:10px;font-size:11px;color:var(--dim);display:flex;gap:12px}
 .cal-legend .dot{margin-right:4px}
 .subtab{margin-bottom:10px}
@@ -439,8 +476,8 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const DB_NAME='pwr_work_v1', DB_VER=9; // v9: dwgnotes(도면 해석 노트) 추가 (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
-const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes'];
+const DB_NAME='pwr_work_v1', DB_VER=10; // v10: notes(점검·업무 메모 이력) 추가 (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
+const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes'];
 let db=null;
 
 function openDB(){
@@ -471,7 +508,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -480,6 +517,8 @@ async function loadAll(){
   try{S.docs=(await dbAll('docs')).map(d=>{const{blob,...m}=d;return m;});}catch(e){S.docs=[];}
   try{[S.photos,S.spares,S.budget,S.todos,S.measurements,S.permits,S.procs]=await Promise.all(['photos','spares','budget','todos','measurements','permits','procs'].map(dbAll));}catch(e){}
   try{S.dwgnotes=await dbAll('dwgnotes');}catch(e){S.dwgnotes=[];}
+  try{S.notes=await dbAll('notes');}catch(e){S.notes=[];}
+  try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
 }
 const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -537,7 +576,7 @@ function isChkDone(c){
 }
 
 /* ================= PART 3 : 내보내기 / 가져오기 ================= */
-const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes'];
+const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes','notes'];
 async function exportJSON(){
   const incDraw=S.drawings.length?confirm('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
   const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
@@ -653,6 +692,107 @@ function importEncrypted(){
   };
   inp.click();
 }
+/* ================= PART 3.5 : Firebase 실시간 동기화 (일반 데이터만, v40) =================
+   보안 방침: 설비마스터·계통트리·도면·고장이력·업무메모(notes)는 절대 Firebase에 올리지 않음
+   (이 기기 IndexedDB + 암호화 Drive 백업만). Firebase로는 할일·현안·법정검사 일정·
+   체크리스트 정의·완료이력(checklogs) 5개 스토어만 실시간 동기화(PC↔모바일, 기존 앱 패턴).
+   config(JSON)는 사용자가 앱 UI에서 직접 입력 — GitHub 소스에 하드코딩하지 않음. */
+let fbApp=null, fbAuthObj=null, fbDB=null, fbUser=null, fbUnsubs=[];
+const FB_SYNC_STORES=['todos','issues','inspections','checklists','checklogs'];
+function loadFirebase(){
+  if(window.firebase&&window.firebase.apps)return Promise.resolve(window.firebase);
+  const urls=['https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js'];
+  return urls.reduce((p,src)=>p.then(()=>new Promise((res,rej)=>{
+    const sc=document.createElement('script');sc.src=src;
+    sc.onload=res;sc.onerror=()=>rej(new Error('Firebase 로드 실패 — 인터넷 연결 필요'));
+    document.head.appendChild(sc);
+  })),Promise.resolve()).then(()=>window.firebase);
+}
+async function fbEnsureInit(){
+  if(!S._fbCfg){toast('Firebase 설정을 먼저 입력하세요');return false;}
+  try{await loadFirebase();}catch(e){toast(e.message);return false;}
+  if(!fbApp){
+    fbApp=(firebase.apps&&firebase.apps.length)?firebase.app():firebase.initializeApp(S._fbCfg);
+    fbAuthObj=firebase.auth();fbDB=firebase.firestore();
+    try{await fbDB.enablePersistence({synchronizeTabs:true});}catch(e){}
+    fbAuthObj.onAuthStateChanged(u=>{
+      fbUser=u;
+      if(u){fbStartSync();toast('Firebase 연결됨: '+(u.displayName||u.email||''));}
+      else{fbStopSync();}
+      render();
+    });
+    try{await fbAuthObj.getRedirectResult();}catch(e){}
+  }
+  return true;
+}
+async function fbLogin(){
+  try{
+    if(!(await fbEnsureInit()))return;
+    const provider=new firebase.auth.GoogleAuthProvider();
+    try{await fbAuthObj.signInWithPopup(provider);}
+    catch(e){await fbAuthObj.signInWithRedirect(provider);}
+  }catch(e){toast('로그인 실패: '+e.message);}
+}
+async function fbLogout(){
+  fbStopSync();
+  if(fbAuthObj)try{await fbAuthObj.signOut();}catch(e){}
+  fbUser=null;render();
+}
+function fbStartSync(){
+  if(!fbUser||!fbDB)return;
+  fbStopSync();
+  const base=fbDB.collection('elecApp').doc(fbUser.uid);
+  FB_SYNC_STORES.forEach(store=>{
+    const unsub=base.collection(store).onSnapshot(snap=>{
+      snap.docChanges().forEach(async ch=>{
+        if(ch.type==='removed'){
+          await dbDel(store,ch.doc.id);S[store]=S[store].filter(x=>x.id!==ch.doc.id);
+        }else{
+          const data=ch.doc.data();
+          await dbPut(store,data);
+          const i=S[store].findIndex(x=>x.id===data.id);
+          if(i>=0)S[store][i]=data;else S[store].push(data);
+        }
+      });
+      render();
+    },err=>console.warn('sync:'+store,err));
+    fbUnsubs.push(unsub);
+  });
+}
+function fbStopSync(){fbUnsubs.forEach(u=>{try{u();}catch(e){}});fbUnsubs=[];}
+function fbPush(store,obj){
+  if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
+  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(obj.id)).set(obj).catch(e=>console.warn('fbPush',e));
+}
+function fbRemove(store,id){
+  if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
+  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(id)).delete().catch(e=>console.warn('fbRemove',e));
+}
+function fbConfigHtml(){
+  if(fbUser){
+    return `<div class="item"><div class="t"><div class="n">✅ ${esc(fbUser.displayName||fbUser.email||'연결됨')}</div>
+      <div class="d">실시간 동기화 중 — 할일·현안·법정검사·체크리스트</div></div>
+      <button class="btn danger sm" onclick="fbLogout()">로그아웃</button></div>`;
+  }
+  if(S._fbCfg){
+    return `<div class="item"><div class="t"><div class="n">Firebase 설정됨</div><div class="d">Google 계정으로 로그인하면 동기화가 시작됩니다</div></div></div>
+      <button class="btn full" onclick="fbLogin()">🔐 Google로 로그인</button>
+      <button class="btn ghost sm full" onclick="S._fbCfg=null;render()">설정 변경</button>`;
+  }
+  return `<label>Firebase 프로젝트 config (JSON)</label>
+    <textarea id="fb-cfg" rows="3" placeholder='{"apiKey":"...","authDomain":"...","projectId":"..."}'></textarea>
+    <button class="btn full" onclick="saveFbConfig()">저장</button>
+    <div class="section-note">Firebase 콘솔 → 프로젝트 설정 → 일반 → '내 앱'의 SDK 설정(config) JSON을 그대로 붙여넣으세요. 이 값은 이 기기에만 저장되고 GitHub 코드에는 들어가지 않습니다.</div>`;
+}
+async function saveFbConfig(){
+  const raw=$('#fb-cfg').value.trim();
+  let cfg;try{cfg=JSON.parse(raw);}catch(e){toast('JSON 형식이 올바르지 않습니다');return;}
+  if(!cfg.apiKey||!cfg.projectId){toast('apiKey/projectId가 필요합니다');return;}
+  await dbPut('meta',{id:'fbConfig',json:raw});
+  S._fbCfg=cfg;render();toast('저장됨 — 이제 Google로 로그인하세요');
+}
 /* ================= PART 4 : 모달 ================= */
 function openModal(html){
   $('#modal-root').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
@@ -760,13 +900,13 @@ async function toggleChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
   const pk=periodKey(c.cycle);
   const log={id:uid(),chkId:id,period:pk,date:todayStr(),name:c.name,cycle:c.cycle};
-  await dbPut('checklogs',log);S.checklogs.push(log);
+  await dbPut('checklogs',log);S.checklogs.push(log);fbPush('checklogs',log);
   toast(`완료: ${c.name}`);render();
 }
 async function doneIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
   i.done=true;i.doneDate=todayStr();
-  await dbPut('issues',i);toast('현안 완료 처리');render();
+  await dbPut('issues',i);fbPush('issues',i);toast('현안 완료 처리');render();
 }
 function editIssue(id){
   const i=id?S.issues.find(x=>x.id===id):null;
@@ -784,12 +924,12 @@ async function saveIssue(id){
   const t=$('#is-t').value.trim();if(!t){toast('제목을 입력하세요');return}
   const obj=id?S.issues.find(x=>x.id===id):{id:uid(),date:todayStr(),done:false};
   obj.title=t;obj.note=$('#is-n').value.trim();
-  await dbPut('issues',obj);
+  await dbPut('issues',obj);fbPush('issues',obj);
   if(!id)S.issues.push(obj);
   closeModal();render();
 }
 async function delIssue(id){
-  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);
+  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);
   closeModal();render();
 }
 
@@ -808,9 +948,15 @@ function calHtml(){
     const td=S.todos.filter(t=>t.date===ds);
     const open=td.filter(t=>!t.done).length;
     const insp=S.inspections.filter(i=>i.nextDue===ds);
-    const dots=(td.length?'<span class="dot d-todo"></span>':'')+(insp.length?'<span class="dot d-insp"></span>':'');
+    const items=[...insp.map(i=>({cls:'tag-insp',text:i.name})),...td.map(t=>({cls:'tag-todo'+(t.done?' done':''),text:t.title}))];
+    const maxShow=2;
+    const shown=items.slice(0,maxShow);
+    const more=items.length-shown.length;
+    const tagsHtml=shown.map(x=>`<div class="cal-tag ${x.cls}" title="${esc(x.text)}">${esc(x.text)}</div>`).join('')
+      +(more>0?`<div class="cal-tag cal-more">+${more}</div>`:'');
     cells+=`<div class="cal-cell${ds===tstr?' today':''}" onclick="openDay('${ds}')">
-      <div class="cal-d">${d}</div><div class="cal-dots">${dots}</div>${open?`<div class="cal-badge">${open}</div>`:''}</div>`;
+      <div class="cal-d"><span>${d}</span>${open?`<span class="cal-badge">${open}</span>`:''}</div>
+      <div class="cal-tags">${tagsHtml}</div></div>`;
   }
   return `<div class="card">
     <div class="cal-head"><button class="btn ghost sm" onclick="calNav(-1)">◀</button>
@@ -843,7 +989,7 @@ function todoTodayHtml(){
         <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
     </div>`;
 }
-async function delTodoHome(id){await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);render();}
+async function delTodoHome(id){await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);render();}
 function openDay(date){
   const td=S.todos.filter(t=>t.date===date).sort((a,b)=>(a.done?1:0)-(b.done?1:0));
   const insp=S.inspections.filter(i=>i.nextDue===date);
@@ -861,12 +1007,16 @@ function openDay(date){
 async function quickAddTodo(date){
   const el=document.getElementById('qt');const t=el?el.value.trim():'';if(!t){toast('내용을 입력하세요');return;}
   const obj={id:'TD'+uid(),date,title:t,done:false,note:''};
-  await dbPut('todos',obj);S.todos.push(obj);openDay(date);
+  await dbPut('todos',obj);S.todos.push(obj);fbPush('todos',obj);openDay(date);
 }
 function editTodo(id,date){
   const t=id?S.todos.find(x=>x.id===id):null;
+  const d0=esc(t?.date||date||todayStr());
   openModal(`<h3>${t?'할 일 수정':'할 일 추가'}</h3>
-    <label>날짜</label><input id="td-d" type="date" value="${esc(t?.date||date||todayStr())}">
+    ${t?`<label>날짜</label><input id="td-d" type="date" value="${d0}">`
+      :`<label>시작일</label><input id="td-d" type="date" value="${d0}" onchange="var de=$('#td-de');if(de&&de.value<this.value)de.value=this.value;">
+    <label>종료일 <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 입력)</span></label>
+    <input id="td-de" type="date" value="${d0}" min="${d0}">`}
     <label>할 일 *</label><input id="td-t" value="${esc(t?.title||'')}">
     <label>메모</label><textarea id="td-n" rows="2">${esc(t?.note||'')}</textarea>
     <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}<div class="grow"></div>
@@ -875,18 +1025,35 @@ function editTodo(id,date){
 }
 async function saveTodo(id){
   const title=$('#td-t').value.trim();if(!title){toast('할 일을 입력하세요');return;}
-  const obj=id?S.todos.find(x=>x.id===id):{id:'TD'+uid(),done:false};
-  obj.date=$('#td-d').value||todayStr();obj.title=title;obj.note=$('#td-n').value.trim();
-  await dbPut('todos',obj);if(!id)S.todos.push(obj);
-  openDay(obj.date);
+  const note=$('#td-n').value.trim();
+  const startDate=$('#td-d').value||todayStr();
+  if(id){
+    const obj=S.todos.find(x=>x.id===id);
+    obj.date=startDate;obj.title=title;obj.note=note;
+    await dbPut('todos',obj);fbPush('todos',obj);
+    openDay(obj.date);
+    return;
+  }
+  const deEl=$('#td-de');
+  const endDate=(deEl&&deEl.value)||startDate;
+  let cur=new Date(startDate+'T00:00:00');const end=new Date(endDate+'T00:00:00');
+  const dates=[];
+  if(isNaN(cur)||isNaN(end)||end<cur){dates.push(startDate);}
+  else{while(cur<=end){dates.push(cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0'));cur.setDate(cur.getDate()+1);}}
+  for(const d of dates){
+    const obj={id:'TD'+uid(),date:d,title,note,done:false};
+    await dbPut('todos',obj);S.todos.push(obj);fbPush('todos',obj);
+  }
+  openDay(dates[0]);
+  if(dates.length>1)toast(`${dates.length}일 간 할 일이 추가됐어요`);
 }
 async function toggleTodo(id,reopen){
-  const t=S.todos.find(x=>x.id===id);if(!t)return;t.done=!t.done;await dbPut('todos',t);
+  const t=S.todos.find(x=>x.id===id);if(!t)return;t.done=!t.done;await dbPut('todos',t);fbPush('todos',t);
   if(reopen)openDay(t.date);else render();
 }
 async function delTodo(id,date){
   const t=S.todos.find(x=>x.id===id);
-  await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);
+  await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);
   openDay(date||(t&&t.date)||todayStr());
 }
 
@@ -987,6 +1154,7 @@ const DRAW_TYPES=['단선도','로직도','루프도','스키매틱'];
 function openEquip(id){
   const e=S.equipment.find(x=>x.id===id);if(!e)return;
   const faults=S.faults.filter(f=>f.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
+  const notes=S.notes.filter(n=>n.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
   const years=Object.keys(e.grades||{}).sort();
   openModal(`
     <h3>${esc(e.name)}</h3>
@@ -1049,6 +1217,13 @@ function openEquip(id){
     ${faults.map(f=>`<div class="item click" onclick="editFault('${f.id}','${e.id}')">
       <div class="t"><div class="n">${esc(f.date)} ${esc(f.content)}</div>
       <div class="d">원인: ${esc(f.cause||'-')} / 조치: ${esc(f.action||'-')}</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
+    <hr>
+    <div class="row"><h3 style="font-size:14px" class="grow">📝 점검·특이사항 메모 (${notes.length})</h3>
+      <button class="btn sm" onclick="editNote('','${e.id}')">+ 메모</button></div>
+    <div class="muted" style="margin-top:-4px">승강기·UPS 유지용역 등 정기 점검 중 특이사항을 여기에 계속 기록 — 고장·조치 이력과는 별도 관리</div>
+    ${notes.map(n=>`<div class="item click" onclick="editNote('${n.id}','${e.id}')">
+      <div class="t"><div class="n">${esc(n.date)} ${esc(n.content)}</div>
+      <div class="d">태그: ${esc(n.tag||'일반')}</div></div></div>`).join('')||'<div class="empty">메모 없음</div>'}
     <div class="row" style="margin-top:14px">
       <button class="btn ghost sm" onclick="editEquip('${e.id}')">정보 수정</button>
       <div class="grow"></div>
@@ -1136,6 +1311,95 @@ function copyFault(id){
   const f=S.faults.find(x=>x.id===id);if(!f)return;
   const txt=`[고장 조치 보고]\n날짜: ${f.date}\n설비: ${f.equipName}\n내용: ${f.content}\n원인: ${f.cause||'-'}\n조치: ${f.action||'-'}\n차단범위: ${f.blockRange||'-'}\n소요: ${f.cost||'-'}\n비고: ${f.note||'-'}`;
   navigator.clipboard.writeText(txt).then(()=>toast('클립보드에 복사 — Claude hwpx 스킬에 붙여넣기'),()=>toast('복사 실패'));
+}
+/* ================= PART 6.1 : 점검·업무 메모 이력 (notes, v39) =================
+   승강기 유지용역·UPS 점검 유지용역 등 정기 용역 중 특이사항이 생길 때마다 계속 기록하는 메모.
+   '고장·조치 이력(faults)'과는 분리 — faults는 실제 고장 통계(연간 실적)에 집계되므로 섞지 않음.
+   설비에 연결(equipId)할 수도, 특정 설비 없이 일반 메모로 남길 수도 있음.
+   tag(분류표)는 자유 입력 — 같은 영역끼리 같은 태그를 쓰면 목록에서 칩으로 묶여 보이고,
+   나중에 태그 합치기(mergeTags)로 여러 태그를 하나로 정리할 수 있음. */
+function editNote(id,equipId){
+  const n=id?S.notes.find(x=>x.id===id):null;
+  const linkEquipId=equipId||(n&&n.equipId)||'';
+  const e=linkEquipId?S.equipment.find(x=>x.id===linkEquipId):null;
+  const tags=[...new Set(S.notes.map(x=>x.tag||'일반'))].sort();
+  const defTag=n?(n.tag||'일반'):(e?(e.category||e.name):'일반');
+  openModal(`<h3>${n?'메모 수정':'특이사항 메모 추가'}</h3>
+    ${e?`<div class="muted">🔗 ${esc(e.name)} 연결됨</div>`:'<div class="muted">특정 설비에 안 묶이는 일반 메모</div>'}
+    <label>날짜</label><input id="nt-date" type="date" value="${esc(n?.date||todayStr())}">
+    <label>태그(분류) <span class="muted" style="font-weight:400">— 비슷한 영역은 같은 태그로. 나중에 [태그 합치기]로 정리 가능</span></label>
+    <input id="nt-tag" list="nt-tag-list" value="${esc(defTag)}" placeholder="예: 승강기, UPS, 일반">
+    <datalist id="nt-tag-list">${tags.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+    <label>내용 *</label><textarea id="nt-content" rows="3" placeholder="예: 정기점검 중 도어 센서 소음 발견, 다음 방문 시 확인 요청">${esc(n?.content||'')}</textarea>
+    ${n?`<label>사진</label>${photoStrip('note',n.id)}`:'<div class="section-note">사진은 저장 후(메모 생성 후) 첨부할 수 있습니다.</div>'}
+    <div class="row" style="margin-top:12px">${n?`<button class="btn danger sm" onclick="delNote('${n.id}')">삭제</button>`:''}
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="${linkEquipId?`openEquip('${linkEquipId}')`:`go('notes')`}">취소</button>
+      <button class="btn sm" onclick="saveNote('${n?.id||''}','${linkEquipId}')">저장</button></div>`);
+}
+async function saveNote(id,equipId){
+  const content=$('#nt-content').value.trim();if(!content){toast('내용을 입력하세요');return}
+  const tag=$('#nt-tag').value.trim()||'일반';
+  const e=equipId?S.equipment.find(x=>x.id===equipId):null;
+  const obj=id?S.notes.find(x=>x.id===id):{id:'NT'+uid(),equipId:equipId||''};
+  Object.assign(obj,{date:$('#nt-date').value||todayStr(),tag,content,equipName:e?e.name:(obj.equipName||'')});
+  await dbPut('notes',obj);
+  if(!id)S.notes.push(obj);
+  if(equipId)openEquip(equipId);else go('notes');
+  toast('저장 완료');
+}
+async function delNote(id){
+  const n=S.notes.find(x=>x.id===id);if(!n)return;
+  const eqId=n.equipId;
+  await dbDel('notes',id);S.notes=S.notes.filter(x=>x.id!==id);
+  if(eqId)openEquip(eqId);else go('notes');
+}
+function toggleNoteTag(t){
+  S._noteTagSel=S._noteTagSel||[];
+  const i=S._noteTagSel.indexOf(t);
+  if(i>=0)S._noteTagSel.splice(i,1);else S._noteTagSel.push(t);
+  render();
+}
+function openMergeTags(){
+  const tags=[...new Set(S.notes.map(n=>n.tag||'일반'))].sort();
+  openModal(`<h3>🔀 태그 합치기</h3>
+    <div class="muted">따로따로 적어온 태그가 사실 같은 영역이면, 아래에서 2개 이상 골라 새 이름으로 합치세요. 예: '차단기'와 '변압기'를 골라 '변전설비'로 합치면 두 태그의 메모가 모두 '변전설비'로 바뀝니다.</div>
+    <div class="chips" id="mg-list">${tags.map(t=>`<button type="button" class="chip" data-t="${esc(t)}" onclick="this.classList.toggle('on')">${esc(t)}</button>`).join('')}</div>
+    <label>합친 후 이름 *</label><input id="mg-name" placeholder="예: 변전설비 (기존 태그명을 그대로 써도 됨)">
+    <div class="row" style="margin-top:12px"><div class="grow"></div>
+      <button class="btn ghost sm" onclick="go('notes')">취소</button>
+      <button class="btn sm" onclick="doMergeTags()">합치기</button></div>`);
+}
+async function doMergeTags(){
+  const picked=[...document.querySelectorAll('#mg-list .chip.on')].map(b=>b.dataset.t);
+  const name=$('#mg-name').value.trim();
+  if(picked.length<2){toast('2개 이상 선택하세요');return}
+  if(!name){toast('합친 후 이름을 입력하세요');return}
+  for(const n of S.notes){
+    if(picked.includes(n.tag||'일반')){n.tag=name;await dbPut('notes',n);}
+  }
+  S._noteTagSel=[];closeModal();go('notes');toast('태그 '+picked.length+'개를 "'+name+'"로 합쳤어요');
+}
+function vNotes(){
+  return `<div class="card">${noteListHtml()}</div><div class="botpad"></div>`;
+}
+function noteListHtml(){
+  const all=S.notes.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const tags=[...new Set(all.map(n=>n.tag||'일반'))].sort();
+  const sel=S._noteTagSel||[];
+  const shown=sel.length?all.filter(n=>sel.includes(n.tag||'일반')):all;
+  return `<div class="row"><h2 class="grow">🗒️ 업무 메모 <span class="cnt">${all.length}건</span></h2>
+    <button class="btn sm" onclick="editNote('','')">+ 새 메모</button></div>
+    <div class="muted">승강기·UPS 등 용역 점검 특이사항이나, 설비에 안 묶이는 업무 메모를 계속 기록합니다.</div>
+    <div class="chips" style="margin-top:8px">
+      <button class="chip ${!sel.length?'on':''}" onclick="S._noteTagSel=[];render()">전체</button>
+      ${tags.map(t=>`<button class="chip ${sel.includes(t)?'on':''}" onclick="toggleNoteTag('${esc(t).replace(/'/g,'')}')">${esc(t)}</button>`).join('')}
+      ${tags.length>1?`<button class="chip" onclick="openMergeTags()">🔀 태그 합치기</button>`:''}
+    </div>
+    ${shown.map(n=>`<div class="item click" onclick="editNote('${n.id}','${n.equipId||''}')">
+      <div class="t"><div class="n">${esc(n.date)} ${esc(n.content)}</div>
+      <div class="d">${esc(n.tag||'일반')}${n.equipName?' · '+esc(n.equipName):''}</div></div></div>`).join('')||'<div class="empty">메모 없음 — 설비 카드나 [+ 새 메모]에서 기록하세요</div>'}
+    <button class="btn ghost sm full" onclick="go('more')" style="margin-top:10px">← 더보기</button>`;
 }
 /* ================= PART 6.5 : 계통 트리 & 차단범위 (모듈②) ================= */
 const NODE_TYPES={source:['🔺','전원(인입)'],bus:['▤','모선/판넬'],breaker:['⏻','차단기'],load:['⚙️','부하설비']};
@@ -1425,7 +1689,7 @@ async function confirmInsp(id){
   i.history=i.history||[];
   i.history.push({date:todayStr(),result,note:note||('예정일 '+(i.nextDue||'-')+' 수검')});
   i.nextDue=mo?addMonths(base,mo):'';
-  await dbPut('inspections',i);
+  await dbPut('inspections',i);fbPush('inspections',i);
   closeModal();render();toast('수검 완료 — 다음 일정 갱신');
 }
 function editInsp(id){
@@ -1449,13 +1713,13 @@ async function saveInsp(id){
   const obj=id?S.inspections.find(x=>x.id===id):{id:'UI'+uid(),history:[]};
   Object.assign(obj,{name,target:$('#in-target').value.trim(),cycle:$('#in-cycle').value.trim(),
     nextDue:$('#in-due').value,law:$('#in-law').value.trim(),note:$('#in-note').value.trim()});
-  await dbPut('inspections',obj);
+  await dbPut('inspections',obj);fbPush('inspections',obj);
   if(!id)S.inspections.push(obj);
   closeModal();render();toast('저장 완료');
 }
 async function delInsp(id){
   if(!confirm('이 검사를 삭제할까요?'))return;
-  await dbDel('inspections',id);S.inspections=S.inspections.filter(x=>x.id!==id);
+  await dbDel('inspections',id);S.inspections=S.inspections.filter(x=>x.id!==id);fbRemove('inspections',id);
   closeModal();render();
 }
 
@@ -1486,7 +1750,7 @@ async function undoChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
   const pk=periodKey(c.cycle);
   const log=S.checklogs.find(l=>l.chkId===id&&l.period===pk);
-  if(log){await dbDel('checklogs',log.id);S.checklogs=S.checklogs.filter(l=>l.id!==log.id);render()}
+  if(log){await dbDel('checklogs',log.id);S.checklogs=S.checklogs.filter(l=>l.id!==log.id);fbRemove('checklogs',log.id);render()}
 }
 function editChk(){
   openModal(`<h3>주기 업무 추가</h3>
@@ -1503,7 +1767,7 @@ function editChk(){
 async function saveChk(){
   const name=$('#ck-name').value.trim();if(!name){toast('업무명을 입력하세요');return}
   const obj={id:'UC'+uid(),name,cycle:$('#ck-cycle').value,detail:$('#ck-detail').value.trim()};
-  await dbPut('checklists',obj);S.checklists.push(obj);
+  await dbPut('checklists',obj);S.checklists.push(obj);fbPush('checklists',obj);
   closeModal();render();
 }
 
@@ -1578,6 +1842,7 @@ function moreTool(){
     <button class="btn full" onclick="go('spare')">🧰 예비품 재고 열기 <span class="cnt">${S.spares.length}건</span></button>
     <button class="btn full" onclick="go('budget')">💰 예산 집계 열기 <span class="cnt">${S.budget.length}건</span></button>
     <button class="btn full" onclick="go('stats')">📈 실적 요약 (월간/연간 자동집계)</button>
+    <button class="btn full" onclick="go('notes')">🗒️ 업무 메모 열기 <span class="cnt">${S.notes.length}건</span></button>
   </div>
   <div class="card"><h2>🎴 계통 학습</h2>
     <div class="muted">내 설비·계통·보호계전기로 만든 퀴즈로 복귀 적응·계통 암기. 데이터가 쌓일수록 문제가 풍부해집니다.</div>
@@ -1598,10 +1863,10 @@ function moreData(){
     <button class="btn ghost full" onclick="importEncrypted()">🔓 암호화 백업 복원</button>
     <div class="section-note">3중 백업: IndexedDB(기기) + 수동 JSON + 암호화 백업. 암호화 백업은 도면 제외 옵션. 평문 JSON은 외부 업로드 금지.</div>
   </div>
-  <div class="card"><h2>☁️ 동기화 (골격 — 추후 활성화)</h2>
-    <label>Firebase 프로젝트 config (JSON)</label>
-    <textarea rows="3" placeholder='{"apiKey":"...","projectId":"..."} — 입력 시 일정·체크리스트 동기화 활성화 예정' disabled></textarea>
-    <label>Google Drive 자동 업로드</label>
+  <div class="card"><h2>☁️ 실시간 동기화 (Firebase)</h2>
+    <div class="muted">할일·현안·법정검사 일정·체크리스트/완료이력만 PC↔모바일 실시간 동기화됩니다. 설비마스터·계통트리·도면·고장이력·업무메모는 보안상 이 기기(IndexedDB)에만 저장되고 암호화 백업으로만 옮깁니다.</div>
+    ${fbConfigHtml()}
+    <label style="margin-top:10px">Google Drive 자동 업로드</label>
     <button class="btn ghost full" disabled>Drive OAuth 연동 (회사망 구글 로그인 가능 여부 확인 후)</button>
     <div class="section-note">현재는 암호화 백업 파일을 Drive에 수동 업로드. OAuth 자동화는 회사망 확인(§5-1) 후.</div>
   </div>
@@ -2143,7 +2408,7 @@ function openCheckResult(logId){
 }
 async function saveCheckNote(logId){
   const l=S.checklogs.find(x=>x.id===logId);if(!l)return;
-  l.note=$('#cr-n').value.trim();await dbPut('checklogs',l);
+  l.note=$('#cr-n').value.trim();await dbPut('checklogs',l);fbPush('checklogs',l);
   openCheckResult(logId);toast('점검 결과 저장');
 }
 function similarFaults(text,excludeId){
@@ -2691,6 +2956,7 @@ function _photoBack(refType,refId){
   else if(refType==='equip')openEquip(refId);
   else if(refType==='checklog')openCheckResult(refId);
   else if(refType==='inspection')openInsp(refId);
+  else if(refType==='note'){const n=S.notes.find(x=>x.id===refId);editNote(refId,n?n.equipId:'');}
 }
 function addPhoto(refType,refId){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -3533,7 +3799,7 @@ function quizNext(ok){
    위젯 생성기 목록(_SELFTEST_GENS)만 새 위젯 추가 시 한 줄 등록. */
 function _SELFTEST_GENS(){return {
   '계통도':()=>equipTreeHtml(),'주기업무':()=>chkCardHtml(),'달력':()=>calHtml(),
-  '실적':()=>vStats(),'완료이력':()=>homeHistHtml(),'학습퀴즈':()=>buildQuiz()
+  '실적':()=>vStats(),'완료이력':()=>homeHistHtml(),'학습퀴즈':()=>buildQuiz(),'업무메모':()=>noteListHtml()
 };}
 async function selfTest(){
   const R=[];const ok=(n,p,d)=>R.push({n,pass:!!p,detail:d||''});
@@ -3666,8 +3932,8 @@ function genProcAsk(id){
 }
 
 /* ================= PART 10 : 라우팅 & 초기화 ================= */
-const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc};
-const TITLES={home:'전력계통과 업무',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적'};
+const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes};
+const TITLES={home:'전력계통과 업무',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모'};
 function go(v){S.view=v;render();window.scrollTo(0,0)}
 function render(){
   $('#app').innerHTML=(VIEWS[S.view]||vHome)();
@@ -3695,6 +3961,7 @@ async function toggleTheme(){
     await loadAll();
     try{const th=await dbGet('meta','theme');applyTheme(th&&th.v?th.v:'dark');}catch(e){applyTheme('dark');}
     render();
+    if(S._fbCfg){try{await fbEnsureInit();}catch(e){console.warn('firebase 자동연결 실패',e);}}
   }catch(e){
     $('#app').innerHTML=`<div class="card"><h2>초기화 오류</h2><div class="muted">${esc(e.message)}</div></div>`;
   }
