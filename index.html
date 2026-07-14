@@ -5,16 +5,21 @@
   전력계통과 업무앱 app_v45.html
   ============================================================
   변경 이력
-  v45 (2026-07-13) : 홈 '이번달 할 일' 카드에서 분기·반기·연간 주기업무 분리
-    - 기존 '🗓️ 이번달 할 일' 카드는 월간·분기·반기·연간·격년 주기업무 체크리스트를 전부 한데
-      섞어서 보여줬음 → 이번달과 무관한 분기/반기/연간 항목이 계속 '이번달 할 일'로 표시되던 문제
-    - todoMonthHtml()의 체크리스트 필터를 cycle==='monthly'만 남기도록 변경 (todos·법정검사는
-      기존대로 '이번주 이후 이번달 due' 기준 유지, 변경 없음)
-    - 새 함수 todoLongHtml() 추가: quarterly/halfyear/yearly/biennial 체크리스트를
-      '📆 분기·반기·연간 할 일' 카드로 분리 표시(미완료만, 완료된 항목은 숨김)
-    - homeCalTab()에 todoLongHtml() 호출 추가 — 달력 → 이번주 할 일 → 이번달 할 일 →
-      분기·반기·연간 할 일 순서로 배치
-    - 데이터 스키마 변경 없음(기존 checklists.cycle 필드 그대로 사용)
+  v45 (2026-07-14) : 판넬번호 전용 필드 + 버전 동기화
+    - [동기화] 배포용 app/index.html이 v32에서 멈춰있고 실제 개발은 도면모음 폴더의 app_v44.html로만
+      진행되어온 상태를 확인·통합. 이 파일을 기준으로 app/index.html에 배포, v33~44에서 만든 기능
+      (전압탭 분리, 도면검색, 매뉴얼 진행추적 등) 전부 포함.
+    - 계통 트리 노드에 판넬번호(panelNo) 전용 필드 추가: 기존엔 이름(name)이나 메모(note)에 뭉쳐
+      적던 현장 표지번호(예: VCB-106, ACB-3200)를 노드 수정 화면에서 별도 입력·수정 가능. 트리
+      박스에는 "판넬번호 · 전압" 형태로 표시, 검색(findTreeNode)도 이름+판넬번호+메모를 함께 조회.
+      기존 데이터(이름에 번호 포함)는 그대로 호환 — panelNo는 선택 필드라 마이그레이션 불필요.
+    - NODE_TYPES에 변압기(xfmr, 🔻) 유형 추가(신규 입력용 선택지, 기존 'bus' 유형 데이터는 무변경).
+    - 22.9kV KEY SLD(602-1-E-SL-441-001) 재판독으로 L/C TR-1~4 → 460V L/C-1~4 → 하위 MCC 매핑을
+      검증: TR-1→L/C-1→SRF 저장동 MCC-1 / TR-2→L/C-2→ST MCC·ST COMMON MCC·SRF 저장동 HVAC MCC·
+      SRF 저장동 MCC-2 / TR-3→L/C-3→SRF BOILER MCC-1·3+LTG / TR-4→L/C-4→SRF BOILER MCC-2·SRF HVAC
+      MCC+LTG. 도면모음/계통설비_seed.json(2026-07-11 제작, TN001~TN156)에 이미 이 구조가 정확히
+      반영되어 있음을 확인(별도 재생성 불필요) — [더보기>초기 데이터 가져오기]로 주입하면 계통 트리
+      탭에서 전압탭+검색+박스 클릭 펼치기로 바로 조회 가능.
   v44 (2026-07-13) : 계통트리 전압탭(22.9kV/6.9kV/460V/제어) 분리 보기
     - 전원계통 트리를 한 화면에 전부 펼치던 방식 대신, 전압등급 탭(전체/22.9kV/6.9kV/460V/제어)으로
       구간을 나눠 볼 수 있도록 개선. 탭을 누르면 해당 전압 구간의 시작 노드(들)만 루트로 삼아 그
@@ -874,7 +879,7 @@ function vHome(){
   <div class="botpad"></div>`;
 }
 function homeCalTab(){
-  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}${todoLongHtml()}`;
+  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}`;
 }
 function _weekRange(){
   const t=new Date();const ts=todayStr();
@@ -911,7 +916,7 @@ function todoMonthHtml(){
   const todos=S.todos.filter(x=>!x.done&&x.date>we&&x.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
   const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>we&&i.nextDue.startsWith(m))
     .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
-  const chks=S.checklists.filter(c=>c.cycle==='monthly'&&!isChkDone(c));
+  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')!=='A'&&!isChkDone(c));
   const n=todos.length+insp.length+chks.length;
   const done=S.todos.filter(x=>x.done&&(x.date||'').startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
   return `<div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${n}건</span></h2>
@@ -924,15 +929,6 @@ function todoMonthHtml(){
         <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(x.title)}</div><div class="d">${esc(x.date)}</div></div>
         <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
     </div>`;
-}
-function todoLongHtml(){
-  const chks=S.checklists.filter(c=>['quarterly','halfyear','yearly','biennial'].includes(c.cycle)&&!isChkDone(c))
-    .sort((a,b)=>(CHK_TIER[a.cycle]||'B').localeCompare(CHK_TIER[b.cycle]||'B'));
-  const n=chks.length;
-  return `<div class="card"><h2>📆 분기·반기·연간 할 일 <span class="cnt">${n}건</span></h2>
-    ${chks.map(_chkRow).join('')}
-    ${n?'':'<div class="empty">분기·반기·연간 할 일 없음 👍</div>'}
-    <button class="btn ghost sm full" onclick="go('chk')">주기 업무 전체 관리 →</button></div>`;
 }
 function homeWorkTab(){
   const dueChk=S.checklists.filter(c=>!isChkDone(c));
@@ -1489,7 +1485,7 @@ function noteListHtml(){
     <button class="btn ghost sm full" onclick="go('more')" style="margin-top:10px">← 더보기</button>`;
 }
 /* ================= PART 6.5 : 계통 트리 & 차단범위 (모듈②) ================= */
-const NODE_TYPES={source:['🔺','전원(인입)'],bus:['🔌','모선/판넬'],breaker:['⚡','차단기'],load:['⚙️','부하설비']};
+const NODE_TYPES={source:['🔺','전원(인입)'],bus:['🔌','모선/판넬'],breaker:['⚡','차단기'],xfmr:['🔻','변압기'],load:['⚙️','부하설비']};
 const nodeById=id=>S.tree.find(n=>n.id===id);
 const nodeKids=id=>S.tree.filter(n=>n.parentId===id);
 /* 전압탭 분리(v44): 트리 노드의 전압등급 문자열 → 표준 구간으로 분류, 없으면 상위 노드에서 상속 */
@@ -1633,7 +1629,7 @@ function collapseAllTree(){
 function findTreeNode(){
   const q=($('#tree-find')?.value||'').trim().toLowerCase();
   if(!q){toast('찾을 이름이나 번호를 입력하세요');return;}
-  const match=S.tree.find(n=>(n.name||'').toLowerCase().includes(q));
+  const match=S.tree.find(n=>((n.name||'')+' '+(n.panelNo||'')+' '+(n.note||'')).toLowerCase().includes(q));
   if(!match){toast('일치하는 노드를 찾지 못했습니다');return;}
   S._treeVoltTab=effVolt(match)||'전체';
   let cur=nodeById(match.parentId),guard=0;
@@ -1701,7 +1697,7 @@ function treeSvg(root,tab){
       <g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
         <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${highlighted?'var(--warn)':(boundary?'var(--dim)':(isBrk?'var(--danger)':'var(--accent)'))}" stroke-width="${highlighted?3:(boundary?1.4:(isBrk?2.5:1.4))}" stroke-dasharray="${boundary?'4,3':'0'}"/>
         <text x="${x+boxW/2}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
-        ${(n.voltage&&!boundary)?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(n.voltage)}</text>`:''}
+        ${(!boundary&&(n.voltage||n.panelNo))?`<text x="${x+boxW/2}" y="${y+31}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc([n.panelNo,n.voltage].filter(Boolean).join(' · '))}</text>`:''}
         ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
       </g>
       ${boundary?`<g onclick="event.stopPropagation();jumpToVoltTab('${n.id}')" style="cursor:pointer">
@@ -1721,7 +1717,7 @@ function nodeMenu(id){
   const e=n.equipId?S.equipment.find(x=>x.id===n.equipId):null;
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
-    <div class="muted">${NODE_TYPES[n.type][1]} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
+    <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
     <div class="muted" style="margin-top:6px">차단 경로 (상위 방향)</div>
     <div class="path-box">${blockPathText(id)}</div>
     ${blockPathSvg(id)}
@@ -1757,7 +1753,8 @@ function editNode(id,parentId){
     <input id="nd-eq" value="${esc(n?.equipId?(S.equipment.find(x=>x.id===n.equipId)?.name||''):'')}" oninput="eqSuggest(this.value)" placeholder="2자 이상 입력">
     <input type="hidden" id="nd-eqid" value="${esc(n?.equipId||'')}">
     <div id="nd-sugg"></div>
-    <label>메모 (정정값, 판넬번호 등)</label><input id="nd-note" value="${esc(n?.note||'')}">
+    <label>판넬번호 (현장 표지, 예: VCB-106)</label><input id="nd-panel" value="${esc(n?.panelNo||'')}" placeholder="예: VCB-101, ACB-3">
+    <label>메모 (정정값 등)</label><input id="nd-note" value="${esc(n?.note||'')}">
     <div class="row" style="margin-top:14px"><div class="grow"></div>
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveNode('${n?.id||''}','${pid||''}')">저장</button></div>`);
@@ -1773,7 +1770,7 @@ async function saveNode(id,parentId){
   const name=$('#nd-name').value.trim();if(!name){toast('이름을 입력하세요');return}
   const obj=id?nodeById(id):{id:'N'+uid(),parentId:parentId||''};
   Object.assign(obj,{name,type:$('#nd-type').value,voltage:$('#nd-volt').value.trim(),
-    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',note:$('#nd-note').value.trim()});
+    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim()});
   await dbPut('tree',obj);
   if(!id)S.tree.push(obj);
   closeModal();render();toast('저장 완료');
