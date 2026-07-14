@@ -11,8 +11,11 @@
       · [↳ 경로] 설비 선택 → 인입~설비 세로 경로 체인 + 차단점 배지 + 차단범위 + LOTO 바로 시작 (모듈② 조회A/B)
       · [☰ 드릴다운] 브레드크럼 + 직속 상/하위만 한 화면씩 탐색
       · [▤ 단선도] 전체 계통 SVG를 한손 이동·두손가락(휠) 확대·미니맵으로 열람
-        + 시작노드(전체/인입/피더) 드롭다운으로 한 계통만 골라보기, 박스 +/− 로 접기·펼치기(분기는 기본 접힘),
-          모두 펼치기/기본 접기 버튼. 접기 토글 시 확대·위치 유지, 피더 변경·전체보기 시에만 재맞춤.
+        + 시작노드(전체/인입/피더) 드롭다운으로 한 계통만 골라보기.
+        + 터치 개선: 박스 전체 탭 = 펼치기/접기(▸▾), 오른쪽 ⓘ 영역 = 차단경로 상세(작은 +/− 배지 폐지로 오탭 방지).
+        + 기본 펼침 깊이 확대(DIA_AUTO_DEPTH=3): 상위 3레벨은 기본으로 펼쳐 보이고 그 아래 분기만 접힘. 모두 펼치기/기본 접기.
+        + 루트 판정에 고아 노드 포함(treeRootNodes): 상위 연결이 끊긴 계통(예: DH 수전)도 전체보기·드롭다운에 표시.
+        + 접기 토글 시 확대·위치 유지, 피더 변경·전체보기 시에만 재맞춤.
     - 데이터 스키마 변경 없음(기존 S.tree {id,parentId,name,type,voltage,equipId,panelNo,note} 그대로 사용).
       기존 헬퍼(pathUp/descendants/nodeKids/startLoto/nodeMenu 등) 재사용. 마이그레이션 불필요.
     - vTree는 새 서브탭 렌더로 완전 교체. 구 전압탭 렌더(treeSvg/treeVoltTab/treeRootsForTab 등)는 더 이상 호출되지 않음(정의는 잔존·미사용). 상태값 _treeSubTab/_drillId/_treePathId 추가.
@@ -1689,9 +1692,12 @@ function vTreeDrill(){
     ${kidHtml}`;
 }
 /* --- 추천3: 단선도 (피더 선택 + 접기/펼치기 + 팬·핀치줌·미니맵) --- */
-var _tdS=1,_tdX=0,_tdY=0,_tdBox=null,_tdNeedFit=true;
+var _tdS=1,_tdX=0,_tdY=0,_tdBox=null,_tdNeedFit=true,_tdExpandAll=false;
+var DIA_AUTO_DEPTH=3;  // 이 깊이까지는 기본으로 펼쳐서 표시(분기 포함), 그 아래 분기는 접힘
+/* 루트: parentId가 없거나, 상위가 트리에 없는 고아 노드도 루트로(→ PB·DH 등 분리된 계통 모두 표시) */
+function treeRootNodes(){return S.tree.filter(n=>!n.parentId||!nodeById(n.parentId));}
 function diaRootOptions(){
-  const roots=S.tree.filter(n=>!n.parentId);
+  const roots=treeRootNodes();
   const opts=[{id:'',label:'전체 계통'}];
   roots.forEach(r=>{
     opts.push({id:r.id,label:'▸ '+r.name});
@@ -1699,8 +1705,12 @@ function diaRootOptions(){
   });
   return opts;
 }
+/* 다이어그램 전용 토글: 개별 노드 탭 시 전체펼치기 모드 해제 후 해당 노드만 토글 */
+function diaToggle(id){if(_tdExpandAll)_tdExpandAll=false;toggleTreeNode(id);}
+function diaExpandAll(){_tdExpandAll=true;render();}
+function diaCollapseDefault(){_tdExpandAll=false;S._treeToggled.clear();render();}
 function vTreeDiagram(){
-  const roots=S.tree.filter(n=>!n.parentId);
+  const roots=treeRootNodes();
   if(!roots.length)return '<div class="empty">계통이 없습니다.</div>';
   const sel=(S._treeDiaRoot&&nodeById(S._treeDiaRoot))?S._treeDiaRoot:'';
   const d=treeDiagramSvg(sel);
@@ -1716,24 +1726,29 @@ function vTreeDiagram(){
       <button class="btn ghost sm" onclick="treeDiaFit()">전체 보기</button>
       <button class="btn ghost sm" onclick="treeDiaZoom(1.25)">＋</button>
       <div class="grow"></div>
-      <button class="btn ghost sm" onclick="expandAllTree()">모두 펼치기</button>
-      <button class="btn ghost sm" onclick="collapseAllTree()">기본 접기</button>
+      <button class="btn ${_tdExpandAll?'':'ghost'} sm" onclick="diaExpandAll()">모두 펼치기</button>
+      <button class="btn ghost sm" onclick="diaCollapseDefault()">기본 접기</button>
     </div>
     <div class="tdia-box">
       <svg id="tdia-svg" xmlns="http://www.w3.org/2000/svg"><g id="tdia-vp">${d.inner}</g></svg>
       <svg id="tdia-mini" class="tdia-mini" xmlns="http://www.w3.org/2000/svg"><g transform="${d.miniT}">${d.inner}</g><rect id="tdia-view"></rect></svg>
     </div>
-    <div class="section-note" style="text-align:center">박스 밑 +/− 로 접기·펼치기 · 한 손가락 이동 · 두 손가락(휠) 확대 · 박스 탭 = 상세·차단범위</div>`;
+    <div class="section-note" style="text-align:center">박스 탭 = 펼치기/접기(▸▾) · 오른쪽 ⓘ = 차단경로 · 한 손가락 이동 · 두 손가락(휠) 확대</div>`;
 }
 function treeDiagramSvg(rootSel){
-  const roots=rootSel?[nodeById(rootSel)].filter(Boolean):S.tree.filter(n=>!n.parentId);
-  const boxW=120,boxH=46,hGap=16,vGap=40,pad=24;
+  const roots=rootSel?[nodeById(rootSel)].filter(Boolean):treeRootNodes();
+  const boxW=124,boxH=48,hGap=16,vGap=42,pad=24,infoW=30;
   const pos={};let leaf=0;const seen=new Set(),shown=[];
+  function diaColl(node,depth){
+    if(depth===0)return false;
+    if(_tdExpandAll)return false;
+    const baseDef=depth>=DIA_AUTO_DEPTH&&nodeKids(node.id).length>1;
+    return S._treeToggled.has(node.id)?!baseDef:baseDef;
+  }
   function walk(node,depth){
     if(seen.has(node.id))return (pos[node.id]||{x:0}).x;
     seen.add(node.id);shown.push(node.id);
-    const collapsed=depth>0&&isTreeCollapsed(node);
-    const kids=collapsed?[]:nodeKids(node.id);
+    const kids=diaColl(node,depth)?[]:nodeKids(node.id);
     if(!kids.length){pos[node.id]={x:leaf*(boxW+hGap),y:depth*(boxH+vGap),depth};leaf++;return pos[node.id].x;}
     const xs=kids.map(k=>walk(k,depth+1));
     pos[node.id]={x:(Math.min(...xs)+Math.max(...xs))/2,y:depth*(boxH+vGap),depth};
@@ -1754,21 +1769,21 @@ function treeDiagramSvg(rootSel){
   });
   shown.forEach(id=>{
     const n=nodeById(id),p=pos[id],isBrk=n.type==='breaker',ic=(NODE_TYPES[n.type]||['·'])[0];
-    const x=p.x-boxW/2,y=p.y;
-    const full=n.name||'',label=full.length>12?full.slice(0,11)+'…':full;
+    const x=p.x-boxW/2,y=p.y,hasKids=nodeKids(id).length>0;
+    const isColl=diaColl(n,p.depth),chev=hasKids?(isColl?'▸':'▾'):'';
+    const mainW=hasKids?boxW-infoW:boxW,cx=x+mainW/2;
+    const full=n.name||'',maxc=hasKids?10:12,label=full.length>maxc?full.slice(0,maxc-1)+'…':full;
     const meta=[n.panelNo,n.voltage].filter(Boolean).join(' · ');
-    const hasKids=nodeKids(id).length>0,showToggle=hasKids&&p.depth>0,isColl=p.depth>0&&isTreeCollapsed(n);
     boxes+=`<g>
-      <g onclick="nodeMenu('${id}')" style="cursor:pointer">
-        <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${isBrk?'var(--danger)':'var(--accent)'}" stroke-width="${isBrk?2.5:1.4}"/>
-        <text x="${p.x}" y="${y+19}" font-size="12" text-anchor="middle" fill="var(--txt)">${ic} ${esc(label)}</text>
-        ${meta?`<text x="${p.x}" y="${y+34}" font-size="9.5" text-anchor="middle" fill="var(--dim)">${esc(meta)}</text>`:''}
-        ${n.equipId?`<circle cx="${x+boxW-8}" cy="${y+8}" r="3.5" fill="var(--accent)"/>`:''}
-      </g>
-      ${showToggle?`<g onclick="event.stopPropagation();toggleTreeNode('${id}')" style="cursor:pointer">
-        <circle cx="${x+12}" cy="${y+boxH-11}" r="9" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"/>
-        <text x="${x+12}" y="${y+boxH-6}" font-size="13" text-anchor="middle" fill="var(--accent)">${isColl?'+':'–'}</text>
-      </g>`:''}
+      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${isBrk?'var(--danger)':'var(--accent)'}" stroke-width="${isBrk?2.5:1.4}"/>
+      ${hasKids?`<text x="${x+11}" y="${y+boxH/2+2}" font-size="14" text-anchor="middle" fill="var(--accent)" style="pointer-events:none">${chev}</text>`:''}
+      <text x="${cx}" y="${y+21}" font-size="12" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${ic} ${esc(label)}</text>
+      ${meta?`<text x="${cx}" y="${y+36}" font-size="9.5" text-anchor="middle" fill="var(--dim)" style="pointer-events:none">${esc(meta)}</text>`:''}
+      ${n.equipId?`<circle cx="${x+mainW-9}" cy="${y+9}" r="3.5" fill="var(--accent)" style="pointer-events:none"/>`:''}
+      <rect x="${x}" y="${y}" width="${mainW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="${hasKids?`diaToggle('${id}')`:`nodeMenu('${id}')`}"/>
+      ${hasKids?`<line x1="${x+mainW}" y1="${y+7}" x2="${x+mainW}" y2="${y+boxH-7}" stroke="var(--line)" stroke-width="1" style="pointer-events:none"/>
+        <rect x="${x+mainW}" y="${y}" width="${infoW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="event.stopPropagation();nodeMenu('${id}')"/>
+        <text x="${x+mainW+infoW/2}" y="${y+boxH/2+5}" font-size="15" text-anchor="middle" fill="var(--accent)" style="pointer-events:none">ⓘ</text>`:''}
     </g>`;
   });
   const mw=118,mh=92,ms=Math.min(mw/W,mh/H)*0.9;
