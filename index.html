@@ -16,6 +16,11 @@
         + 기본 펼침 깊이 확대(DIA_AUTO_DEPTH=3): 상위 3레벨은 기본으로 펼쳐 보이고 그 아래 분기만 접힘. 모두 펼치기/기본 접기.
         + 루트 판정에 고아 노드 포함(treeRootNodes): 상위 연결이 끊긴 계통(예: DH 수전)도 전체보기·드롭다운에 표시.
         + 접기 토글 시 확대·위치 유지, 피더 변경·전체보기 시에만 재맞춤.
+      · 도면 세부내용 통합: 노드에 details(도면에서 읽은 패널 내역·한 줄에 하나)와 docId(문서함 도면 연결) 필드 추가(스키마 확장·마이그레이션 불필요).
+        - editNode에 '연결 도면' 선택 + '도면 세부내용' textarea. nodeMenu에서 세부내용 표시 + 📄 도면 열기(viewDoc).
+        - 계통 화면 상단 검색창 재도입(treeFind): 이름·판넬·메모 + details까지 검색 → 매칭 노드로 이동·상세 표시(예: 'ROTARY FEEDER' 검색).
+        - 단선도 박스에 세부내용/도면 보유 표시(우하단 주황 점).
+    - 홈: '진행 중 현안'을 첫 화면 맨 위로 이동(건수 항상 표시) + 검사·현안 탭의 중복 제거. 기간 미정 유지보수(예: 터빈룸 팬 정비)는 현안으로 등록→완료 전까지 유지.
     - 데이터 스키마 변경 없음(기존 S.tree {id,parentId,name,type,voltage,equipId,panelNo,note} 그대로 사용).
       기존 헬퍼(pathUp/descendants/nodeKids/startLoto/nodeMenu 등) 재사용. 마이그레이션 불필요.
     - vTree는 새 서브탭 렌더로 완전 교체. 구 전압탭 렌더(treeSvg/treeVoltTab/treeRootsForTab 등)는 더 이상 호출되지 않음(정의는 잔존·미사용). 상태값 _treeSubTab/_drillId/_treePathId 추가.
@@ -911,6 +916,7 @@ function closeModal(){$('#modal-root').innerHTML=''}
 function vHome(){
   const tab=S.homeTab||'cal';
   return `
+  ${homeIssuesCard()}
   <div class="chips subtab">
     <button class="chip ${tab==='cal'?'on':''}" onclick="S.homeTab='cal';render()">🗓️ 달력·할일</button>
     <button class="chip ${tab==='work'?'on':''}" onclick="S.homeTab='work';render()">📋 검사·현안</button>
@@ -918,6 +924,18 @@ function vHome(){
   </div>
   ${tab==='cal'?homeCalTab():tab==='hist'?homeHistHtml():homeWorkTab()}
   <div class="botpad"></div>`;
+}
+function homeIssuesCard(){
+  const openIssues=S.issues.filter(i=>!i.done);
+  return `<div class="card"><h2>🔧 진행 중 현안 <span class="cnt">${openIssues.length}건</span></h2>
+    <div class="muted" style="margin:-2px 0 8px">기간이 정해지지 않은 유지보수(예: 터빈룸 팬 정비)는 여기에 — 완료 처리 전까지 남습니다.</div>
+    ${openIssues.map(i=>`
+      <div class="item">
+        <div class="chk" onclick="doneIssue('${i.id}')"></div>
+        <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
+      </div>`).join('')||'<div class="empty">진행 중 현안 없음 👍</div>'}
+    <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
+  </div>`;
 }
 function homeCalTab(){
   return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}`;
@@ -976,7 +994,6 @@ function homeWorkTab(){
   const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)}))
     .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
   const soon=insp.filter(i=>i.dd!==null&&i.dd<=30);
-  const openIssues=S.issues.filter(i=>!i.done);
   return `
   <div class="searchwrap"><input placeholder="설비 검색 (이름·Tag No·판넬)" oninput="homeSearch(this.value)" id="home-q"></div>
   <div id="home-sr"></div>
@@ -987,14 +1004,6 @@ function homeWorkTab(){
         <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle)}</div></div>
         ${ddayBadge(i.dd)}
       </div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
-  </div>
-  <div class="card"><h2>🔧 진행 중 현안 <span class="cnt">${openIssues.length}건</span></h2>
-    ${openIssues.map(i=>`
-      <div class="item">
-        <div class="chk" onclick="doneIssue('${i.id}')"></div>
-        <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
-      </div>`).join('')||'<div class="empty">진행 중 현안 없음</div>'}
-    <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
   </div>`;
 }
 function homeSearch(q){
@@ -1612,6 +1621,10 @@ function vTree(){
   const SUBS=[['path','↳ 경로'],['drill','☰ 드릴다운'],['diagram','▤ 단선도']];
   const body=sub==='drill'?vTreeDrill():(sub==='diagram'?vTreeDiagram():vTreePath());
   return `<div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
+    <div class="row" style="gap:6px;margin-bottom:8px">
+      <input id="tree-find" placeholder="이름·판넬·도면 세부내용 검색 (예: ROTARY FEEDER)" style="flex:1" onkeydown="if(event.key==='Enter')treeFind()">
+      <button class="btn sm" onclick="treeFind()">검색</button>
+    </div>
     <div class="row" style="gap:6px;margin-bottom:12px">
       ${SUBS.map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')">${esc(l)}</button>`).join('')}
     </div>
@@ -1624,6 +1637,19 @@ function vTree(){
   </div>`+treeLotoCard();
 }
 function treeSubTab(t){S._treeSubTab=t;if(t==='diagram')_tdNeedFit=true;render();}
+/* 계통 검색: 이름·판넬·메모 + 도면 세부내용(details)까지 훑어 매칭 노드로 이동·상세 표시 */
+function treeFind(){
+  const q=($('#tree-find')?.value||'').trim().toLowerCase();
+  if(!q){toast('찾을 내용을 입력하세요');return;}
+  const hay=n=>((n.name||'')+' '+(n.panelNo||'')+' '+(n.note||'')+' '+(n.details||'')).toLowerCase();
+  const match=S.tree.find(n=>hay(n).includes(q));
+  if(!match){toast('일치하는 노드를 찾지 못했습니다');return;}
+  const inDetail=(match.details||'').toLowerCase().includes(q)&&!((match.name||'')+(match.panelNo||'')+(match.note||'')).toLowerCase().includes(q);
+  S._treeSubTab='drill';S._drillId=match.id;S._treeHighlight=match.id;
+  render();
+  nodeMenu(match.id);
+  if(inDetail)toast('도면 세부내용에서 찾음: '+match.name);
+}
 /* --- 추천1: 전원 경로 --- */
 function treeLeafNodes(){
   const loads=S.tree.filter(n=>n.type==='load');
@@ -1780,6 +1806,7 @@ function treeDiagramSvg(rootSel){
       <text x="${cx}" y="${y+21}" font-size="12" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${ic} ${esc(label)}</text>
       ${meta?`<text x="${cx}" y="${y+36}" font-size="9.5" text-anchor="middle" fill="var(--dim)" style="pointer-events:none">${esc(meta)}</text>`:''}
       ${n.equipId?`<circle cx="${x+mainW-9}" cy="${y+9}" r="3.5" fill="var(--accent)" style="pointer-events:none"/>`:''}
+      ${(n.details||n.docId)?`<circle cx="${x+mainW-9}" cy="${y+boxH-9}" r="3.5" fill="var(--warn)" style="pointer-events:none"/>`:''}
       <rect x="${x}" y="${y}" width="${mainW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="${hasKids?`diaToggle('${id}')`:`nodeMenu('${id}')`}"/>
       ${hasKids?`<line x1="${x+mainW}" y1="${y+7}" x2="${x+mainW}" y2="${y+boxH-7}" stroke="var(--line)" stroke-width="1" style="pointer-events:none"/>
         <rect x="${x+mainW}" y="${y}" width="${infoW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="event.stopPropagation();nodeMenu('${id}')"/>
@@ -1968,6 +1995,9 @@ function nodeMenu(id){
     ${blockPathSvg(id)}
     ${isBrk?`<div class="muted">이 차단기 개방 시 정전 영향</div>
       <div class="path-box">${descendants(id).map(d=>esc(d.name)).join('<br>')||'하위 노드 없음'}</div>`:''}
+    ${n.docId&&(S.docs||[]).find(d=>d.id===n.docId)?`<div class="muted" style="margin-top:8px">연결 도면</div>
+      <button class="btn ghost sm" onclick="closeModal();viewDoc('${n.docId}')">📄 ${esc(((S.docs||[]).find(d=>d.id===n.docId)||{}).title||'도면 열기')}</button>`:''}
+    ${n.details?`<div class="muted" style="margin-top:8px">도면 세부내용</div><div class="path-box">${esc(n.details).replace(/\n/g,'<br>')}</div>`:''}
     <div class="row" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm" onclick="editNode('','${id}')">+ 하위 추가</button>
       ${n.type==='load'||isBrk?`<button class="btn sm" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
@@ -2000,6 +2030,10 @@ function editNode(id,parentId){
     <div id="nd-sugg"></div>
     <label>판넬번호 (현장 표지, 예: VCB-106)</label><input id="nd-panel" value="${esc(n?.panelNo||'')}" placeholder="예: VCB-101, ACB-3">
     <label>메모 (정정값 등)</label><input id="nd-note" value="${esc(n?.note||'')}">
+    <label>연결 도면 (단선도 등 · 선택 — 상세에서 탭하면 열림)</label>
+    <select id="nd-doc"><option value="">(연결 안 함)</option>${(S.docs||[]).map(dc=>`<option value="${dc.id}" ${n?.docId===dc.id?'selected':''}>${esc(dc.title||dc.name||dc.id)}${dc.kind?' · '+esc(dc.kind):''}</option>`).join('')}</select>
+    <label>도면 세부내용 (패널 내역 · 한 줄에 하나 — 검색됨)</label>
+    <textarea id="nd-details" rows="5" placeholder="도면에서 읽은 내역을 한 줄씩 (예: MCCB-12  FFS ROTARY FEEDER MOTOR  380V 30kW)">${esc(n?.details||'')}</textarea>
     <div class="row" style="margin-top:14px"><div class="grow"></div>
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveNode('${n?.id||''}','${pid||''}')">저장</button></div>`);
@@ -2015,7 +2049,8 @@ async function saveNode(id,parentId){
   const name=$('#nd-name').value.trim();if(!name){toast('이름을 입력하세요');return}
   const obj=id?nodeById(id):{id:'N'+uid(),parentId:parentId||''};
   Object.assign(obj,{name,type:$('#nd-type').value,voltage:$('#nd-volt').value.trim(),
-    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim()});
+    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim(),
+    docId:($('#nd-doc')?$('#nd-doc').value:'')||'',details:($('#nd-details')?$('#nd-details').value.trim():'')});
   await dbPut('tree',obj);
   if(!id)S.tree.push(obj);
   closeModal();render();toast('저장 완료');
