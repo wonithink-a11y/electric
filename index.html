@@ -2,9 +2,31 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 index.html (= app_v46 배포본)
+  전력계통과 업무앱 index.html (= app_v49 배포본)
   ============================================================
   변경 이력
+  v49 (2026-07-15) : 하단 탭 7→5 축소 (모바일 엄지 조작·홈·계통 우선)
+    - 최상위 탭: 🏠홈 · 🔌계통 · ⚡설비 · 📐도면 · ⚙️더보기 (자주 쓰는 홈·계통 앞 배치).
+    - 📋검사·✅체크는 최상위에서 내림 → 더보기 '🧰 관리·도구'에 진입 버튼 신설.
+      (검사 D-30·주기체크는 홈 대시보드에 이미 요약 노출되어 접근성 동일)
+    - VIEWS/화면 로직·데이터 무변경. insp/chk 화면은 그대로 go()로 진입.
+  v48 (2026-07-15) : 완료 현안 → 정비이력(설비별 고장·조치) 승격
+    - 완료된 현안 행에 '🔧 이력화' 버튼 추가 → 설비 선택 + hwpx 8필드
+      (날짜·설비·내용·원인·조치·차단범위·소요·비고) 입력 후 faults 스토어에 저장.
+    - 승격된 현안은 '이력화' 배지 표시, 중복 승격 방지(issues.promotedFaultId).
+      fault.fromIssue로 원본 현안 역참조.
+    - faults는 보안상 로컬(IndexedDB)에만 저장(Firebase 미동기화) — 기존 원칙 유지.
+    - 스키마 변경 없음(promotedFaultId/fromIssue는 선택 필드, 마이그레이션 불필요).
+  v47 (2026-07-15) : 현안 완료 데이터 보존 — 완료 후 사라지던 문제 해결
+    - (기존) 진행 중 현안에서 완료 체크 시 done=true로만 바뀌고 화면에서 사라져 내용 확인 불가.
+      데이터는 남아있었으나 어디서도 볼 수 없었음.
+    - homeIssuesCard: 진행 중 현안 아래 '완료된 현안 N건(펼치기)' 접이식 토글 추가.
+      완료일 표시 + 되돌리기(진행중 복원) + 삭제. (todos 완료 토글과 동일 UX)
+    - homeHistHtml(이력 탭): 완료한 현안을 주기업무·법정검사 완료이력과 함께 월별로 편입.
+      완료일(doneDate) 기준 월 그룹, 탭하면 현안 수정 열림 → 연말 실적·정비이력 정리에 바로 활용.
+    - 신규 함수 reopenIssue(진행중 복원)·delIssueHome(홈에서 삭제) 추가.
+    - 스키마 변경 없음: issues.done/doneDate는 v46부터 저장되던 필드(마이그레이션 불필요).
+      doneDate 누락된 과거 완료건은 date로 대체 표시(방어 처리).
   v46 (2026-07-14) : 계통 뷰 재구성 — 경로/드릴다운/단선도 서브탭
     - 전원계통 트리 화면을 3개 서브탭으로 개편(모바일 조작성 개선). 기존 전압탭 아코디언 방식이
       "연결성 부족 + 펼치기 불편"하다는 문제를 해소.
@@ -583,11 +605,9 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <main id="app"></main>
 <nav id="nav">
   <button data-v="home"><span class="ic">🏠</span>홈</button>
-  <button data-v="docfind"><span class="ic">📐</span>도면</button>
-  <button data-v="equip"><span class="ic">⚡</span>설비</button>
   <button data-v="tree"><span class="ic">🔌</span>계통</button>
-  <button data-v="insp"><span class="ic">📋</span>검사</button>
-  <button data-v="chk"><span class="ic">✅</span>체크</button>
+  <button data-v="equip"><span class="ic">⚡</span>설비</button>
+  <button data-v="docfind"><span class="ic">📐</span>도면</button>
   <button data-v="more"><span class="ic">⚙️</span>더보기</button>
 </nav>
 <div id="modal-root"></div>
@@ -930,6 +950,7 @@ function vHome(){
 }
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
+  const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
   return `<details class="card issuebox">
     <summary><span>🔧 진행 중 현안</span><span class="cnt">${openIssues.length}건</span></summary>
     <div class="muted" style="margin:8px 0">기간이 정해지지 않은 유지보수(예: 터빈룸 팬 정비)는 여기에 — 완료 처리 전까지 남습니다.</div>
@@ -939,6 +960,14 @@ function homeIssuesCard(){
         <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
       </div>`).join('')||'<div class="empty">진행 중 현안 없음 👍</div>'}
     <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
+    ${doneIssues.length?`<details class="donebox"><summary>✅ 완료된 현안 ${doneIssues.length}건 (펼치기)</summary>
+      ${doneIssues.map(i=>`<div class="item">
+        <div class="chk done" onclick="reopenIssue('${i.id}')" title="진행중으로 되돌리기">✓</div>
+        <div class="t" onclick="editIssue('${i.id}')"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(i.title)}${i.promotedFaultId?' <span class="badge b-green">이력화</span>':''}</div><div class="d">완료 ${esc(i.doneDate||i.date||'')}${i.note?' · '+esc(i.note):''}</div></div>
+        ${i.promotedFaultId?'':`<button class="btn ghost sm" onclick="promoteIssue('${i.id}')" title="정비이력으로 승격">🔧</button>`}
+        <button class="btn danger sm" onclick="delIssueHome('${i.id}')">✕</button></div>`).join('')}
+      <div class="section-note">완료 현안은 📚 이력 탭에도 월별로 정리됩니다. ✓ 되돌리기 · 🔧 정비이력으로 승격.</div>
+    </details>`:''}
   </details>`;
 }
 function homeCalTab(){
@@ -1028,6 +1057,49 @@ async function doneIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
   i.done=true;i.doneDate=todayStr();
   await dbPut('issues',i);fbPush('issues',i);toast('현안 완료 처리');render();
+}
+async function reopenIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  i.done=false;delete i.doneDate;
+  await dbPut('issues',i);fbPush('issues',i);toast('진행중으로 되돌림');render();
+}
+async function delIssueHome(id){
+  if(!(await confirmModal('이 완료 현안을 삭제할까요? (이력에서도 사라집니다)')))return;
+  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);render();
+}
+function promoteIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  const opts=S.equipment.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+    .map(e=>`<option value="${e.id}">${esc(e.name)}${e.tagNo?' ('+esc(e.tagNo)+')':''}</option>`).join('');
+  openModal(`<h3>정비이력으로 승격</h3>
+    <div class="muted">완료 현안을 설비별 정비이력(고장·조치)으로 저장합니다. hwpx 보고서 필드로 남습니다.</div>
+    <label>설비 선택 *</label><select id="pi-eq"><option value="">— 설비 선택 —</option>${opts}</select>
+    <label>날짜</label><input id="pi-date" type="date" value="${esc(i.doneDate||i.date||todayStr())}">
+    <label>내용(증상/작업) *</label><input id="pi-content" value="${esc(i.title||'')}">
+    <label>원인</label><input id="pi-cause" value="">
+    <label>조치</label><textarea id="pi-action" rows="2">${esc(i.note||'')}</textarea>
+    <label>차단범위</label><input id="pi-block" value="">
+    <label>소요(시간/인원)</label><input id="pi-cost" value="">
+    <label>비고</label><input id="pi-note" value="">
+    <div class="row" style="margin-top:14px">
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="closeModal()">취소</button>
+      <button class="btn sm" onclick="savePromoteIssue('${i.id}')">정비이력 저장</button>
+    </div>`);
+}
+async function savePromoteIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  const equipId=$('#pi-eq').value;
+  if(!equipId){toast('설비를 선택하세요');return}
+  const content=$('#pi-content').value.trim();if(!content){toast('내용을 입력하세요');return}
+  const e=S.equipment.find(x=>x.id===equipId);
+  const obj={id:uid(),equipId,equipName:e?.name||'',date:$('#pi-date').value||todayStr(),
+    content,cause:$('#pi-cause').value.trim(),action:$('#pi-action').value.trim(),
+    blockRange:$('#pi-block').value.trim(),cost:$('#pi-cost').value.trim(),note:$('#pi-note').value.trim(),
+    fromIssue:id};
+  await dbPut('faults',obj);S.faults.push(obj);
+  i.promotedFaultId=obj.id;await dbPut('issues',i);fbPush('issues',i);
+  closeModal();toast('정비이력으로 저장됨 — 설비 카드에서 확인');render();
 }
 function editIssue(id){
   const i=id?S.issues.find(x=>x.id===id):null;
@@ -2368,6 +2440,11 @@ function moreSafe(){
 }
 function moreTool(){
   return `
+  <div class="card"><h2>📋 검사 · ✅ 체크</h2>
+    <div class="muted">법정검사 일정·수검이력과 주기 체크리스트. (홈 대시보드에도 D-30 검사·주기체크가 요약 표시됩니다)</div>
+    <button class="btn full" onclick="go('insp')">📋 법정검사 열기 <span class="cnt">${S.inspections.length}건</span></button>
+    <button class="btn full" onclick="go('chk')">✅ 주기 체크리스트 열기 <span class="cnt">${S.checklists.length}건</span></button>
+  </div>
   <div class="card"><h2>🧰 예비품 · 💰 예산 · 📈 실적</h2>
     <div class="muted">예비품 재고(부족 경고)·예산 집행/계획·월간/연간 실적 집계. 데이터는 백업에 포함됩니다.</div>
     <button class="btn full" onclick="go('spare')">🧰 예비품 재고 열기 <span class="cnt">${S.spares.length}건</span></button>
@@ -3963,15 +4040,19 @@ function homeHistHtml(){
   S.checklogs.forEach(l=>{const m=(l.date||'').slice(0,7);if(!m)return;(byM[m]=byM[m]||[]).push({...l,_k:'chk'});});
   S.inspections.forEach(i=>(i.history||[]).forEach(h=>{const m=(h.date||'').slice(0,7);if(!m)return;
     (byM[m]=byM[m]||[]).push({_k:'insp',date:h.date,name:i.name+(h.result?' · '+h.result:''),note:h.note,inspId:i.id});}));
+  S.issues.filter(i=>i.done).forEach(i=>{const d=i.doneDate||i.date||'';const m=d.slice(0,7);if(!m)return;
+    (byM[m]=byM[m]||[]).push({_k:'issue',date:d,name:i.title,note:i.note,issueId:i.id});});
   const months=Object.keys(byM).sort().reverse();
-  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
-  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료를 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획에 활용.</div>`+
+  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리, 현안 완료를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
+  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료 + 완료 현안을 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획·정비이력 정리에 활용.</div>`+
     months.map((m,idx)=>{
-    const logs=byM[m].slice().sort((a,b)=>b.date.localeCompare(a.date));
+    const logs=byM[m].slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const [y,mo]=m.split('-');
     return `<details class="card histcard" ${idx===0?'open':''}><summary class="hist-sum">${y}년 ${parseInt(mo,10)}월 <span class="cnt">${logs.length}건</span></summary>
       ${logs.map(l=>l._k==='insp'
         ?`<div class="histrow click" onclick="openInsp('${l.inspId}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">📋 검사</span></div>`
+        :l._k==='issue'
+        ?`<div class="histrow click" onclick="editIssue('${l.issueId}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">🔧 현안</span></div>`
         :`<div class="histrow click" onclick="openCheckResult('${l.id}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">${esc(cycleFromPeriod(l))}</span></div>`
       ).join('')}
     </details>`;
