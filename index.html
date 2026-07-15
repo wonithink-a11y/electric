@@ -2,9 +2,13 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 index.html (= app_v56 배포본)
+  전력계통과 업무앱 index.html (= app_v57 배포본)
   ============================================================
   변경 이력
+  v57 (2026-07-15) : 검수 실수량 해제(취소) 버튼
+    - 검수 완료(초록 ✓)된 행에만 [해제] 버튼 표시 → 누르면 실수량 지움·✓/초록바 제거·카운트 감소.
+    - 잘못 입력한 검수를 되돌리기 쉬움. '0개'(정상 검수)와 '검수 안 함'(해제)을 구분 유지.
+    - CSS로 미검수 행에는 해제 버튼 숨김(.checked일 때만 노출) — DOM 조작 없이 자동 토글.
   v56 (2026-07-15) : 더보기 서브탭 순서·기본값 변경
     - 서브탭 순서: 관리·도구 ↔ 도면·문서 위치 교체 → 🧰관리·도구 · 📝보고서 · 🛡️안전·법령 · 🗂️도면·문서 · ⚙️데이터·설정.
     - 더보기 진입 시 기본 표시 탭을 '관리·도구'로 변경(기존 도면·문서).
@@ -468,6 +472,8 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .item.matrow .inspq{width:100%;text-align:center;padding:7px 4px;border-radius:8px}
 .item.matrow .inspsave{padding:6px 4px;font-size:12px;width:100%}
 .item.matrow.checked{border-left:3px solid #34d399;padding-left:6px}
+.item.matrow .inspclear{padding:5px 4px;font-size:11px;width:100%;display:none}
+.item.matrow.checked .inspclear{display:block}
 .item.click{cursor:pointer;border-radius:10px;transition:background .12s}
 .item.click:active{background:var(--panel2)}
 @media(hover:hover){.item.click:hover{background:color-mix(in srgb,var(--panel2) 60%,transparent)}}
@@ -3886,6 +3892,7 @@ function spareInspBody(){
         <div class="inspcol">
           <input class="inspq" id="rq_${s.id}" type="number" inputmode="numeric" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
           <button class="btn sm inspsave" onclick="saveSpareReal('${s.id}')">저장</button>
+          <button class="btn ghost sm inspclear" onclick="clearSpareReal('${s.id}')">해제</button>
         </div>
       </div>`;}).join('');
     return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(g)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
@@ -3908,6 +3915,19 @@ async function saveSpareReal(id){
   const dn=document.getElementById('inspdone');
   if(dn){const cur=S.spares.filter(x=>x.src==='master'&&x.real!=null&&x.real!=='' && ((S._spareDept||'전력계통과')==='전체'||x.dept===(S._spareDept||'전력계통과'))).length;dn.textContent=cur;}
   toast(`${s.type||s.name} 실수량 ${chk?s.real+(s.unit||''):'지움'} 저장`);
+}
+async function clearSpareReal(id){
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  s.real='';s.updated=todayStr();
+  await dbPut('spares',s);
+  const el=document.getElementById('rq_'+id);if(el)el.value='';
+  const row=document.getElementById('row_'+id);
+  if(row){row.classList.remove('checked');
+    const n=row.querySelector('.n');
+    if(n)n.innerHTML=n.innerHTML.replace(/\s*<span class="badge b-green">✓<\/span>/,'');}
+  const dn=document.getElementById('inspdone');
+  if(dn){const cur=S.spares.filter(x=>x.src==='master'&&x.real!=null&&x.real!=='' && ((S._spareDept||'전력계통과')==='전체'||x.dept===(S._spareDept||'전력계통과'))).length;dn.textContent=cur;}
+  toast('검수 해제됨');
 }
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
