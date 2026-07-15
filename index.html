@@ -2,9 +2,15 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 index.html (= app_v53 배포본)
+  전력계통과 업무앱 index.html (= app_v54 배포본)
   ============================================================
   변경 이력
+  v54 (2026-07-15) : 정비자재 검수 화면 가독성 개선
+    - 분류 단위 축소: 22개 대분류 → 8개 상위분류로 묶어 그룹 헤더 수 대폭 감소
+      (개폐·차단 / 계전·제어 / 계측 / 전원·표시 / 회전기·동력 / 유체·배관 / 구조·소모 / 기타).
+    - 행 재설계로 품명 잘림 해소: 1행=종류(한글, 굵게)+과배지, 2행=규격/품명 전체 줄바꿈 표시,
+      3행=자재번호·장부수량. 클릭해 들어가지 않아도 무슨 부품인지 화면에서 바로 확인.
+    - 상세 대분류(cat)·종류(type)는 그대로 저장(내보내기·검색에 유지). 표시 방식만 변경.
   v53 (2026-07-15) : 정비자재 검수 — 과 배지·검색·내보내기 2탭
     - 검수(종류별) 각 자재 행에 담당과 배지 표시(계통=파랑/설비=초록) — '전체'로 섞여도 구분.
     - 검수 모드에 검색창 추가(품명·자재번호·종류·대분류). 목록 모드 검색도 자재번호·종류 포함.
@@ -446,6 +452,11 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .item .t{flex:1;min-width:0}
 .item .t .n{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .item .t .d{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.matrow{align-items:flex-start}
+.item.matrow .t .n{white-space:normal;font-size:14px;font-weight:700}
+.item.matrow .mspec{font-size:13px;white-space:normal;word-break:break-word;line-height:1.35;margin-top:3px}
+.item.matrow .mmeta{font-size:11px;color:var(--dim);margin-top:3px}
+.item.matrow .inspq{margin-top:2px;flex:none}
 .item.click{cursor:pointer;border-radius:10px;transition:background .12s}
 .item.click:active{background:var(--panel2)}
 @media(hover:hover){.item.click:hover{background:color-mix(in srgb,var(--panel2) 60%,transparent)}}
@@ -3831,6 +3842,17 @@ function _deptBadge(s){
   if(s.dept==='전력설비과')return '<span class="badge b-green">설비</span>';
   return s.dept?`<span class="badge b-gray">${esc(s.dept)}</span>`:'';
 }
+const MAT_GROUP={
+ '차단기':'개폐·차단','개폐기·접촉기':'개폐·차단','퓨즈·보호부품':'개폐·차단',
+ '계전기·릴레이·타이머':'계전·제어','스위치·버튼':'계전·제어','제어·전자모듈':'계전·제어',
+ '계기·센서·조절기':'계측',
+ '콘덴서·변성기·변압기':'전원·표시','램프·표시등·부저':'전원·표시','전선·케이블·단자':'전원·표시','히터·전열':'전원·표시',
+ '전동기·팬':'회전기·동력','베어링':'회전기·동력','베어링부속':'회전기·동력','벨트':'회전기·동력','방진·기계부품':'회전기·동력',
+ '밸브':'유체·배관','필터':'유체·배관','가스켓·씰·오링':'유체·배관','배관·피팅':'유체·배관','유압·공압':'유체·배관',
+ '배관강재·구조재':'구조·소모','공구·체결':'구조·소모','기타':'기타'
+};
+const MAT_GROUP_ORDER=['개폐·차단','계전·제어','계측','전원·표시','회전기·동력','유체·배관','구조·소모','기타'];
+function matGroup(cat){return MAT_GROUP[cat]||'기타';}
 function spareInspBody(){
   const dept=S._spareDept||'전력계통과';
   const q=(S._spareQ||'').toLowerCase();
@@ -3838,19 +3860,23 @@ function spareInspBody(){
   if(dept!=='전체')list=list.filter(s=>s.dept===dept);
   if(q)list=list.filter(s=>((s.name||'')+' '+(s.matNo||'')+' '+(s.type||'')+' '+(s.cat||'')+' '+(s.dept||'')+' '+(s.note||'')).toLowerCase().includes(q));
   if(!list.length)return '<div class="empty">해당 자재 없음</div>';
-  const byCat={};list.forEach(s=>{(byCat[s.cat]=byCat[s.cat]||[]).push(s);});
-  const cats=Object.keys(byCat).sort((a,b)=>a.localeCompare(b));
+  const byG={};list.forEach(s=>{const g=matGroup(s.cat);(byG[g]=byG[g]||[]).push(s);});
+  const groups=MAT_GROUP_ORDER.filter(g=>byG[g]);
+  Object.keys(byG).forEach(g=>{if(!groups.includes(g))groups.push(g);});
   const done=list.filter(s=>s.real!=null&&s.real!=='').length;
-  const body=cats.map(cat=>{
-    const items=byCat[cat].slice().sort((a,b)=>(a.type||'').localeCompare(b.type||'')||(a.name||'').localeCompare(b.name||''));
-    const rows=items.map(s=>`<div class="item">
-      <div class="t" onclick="editSpare('${s.id}')"><div class="n">${_deptBadge(s)} ${esc(s.name)} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}</div>
-      <div class="d">${esc(s.type||'')} · ${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div></div>
-      <input class="inspq" type="number" inputmode="numeric" placeholder="실수량" value="${s.real==null?'':esc(String(s.real))}" onchange="setSpareReal('${s.id}',this.value)" style="width:66px;text-align:center;padding:6px;border-radius:8px">
+  const body=groups.map(g=>{
+    const items=byG[g].slice().sort((a,b)=>String(a.cat).localeCompare(String(b.cat))||(a.type||'').localeCompare(b.type||'')||(a.name||'').localeCompare(b.name||''));
+    const rows=items.map(s=>`<div class="item matrow">
+      <div class="t" onclick="editSpare('${s.id}')">
+        <div class="n">${_deptBadge(s)} ${esc(s.type||'(미분류)')} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}</div>
+        <div class="mspec">${esc(s.name||'')}</div>
+        <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
+      </div>
+      <input class="inspq" type="number" inputmode="numeric" placeholder="실수량" value="${s.real==null?'':esc(String(s.real))}" onchange="setSpareReal('${s.id}',this.value)" style="width:64px;text-align:center;padding:6px;border-radius:8px">
     </div>`).join('');
-    return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(cat)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
+    return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(g)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
   }).join('');
-  return `<div class="muted" style="margin:6px 0">창고 진열(대분류→종류) 순 검수 · 검수 ${done}/${list.length}건 · 계통 <span class="badge b-blue">계통</span> / 설비 <span class="badge b-green">설비</span>. 실수량 입력 후 📤 내보내기.</div>${body}`;
+  return `<div class="muted" style="margin:6px 0">창고 진열 순 검수 · 검수 ${done}/${list.length}건 · <span class="badge b-blue">계통</span> / <span class="badge b-green">설비</span>. 굵은 글씨=종류, 아래=규격.</div>${body}`;
 }
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
