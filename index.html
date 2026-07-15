@@ -2,9 +2,17 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 index.html (= app_v54 배포본)
+  전력계통과 업무앱 index.html (= app_v56 배포본)
   ============================================================
   변경 이력
+  v56 (2026-07-15) : 더보기 서브탭 순서·기본값 변경
+    - 서브탭 순서: 관리·도구 ↔ 도면·문서 위치 교체 → 🧰관리·도구 · 📝보고서 · 🛡️안전·법령 · 🗂️도면·문서 · ⚙️데이터·설정.
+    - 더보기 진입 시 기본 표시 탭을 '관리·도구'로 변경(기존 도면·문서).
+  v55 (2026-07-15) : 정비자재 검수 조작 개선 — 실수량 저장 버튼
+    - 검수 행에서 실수량 칸 아래 [저장] 버튼 신설. 입력 후 저장 누르면 토스트+초록 ✓ 표시,
+      상단 '검수 N/…건' 카운트도 즉시 갱신(그룹 접힘 유지, 스크롤 안 튐).
+    - 검수 모드에서 행 탭 → 수정 모달 진입 제거(실수 방지). 수정·삭제는 목록 모드에서.
+    - 저장 시 그룹 펼침·스크롤 위치 보존(전체 재렌더 안 함).
   v54 (2026-07-15) : 정비자재 검수 화면 가독성 개선
     - 분류 단위 축소: 22개 대분류 → 8개 상위분류로 묶어 그룹 헤더 수 대폭 감소
       (개폐·차단 / 계전·제어 / 계측 / 전원·표시 / 회전기·동력 / 유체·배관 / 구조·소모 / 기타).
@@ -456,7 +464,10 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .item.matrow .t .n{white-space:normal;font-size:14px;font-weight:700}
 .item.matrow .mspec{font-size:13px;white-space:normal;word-break:break-word;line-height:1.35;margin-top:3px}
 .item.matrow .mmeta{font-size:11px;color:var(--dim);margin-top:3px}
-.item.matrow .inspq{margin-top:2px;flex:none}
+.item.matrow .inspcol{display:flex;flex-direction:column;gap:5px;flex:none;width:78px}
+.item.matrow .inspq{width:100%;text-align:center;padding:7px 4px;border-radius:8px}
+.item.matrow .inspsave{padding:6px 4px;font-size:12px;width:100%}
+.item.matrow.checked{border-left:3px solid #34d399;padding-left:6px}
 .item.click{cursor:pointer;border-radius:10px;transition:background .12s}
 .item.click:active{background:var(--panel2)}
 @media(hover:hover){.item.click:hover{background:color-mix(in srgb,var(--panel2) 60%,transparent)}}
@@ -2414,11 +2425,11 @@ async function saveChk(){
 
 /* ================= PART 9 : 더보기(설정) ================= */
 function vMore(){
-  const tab=S.moreTab||'doc';
+  const tab=S.moreTab||'tool';
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.moreTab='${v}';render()">${l}</button>`;
   return `
   <div class="chips">
-    ${chip('doc','🗂️ 도면·문서')}${chip('report','📝 보고서')}${chip('safe','🛡️ 안전·법령')}${chip('tool','🧰 관리·도구')}${chip('data','⚙️ 데이터·설정')}
+    ${chip('tool','🧰 관리·도구')}${chip('report','📝 보고서')}${chip('safe','🛡️ 안전·법령')}${chip('doc','🗂️ 도면·문서')}${chip('data','⚙️ 데이터·설정')}
   </div>
   ${tab==='doc'?moreDoc():tab==='report'?moreReport():tab==='safe'?moreSafe():tab==='tool'?moreTool():moreData()}
   <div class="botpad"></div>`;
@@ -3866,17 +3877,37 @@ function spareInspBody(){
   const done=list.filter(s=>s.real!=null&&s.real!=='').length;
   const body=groups.map(g=>{
     const items=byG[g].slice().sort((a,b)=>String(a.cat).localeCompare(String(b.cat))||(a.type||'').localeCompare(b.type||'')||(a.name||'').localeCompare(b.name||''));
-    const rows=items.map(s=>`<div class="item matrow">
-      <div class="t" onclick="editSpare('${s.id}')">
-        <div class="n">${_deptBadge(s)} ${esc(s.type||'(미분류)')} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}</div>
-        <div class="mspec">${esc(s.name||'')}</div>
-        <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
-      </div>
-      <input class="inspq" type="number" inputmode="numeric" placeholder="실수량" value="${s.real==null?'':esc(String(s.real))}" onchange="setSpareReal('${s.id}',this.value)" style="width:64px;text-align:center;padding:6px;border-radius:8px">
-    </div>`).join('');
+    const rows=items.map(s=>{const chk=(s.real!=null&&s.real!=='');return `<div class="item matrow${chk?' checked':''}" id="row_${s.id}">
+        <div class="t">
+          <div class="n">${_deptBadge(s)} ${esc(s.type||'(미분류)')} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}${chk?' <span class="badge b-green">✓</span>':''}</div>
+          <div class="mspec">${esc(s.name||'')}</div>
+          <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
+        </div>
+        <div class="inspcol">
+          <input class="inspq" id="rq_${s.id}" type="number" inputmode="numeric" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
+          <button class="btn sm inspsave" onclick="saveSpareReal('${s.id}')">저장</button>
+        </div>
+      </div>`;}).join('');
     return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(g)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
   }).join('');
-  return `<div class="muted" style="margin:6px 0">창고 진열 순 검수 · 검수 ${done}/${list.length}건 · <span class="badge b-blue">계통</span> / <span class="badge b-green">설비</span>. 굵은 글씨=종류, 아래=규격.</div>${body}`;
+  return `<div class="muted" style="margin:6px 0">창고 진열 순 검수 · <b id="inspdone">${done}</b>/${list.length}건 검수 · <span class="badge b-blue">계통</span> / <span class="badge b-green">설비</span>. 실수량 입력 후 [저장].</div>${body}`;
+}
+async function saveSpareReal(id){
+  const el=document.getElementById('rq_'+id);if(!el)return;
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  const was=(s.real!=null&&s.real!=='');
+  s.real=(el.value===''?'':Number(el.value));s.updated=todayStr();
+  await dbPut('spares',s);
+  const chk=(s.real!==''&&s.real!=null);
+  const row=document.getElementById('row_'+id);
+  if(row){row.classList.toggle('checked',chk);
+    const n=row.querySelector('.n');
+    if(n){const hasCheck=/✓/.test(n.innerHTML);
+      if(chk&&!hasCheck)n.innerHTML+=' <span class="badge b-green">✓</span>';
+      if(!chk&&hasCheck)n.innerHTML=n.innerHTML.replace(/\s*<span class="badge b-green">✓<\/span>/,'');}}
+  const dn=document.getElementById('inspdone');
+  if(dn){const cur=S.spares.filter(x=>x.src==='master'&&x.real!=null&&x.real!=='' && ((S._spareDept||'전력계통과')==='전체'||x.dept===(S._spareDept||'전력계통과'))).length;dn.textContent=cur;}
+  toast(`${s.type||s.name} 실수량 ${chk?s.real+(s.unit||''):'지움'} 저장`);
 }
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
