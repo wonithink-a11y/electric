@@ -2,9 +2,23 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 index.html (= app_v51 배포본)
+  전력계통과 업무앱 index.html (= app_v53 배포본)
   ============================================================
   변경 이력
+  v53 (2026-07-15) : 정비자재 검수 — 과 배지·검색·내보내기 2탭
+    - 검수(종류별) 각 자재 행에 담당과 배지 표시(계통=파랑/설비=초록) — '전체'로 섞여도 구분.
+    - 검수 모드에 검색창 추가(품명·자재번호·종류·대분류). 목록 모드 검색도 자재번호·종류 포함.
+    - 내보내기 xlsx를 2개 탭으로: [원본순서] 원본 열·행순서 그대로(취합 부서 제출용) /
+      [정리(종류별)] 과→대분류→종류 정렬(자체 정리·검수용, 과부족 열 포함).
+  v52 (2026-07-15) : 정비자재 마스터 xlsx 연동 (예비품 재고)
+    - 회사 공통 자재 엑셀(정비자재마스터)을 앱에서 가져오기 → 창고 진열 순(대분류→종류)으로
+      재정렬해 검수. 각 자재에 seq(원본 행번호) 저장 → 내보내기는 항상 원본 순서로 복원.
+    - 적재 범위: 계전부 전력계통/전력설비만(약 426건). 그 외 부서는 제외.
+    - 261종 품목분류를 22개 대분류로 자동 롤업(matCat). 담당과 필터(계통/설비/전체).
+    - 예비품 화면 2모드: 📃 목록 / 🔍 검수(종류별, 실수량 즉시입력). 안전재고 이하 부족 경고.
+    - SheetJS(CDN) 지연로드 추가(기존 pdf.js/JSZip과 동일 패턴). spares 스토어에 필드 추가만
+      (seq/matNo/dept/cat/type/price/real/raw 등) — 신규 스토어·DB_VER 변경 없음, 기존 예비품 유지.
+    - 자재 실데이터는 로컬(IndexedDB)에만 저장(Firebase 미동기화) — 보안 원칙 유지.
   v51 (2026-07-15) : 더보기 '문서·도면' 분리 — 성격별 탭 재편
     - 기존 '문서·도면' 탭에 도면 문서함 + 보고서 생성(a방식)+ hwpx(b방식)이 섞여
       길고 알아보기 어렵던 것을 두 개 칩으로 분리.
@@ -3613,21 +3627,31 @@ function photoStrip(refType,refId){
 }
 
 /* ── 예비품 재고 ── */
-const _spLow=x=>x.minQty!=null&&x.minQty!==''&&Number(x.qty||0)<=Number(x.minQty);
+const _spLow=x=>x.minQty!=null&&x.minQty!==''&&Number(x.minQty)>0&&Number(x.qty||0)<=Number(x.minQty);
 function vSpare(){
   const low=S.spares.filter(_spLow);
-  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품 재고 <span class="cnt">${S.spares.length}</span></h2>
+  const mode=S._spareMode||'list';
+  const nMaster=S.spares.filter(s=>s.src==='master').length;
+  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품·정비자재 <span class="cnt">${S.spares.length}</span></h2>
       <button class="btn sm" onclick="editSpare()">+ 추가</button></div>
-    ${low.length?`<div class="section-note" style="color:#fca5a5">⚠️ 부족(최소수량 이하) ${low.length}건: ${low.slice(0,8).map(x=>esc(x.name)+' '+(x.qty||0)+'/'+x.minQty).join(', ')}</div>`:''}
-    <div class="row" style="margin:6px 0"><button class="btn ghost sm" onclick="useSpare('')">− 사용(차감)</button><button class="btn ghost sm" onclick="orderListDoc()">📋 발주 목록 생성</button></div>
-    <div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div>
-    <div id="splist">${spareListHtml()}</div>
+    ${low.length?`<div class="section-note" style="color:#fca5a5">⚠️ 부족(안전재고 이하) ${low.length}건: ${low.slice(0,8).map(x=>esc(x.name)+' '+(x.qty||0)+'/'+x.minQty).join(', ')}</div>`:''}
+    <div class="chips" style="margin:6px 0">
+      <button class="chip ${mode==='list'?'on':''}" onclick="S._spareMode='list';render()">📃 목록</button>
+      <button class="chip ${mode==='insp'?'on':''}" onclick="S._spareMode='insp';render()">🔍 검수(종류별) ${nMaster?'<span class="cnt">'+nMaster+'</span>':''}</button>
+    </div>
+    <div class="row" style="margin:6px 0;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost sm" onclick="importMaterialXlsx()">📥 자재마스터 가져오기(xlsx)</button>
+      <button class="btn ghost sm" onclick="exportMaterialXlsx()">📤 검수결과 내보내기(xlsx)</button>
+      <button class="btn ghost sm" onclick="useSpare('')">− 사용(차감)</button>
+      <button class="btn ghost sm" onclick="orderListDoc()">📋 발주 목록</button>
+    </div>
+    ${mode==='insp'?spareInspHtml():`<div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div><div id="splist">${spareListHtml()}</div>`}
     <button class="btn ghost sm full" onclick="go('more')">← 더보기로</button></div>`;
 }
 function spareListHtml(){
   const q=(S._spareQ||'').toLowerCase();
   let list=S.spares.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  if(q)list=list.filter(x=>((x.name||'')+' '+(x.spec||'')+' '+(x.location||'')+' '+(x.equipName||'')).toLowerCase().includes(q));
+  if(q)list=list.filter(x=>((x.name||'')+' '+(x.spec||'')+' '+(x.matNo||'')+' '+(x.type||'')+' '+(x.cat||'')+' '+(x.location||'')+' '+(x.equipName||'')).toLowerCase().includes(q));
   return list.map(x=>`<div class="item click" onclick="editSpare('${x.id}')">
       <div class="t"><div class="n">${esc(x.name)} ${_spLow(x)?'<span class="badge b-red">부족</span>':''}</div>
       <div class="d">${esc(x.spec||'')}${x.location?' · '+esc(x.location):''}${x.equipName?' · '+esc(x.equipName):''}</div></div>
@@ -3667,6 +3691,172 @@ async function saveSpare(id){
 async function delSpare(id){
   if(!(await confirmModal('이 예비품을 삭제할까요?')))return;
   await dbDel('spares',id);S.spares=S.spares.filter(v=>v.id!==id);closeModal();render();
+}
+
+/* ================= 정비자재 마스터 (xlsx 가져오기·검수·내보내기) v52 =================
+   - 원본 엑셀 순서를 seq(원본 행번호)로 보존 → 내보내기 시 원본 순서 재현
+   - 창고 진열(대분류→종류)로 재정렬해 검수. 실수량 입력 → 과부족 파악
+   - 범위: 계전부 전력계통/전력설비만 앱에 적재(MAT_DEPTS). 그 외는 제외 */
+const MAT_DEPTS={'계전부 전력계통':'전력계통과','계전부 전력설비':'전력설비과'};
+const MAT_RULES=[
+ ['베어링부속',['하우징','베어링유니트','슬리브','부시','리테이너']],
+ ['베어링',['베어링','볼베어링용볼']],
+ ['차단기',['차단기','nfb']],
+ ['개폐기·접촉기',['개폐기','접촉기','마그네트']],
+ ['계전기·릴레이·타이머',['계전기','릴레이','relay','타이머','timer']],
+ ['스위치·버튼',['스위치','버튼','토글','셀렉터','레버','리미트','switch']],
+ ['퓨즈·보호부품',['퓨즈','fuse','서지','피뢰','보호기']],
+ ['계기·센서·조절기',['압력계','온도계','게이지','gauge','트랜스미터','감지기','센서','미터','수위계','유량','계기용','계측','속도계','전도도','조절기','레귤레이터','지시계','기록계','분석기','검출']],
+ ['램프·표시등·부저',['램프','lamp','led','표시등','파일럿','부저','벨','신호등']],
+ ['콘덴서·변성기·변압기',['콘덴서','캐패시터','capacitor','변류기','변성기',' ct','pt','권선','변압기','트랜스']],
+ ['전동기·팬',['전동기','모터','motor','유도전동기','냉각팬','팬','fan','블로워','송풍']],
+ ['벨트',['벨트','belt']],
+ ['밸브',['밸브','valve','솔레노이드','스트레이너']],
+ ['필터',['필터','filter','엘리먼트']],
+ ['가스켓·씰·오링',['가스켓','개스킷','패킹','packing','씰','실링','메커니컬실','오링','o링','o-ring','오일실']],
+ ['배관·피팅',['니플','엘보우','소켓','플랜지','파이프','유니온','튜브','조인트','덕트','호스','커플링','플렉시블','강관','강판','소음기','밴드','캡,']],
+ ['전선·케이블·단자',['케이블','전선','단자','터미널','커넥터','서비스','부스바','배선']],
+ ['제어·전자모듈',['plc','로직','인버터','inverter','전자회로','기판','복합전자','모듈','컨트롤','pcb','드라이브','컨버터','전원공급','정류기','증폭기','통신']],
+ ['유압·공압',['유압','실린더','cylinder','공압','에어실','액추에이터']],
+ ['히터·전열',['히터','heater','전열']],
+ ['방진·기계부품',['진동방지','방진','롤러','샤프트','프로텍터','분할핀','체인','링크','기어','스프로킷','키,','핀,']],
+ ['배관강재·구조재',['탄소강','구조용','압연','형강','철판']],
+ ['공구·체결',['공구','드릴','비트','볼트','너트','와셔','나사','스프링','앵커']],
+];
+function matCat(typ,cls){
+  const hay=((typ||'')+' '+(cls||'')).toLowerCase();
+  for(const [name,kws] of MAT_RULES){for(const k of kws){if(hay.includes(k))return name;}}
+  return '기타';
+}
+function _numOr(v,d){if(v===null||v===undefined||v==='')return d;const n=Number(v);return isNaN(n)?d:n;}
+function loadSheetJS(){
+  if(window.XLSX)return Promise.resolve(window.XLSX);
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload=()=>window.XLSX?res(window.XLSX):rej(new Error('SheetJS 초기화 실패'));
+    sc.onerror=()=>rej(new Error('SheetJS 로드 실패 — 인터넷 연결 필요'));
+    document.head.appendChild(sc);
+  });
+}
+function importMaterialXlsx(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.xlsx,.xls';
+  inp.onchange=async()=>{
+    const file=inp.files[0];if(!file)return;
+    let XLSX;try{XLSX=await loadSheetJS();}catch(e){toast(e.message);return;}
+    try{
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      if(!rows.length){toast('빈 시트입니다');return;}
+      const hdr=rows[0].map(x=>String(x==null?'':x).trim());
+      const col=n=>hdr.indexOf(n);
+      const ci={dept:col('담당부서'),eq:col('설비구분'),matno:col('자재번호'),name:col('품명 및 규격'),
+        unit:col('단위'),cls:col('클래스'),stock:col('재고'),safe:col('안전재고'),price:col('단가'),
+        proc:col('조달품목'),note:col('부가정보')};
+      if(ci.dept<0||ci.matno<0){toast('형식 오류: 담당부서/자재번호 열을 찾을 수 없습니다');return;}
+      let typeCol=col('품목분류');if(typeCol<0)typeCol=16;
+      const existing=new Map(S.spares.filter(s=>s.matNo).map(s=>[s.matNo,s]));
+      const master=[];let added=0,updated=0,skipped=0;
+      for(let r=1;r<rows.length;r++){
+        const row=rows[r];if(!row||!row.length){continue;}
+        const dept=MAT_DEPTS[String(row[ci.dept]==null?'':row[ci.dept]).trim()];
+        if(!dept){skipped++;continue;}
+        const matNo=String(row[ci.matno]==null?'':row[ci.matno]).trim();if(!matNo){skipped++;continue;}
+        const typ=String(row[typeCol]==null?'':row[typeCol]).trim();
+        const cls=ci.cls>=0?String(row[ci.cls]==null?'':row[ci.cls]).trim():'';
+        const rec={seq:r+1,matNo,dept,eqKind:ci.eq>=0?String(row[ci.eq]==null?'':row[ci.eq]).trim():'',
+          cat:matCat(typ,cls),type:typ,
+          name:String(row[ci.name]==null?'':row[ci.name]).trim(),
+          unit:(ci.unit>=0?String(row[ci.unit]==null?'':row[ci.unit]).trim():'')||'EA',
+          qty:_numOr(row[ci.stock],0),minQty:_numOr(row[ci.safe],''),
+          price:_numOr(row[ci.price],''),procCode:ci.proc>=0?String(row[ci.proc]==null?'':row[ci.proc]).trim():'',
+          note:ci.note>=0?String(row[ci.note]==null?'':row[ci.note]).trim():'',
+          src:'master',raw:row,hdr,updated:todayStr()};
+        const ex=existing.get(matNo);
+        if(ex){rec.id=ex.id;rec.real=ex.real;rec.location=ex.location||'';updated++;}
+        else{rec.id='SP'+uid();added++;}
+        master.push(rec);
+      }
+      if(!master.length){toast('적재 대상(전력계통/전력설비) 자재가 없습니다');return;}
+      for(const rec of master){await dbPut('spares',rec);}
+      const ids=new Set(master.map(m=>m.id));
+      S.spares=S.spares.filter(s=>!ids.has(s.id)).concat(master);
+      S._spareMode='insp';render();
+      toast(`가져오기: 신규 ${added} · 갱신 ${updated} · 범위밖 ${skipped} 제외`);
+    }catch(e){toast('가져오기 실패: '+(e.message||e));}
+  };
+  inp.click();
+}
+async function exportMaterialXlsx(){
+  const mats=S.spares.filter(s=>s.src==='master'&&s.raw&&s.hdr);
+  if(!mats.length){toast('가져온 자재 마스터가 없습니다 — 먼저 가져오기 하세요');return;}
+  let XLSX;try{XLSX=await loadSheetJS();}catch(e){toast(e.message);return;}
+  const hdr=mats[0].hdr;
+  const cStock=hdr.indexOf('재고'),cReal=hdr.indexOf('실수량');
+  const bySeq=mats.slice().sort((a,b)=>(a.seq||0)-(b.seq||0));
+  const aoa1=[hdr];
+  for(const m of bySeq){const row=(m.raw||[]).slice();
+    if(cStock>=0)row[cStock]=m.qty;
+    if(cReal>=0&&m.real!=null&&m.real!=='')row[cReal]=m.real;
+    aoa1.push(row);}
+  const DORD={'전력계통과':1,'전력설비과':2};
+  const org=mats.slice().sort((a,b)=>(DORD[a.dept]||9)-(DORD[b.dept]||9)||String(a.cat).localeCompare(String(b.cat))||String(a.type).localeCompare(String(b.type))||String(a.matNo).localeCompare(String(b.matNo)));
+  const head2=['원본순서','담당과','설비구분','대분류','종류','자재번호','품명 및 규격','단위','재고','실수량','과부족','안전재고','단가','조달품목','비고'];
+  const aoa2=[head2];
+  for(const m of org){
+    const real=(m.real==null||m.real==='')?'':m.real;
+    const gap=(real===''?'':real-(Number(m.qty)||0));
+    aoa2.push([m.seq,m.dept,m.eqKind||'',m.cat,m.type,m.matNo,m.name,m.unit,(m.qty??0),real,gap,(m.minQty===''?'':m.minQty),(m.price===''?'':m.price),m.procCode||'',m.note||'']);
+  }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa1),'원본순서');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa2),'정리(종류별)');
+  XLSX.writeFile(wb,`정비자재_검수결과_${todayStr()}.xlsx`);
+  toast(`내보내기 완료 — 탭1 원본순서 / 탭2 종류별 (${mats.length}건)`);
+}
+function spareInspHtml(){
+  const dept=S._spareDept||'전력계통과';
+  const depts=[...new Set(S.spares.filter(s=>s.dept).map(s=>s.dept))];
+  const deptChips=['전체',...depts].map(d=>`<button class="chipf ${dept===d?'on':''}" onclick="S._spareDept='${d}';render()">${esc(d)}</button>`).join('');
+  const hasMaster=S.spares.some(s=>s.src==='master');
+  if(!hasMaster)return `<div class="chips">${deptChips}</div><div class="empty">가져온 자재가 없습니다 — 📥 자재마스터 가져오기(xlsx)</div>`;
+  return `<div class="chips">${deptChips}</div>
+    <div class="searchwrap"><input placeholder="검색: 품명·자재번호·종류·대분류" value="${esc(S._spareQ||'')}" oninput="filterSpareInsp(this.value)"></div>
+    <div id="inspbody">${spareInspBody()}</div>`;
+}
+function _deptBadge(s){
+  if(s.dept==='전력계통과')return '<span class="badge b-blue">계통</span>';
+  if(s.dept==='전력설비과')return '<span class="badge b-green">설비</span>';
+  return s.dept?`<span class="badge b-gray">${esc(s.dept)}</span>`:'';
+}
+function spareInspBody(){
+  const dept=S._spareDept||'전력계통과';
+  const q=(S._spareQ||'').toLowerCase();
+  let list=S.spares.filter(s=>s.cat&&s.src==='master');
+  if(dept!=='전체')list=list.filter(s=>s.dept===dept);
+  if(q)list=list.filter(s=>((s.name||'')+' '+(s.matNo||'')+' '+(s.type||'')+' '+(s.cat||'')+' '+(s.dept||'')+' '+(s.note||'')).toLowerCase().includes(q));
+  if(!list.length)return '<div class="empty">해당 자재 없음</div>';
+  const byCat={};list.forEach(s=>{(byCat[s.cat]=byCat[s.cat]||[]).push(s);});
+  const cats=Object.keys(byCat).sort((a,b)=>a.localeCompare(b));
+  const done=list.filter(s=>s.real!=null&&s.real!=='').length;
+  const body=cats.map(cat=>{
+    const items=byCat[cat].slice().sort((a,b)=>(a.type||'').localeCompare(b.type||'')||(a.name||'').localeCompare(b.name||''));
+    const rows=items.map(s=>`<div class="item">
+      <div class="t" onclick="editSpare('${s.id}')"><div class="n">${_deptBadge(s)} ${esc(s.name)} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}</div>
+      <div class="d">${esc(s.type||'')} · ${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div></div>
+      <input class="inspq" type="number" inputmode="numeric" placeholder="실수량" value="${s.real==null?'':esc(String(s.real))}" onchange="setSpareReal('${s.id}',this.value)" style="width:66px;text-align:center;padding:6px;border-radius:8px">
+    </div>`).join('');
+    return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(cat)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
+  }).join('');
+  return `<div class="muted" style="margin:6px 0">창고 진열(대분류→종류) 순 검수 · 검수 ${done}/${list.length}건 · 계통 <span class="badge b-blue">계통</span> / 설비 <span class="badge b-green">설비</span>. 실수량 입력 후 📤 내보내기.</div>${body}`;
+}
+function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
+async function setSpareReal(id,v){
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  s.real=(v===''?'':Number(v));s.updated=todayStr();
+  await dbPut('spares',s);
 }
 
 /* ── 예산 집계 ── */
