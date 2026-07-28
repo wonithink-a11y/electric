@@ -1008,14 +1008,14 @@ function closeModal(){$('#modal-root').innerHTML=''}
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
-  const tab=S.homeTab||'cal';
+  const tab=S.homeTab||'week';
+  const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';render()">${l}</button>`;
   return `
   <div class="chips subtab">
-    <button class="chip ${tab==='cal'?'on':''}" onclick="S.homeTab='cal';render()">🗓️ 달력·할일</button>
-    <button class="chip ${tab==='work'?'on':''}" onclick="S.homeTab='work';render()">📋 점검·검사</button>
-    <button class="chip ${tab==='hist'?'on':''}" onclick="S.homeTab='hist';render()">📚 완료이력</button>
+    ${chip('issue','현안')}${chip('week','점검검사')}${chip('todo','할일')}${chip('hist','완료')}
   </div>
-  ${tab==='cal'?homeCalTab():tab==='hist'?homeHistHtml():homeWorkTab()}
+  ${tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab()}
+  ${calHtml()}
   <div class="botpad"></div>`;
 }
 function homeIssuesCard(){
@@ -1040,8 +1040,45 @@ function homeIssuesCard(){
     </details>`:''}
   </details>`;
 }
-function homeCalTab(){
-  return `${calHtml()}${homeIssuesCard()}${todoWeekHtml()}${todoMonthHtml()}`;
+function homeInspTab(){
+  const [ws,we,ts]=_weekRange();
+  const wkInsp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we).sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
+  const wkChk=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c));
+  const wkN=wkInsp.length+wkChk.length;
+  const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)})).sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
+  const soon=insp.filter(i=>i.dd!==null&&i.dd<=30);
+  return `
+  <div class="searchwrap"><input placeholder="설비 검색 (이름·Tag No·판넬)" oninput="homeSearch(this.value)" id="home-q"></div>
+  <div id="home-sr"></div>
+  <div class="card"><h2>📌 이번주 점검·검사 <span class="cnt">${wkN}건</span></h2>
+    ${wkInsp.map(_inspRow).join('')}
+    ${wkChk.map(_chkRow).join('')}
+    ${wkN?'':'<div class="empty">이번주 점검·검사 없음 👍</div>'}</div>
+  ${chkCardHtml()}
+  <div class="card"><h2>🗓️ 다가오는 법정검사 <span class="cnt">D-30 이내 ${soon.length}건</span></h2>
+    ${insp.slice(0,5).map(i=>`
+      <div class="item click" onclick="go('insp')">
+        <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle)}</div></div>
+        ${ddayBadge(i.dd)}
+      </div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
+  </div>`;
+}
+function homeTodoTab(){
+  const [ws,we,ts]=_weekRange();const m=ts.slice(0,7);
+  const wk=S.todos.filter(x=>!x.done&&x.date<=we).sort((a,b)=>a.date.localeCompare(b.date));
+  const mo=S.todos.filter(x=>!x.done&&x.date>we&&x.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
+  const done=S.todos.filter(x=>x.done&&(x.date||'').startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
+  return `
+  <div class="card"><h2>📌 이번주 할 일 <span class="cnt">${wk.length}건</span></h2>
+    ${wk.slice(0,20).map(x=>_todoRow(x,ts)).join('')||'<div class="empty">이번주 할 일 없음 👍</div>'}
+    <button class="btn ghost sm full" onclick="openDay('${ts}')">＋ 오늘 할 일 추가</button></div>
+  <div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${mo.length}건</span></h2>
+    ${mo.slice(0,20).map(x=>_todoRow(x,ts)).join('')||'<div class="empty">이번주 이후 이번달 할 일 없음</div>'}
+    ${done.length?`<details class="donebox"><summary>✅ 이번 달 완료 ${done.length}건 (펼치기)</summary>
+      ${done.map(x=>`<div class="item"><div class="chk done" onclick="toggleTodo('${x.id}',0)">✓</div>
+        <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(x.title)}</div><div class="d">${esc(x.date)}</div></div>
+        <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
+  </div>`;
 }
 function _weekRange(){
   const t=new Date();const ts=todayStr();
@@ -1058,57 +1095,6 @@ function _todoRow(x,ts){return `<div class="item"><div class="chk" onclick="togg
 function _chkRow(c){return `<div class="item"><div class="chk" onclick="toggleChk('${c.id}')"></div>
   <div class="t"><div class="n">${esc(c.name)}</div><div class="d">주기업무${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
   <span class="badge b-gray">${CYCLE_KO[c.cycle]||''}</span></div>`;}
-function todoWeekHtml(){
-  const [ws,we,ts]=_weekRange();
-  const todos=S.todos.filter(x=>!x.done&&x.date<=we).sort((a,b)=>a.date.localeCompare(b.date));
-  const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we)
-    .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
-  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c));
-  const n=todos.length+insp.length+chks.length;
-  return `<div class="card"><h2>📌 이번주 할 일 <span class="cnt">${n}건</span></h2>
-    ${insp.map(_inspRow).join('')}
-    ${todos.slice(0,14).map(x=>_todoRow(x,ts)).join('')}
-    ${chks.map(_chkRow).join('')}
-    ${n?'':'<div class="empty">이번주 할 일 없음 👍</div>'}
-    <button class="btn ghost sm full" onclick="openDay('${ts}')">＋ 오늘 할 일 추가</button></div>`;
-}
-function todoMonthHtml(){
-  const [ws,we,ts]=_weekRange();
-  const m=ts.slice(0,7);
-  const todos=S.todos.filter(x=>!x.done&&x.date>we&&x.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
-  const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>we&&i.nextDue.startsWith(m))
-    .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
-  const chks=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')!=='A'&&!isChkDone(c));
-  const n=todos.length+insp.length+chks.length;
-  const done=S.todos.filter(x=>x.done&&(x.date||'').startsWith(m)).sort((a,b)=>b.date.localeCompare(a.date));
-  return `<div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${n}건</span></h2>
-    ${insp.map(_inspRow).join('')}
-    ${todos.slice(0,14).map(x=>_todoRow(x,ts)).join('')}
-    ${chks.map(_chkRow).join('')}
-    ${n?'':'<div class="empty">이번주 이후 이번달 할 일 없음</div>'}
-    ${done.length?`<details class="donebox"><summary>✅ 이번 달 완료 ${done.length}건 (펼치기)</summary>
-      ${done.map(x=>`<div class="item"><div class="chk done" onclick="toggleTodo('${x.id}',0)">✓</div>
-        <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(x.title)}</div><div class="d">${esc(x.date)}</div></div>
-        <button class="btn danger sm" onclick="delTodoHome('${x.id}')">✕</button></div>`).join('')}</details>`:''}
-    </div>`;
-}
-function homeWorkTab(){
-  const dueChk=S.checklists.filter(c=>!isChkDone(c));
-  const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)}))
-    .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
-  const soon=insp.filter(i=>i.dd!==null&&i.dd<=30);
-  return `
-  <div class="searchwrap"><input placeholder="설비 검색 (이름·Tag No·판넬)" oninput="homeSearch(this.value)" id="home-q"></div>
-  <div id="home-sr"></div>
-  ${chkCardHtml()}
-  <div class="card"><h2>🗓️ 다가오는 법정검사 <span class="cnt">D-30 이내 ${soon.length}건</span></h2>
-    ${insp.slice(0,5).map(i=>`
-      <div class="item click" onclick="go('insp')">
-        <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle)}</div></div>
-        ${ddayBadge(i.dd)}
-      </div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
-  </div>`;
-}
 function homeSearch(q){
   const el=$('#home-sr');
   q=q.trim().toLowerCase();
