@@ -3957,17 +3957,21 @@ async function setSpareReal(id,v){
 }
 
 /* ── 예산 집계 ── */
-const BUD_CATS=['정비','자재/예비품','용역','검사','안전','기타'];
+const BUD_CATS=['정비','자재/예비품','용역','검사','수수료','안전','기타'];
 const _won=n=>Number(n||0).toLocaleString('ko-KR');
 function vBudget(){
-  const yrs=[...new Set(S.budget.map(b=>(b.date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const dated=S.budget.filter(b=>b.kind!=='필요'); // 필요예산은 연도 집계에서 제외
+  const yrs=[...new Set(dated.map(b=>(b.date||'').slice(0,4)).filter(Boolean))].sort().reverse();
   let yr=S._budYear||(yrs[0]||String(new Date().getFullYear()));
   if(yrs.length&&!yrs.includes(yr))yr=yrs[0];
-  const items=S.budget.filter(b=>(b.date||'').startsWith(yr)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const items=dated.filter(b=>(b.date||'').startsWith(yr)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const byCat={};let exec=0,plan=0;
   items.forEach(b=>{const a=Number(b.amount||0);(b.kind==='계획')?plan+=a:exec+=a;byCat[b.category||'기타']=(byCat[b.category||'기타']||0)+((b.kind==='계획')?0:a);});
   const maxc=Math.max(1,...Object.values(byCat));
   const yrChips=(yrs.length?yrs:[yr]).map(y=>`<button class="chipf ${y===yr?'on':''}" onclick="S._budYear='${y}';render()">${y}</button>`).join('');
+  // 필요예산(내년 반영 대기): 연도 무관, 매년반복 우선 → 목표연도 순
+  const needs=S.budget.filter(b=>b.kind==='필요').sort((a,b)=>(b.recur?0:1)-(a.recur?0:1)||String(a.targetYear||'').localeCompare(String(b.targetYear||'')));
+  const needSum=needs.reduce((s,b)=>s+Number(b.amount||0),0);
   return `<div class="card"><div class="row"><h2 class="grow">💰 예산 집계 <span class="cnt">${yr}</span></h2>
       <button class="btn sm" onclick="editBudget()">+ 항목</button></div>
     <div class="chips">${yrChips}</div>
@@ -3986,18 +3990,40 @@ function vBudget(){
       <div class="t"><div class="n">${esc(b.item||b.category||'-')} ${b.kind==='계획'?'<span class="badge b-gray">계획</span>':''}</div>
       <div class="d">${esc(b.date||'')} · ${esc(b.category||'')}${b.equipName?' · '+esc(b.equipName):''}</div></div>
       <div style="text-align:right">${_won(b.amount)}원</div></div>`).join('')||'<div class="empty">등록된 항목 없음</div>'}
-    <button class="btn ghost sm full" onclick="go('more')">← 더보기로</button></div>`;
+  </div>
+  <div class="card"><div class="row"><h2 class="grow">📌 필요예산 <span class="cnt">${needs.length}건</span></h2>
+      <button class="btn sm" onclick="editBudget('','필요')">+ 필요항목</button></div>
+    <div class="muted">올해 예산에 없어 집행 못 한 항목·매년 필수 항목을 모아둡니다. 내년 편성 때 [→ 계획으로]를 누르면 목표연도 계획으로 추가됩니다.</div>
+    <div class="kv"><span class="k">예상 합계</span><span><b>${_won(needSum)}</b> 원</span></div>
+    ${needs.length?needs.map(b=>`<div class="item">
+      <div class="t click" onclick="editBudget('${b.id}')"><div class="n">${esc(b.item||'-')} ${b.recur?'<span class="badge b-blue">매년</span>':''}</div>
+        <div class="d">${esc(b.category||'')} · 목표 ${esc(String(b.targetYear||'-'))}년${b.reason?' · '+esc(b.reason):''}</div></div>
+      <div style="text-align:right;white-space:nowrap"><div>${_won(b.amount)}원</div>
+        <button class="btn ghost sm" style="margin-top:4px" onclick="budgetNeedToPlan('${b.id}')">→ 계획으로</button></div></div>`).join(''):'<div class="empty">등록된 필요항목 없음</div>'}
+    <button class="btn ghost sm full" style="margin-top:10px" onclick="go('more')">← 더보기로</button>
+  </div>`;
 }
-function editBudget(id){
+function editBudget(id,presetKind){
   const b=id?S.budget.find(v=>v.id===id):null;
-  openModal(`<h3>${b?'예산 항목 수정':'예산 항목 추가'}</h3>
+  const kind=b?.kind||presetKind||'집행';
+  const nextYr=String(new Date().getFullYear()+1);
+  const needOn=(kind==='필요');
+  openModal(`<h3>${b?'예산 항목 수정':(needOn?'필요예산 추가':'예산 항목 추가')}</h3>
     <label>일자</label><input id="bd-d" type="date" value="${esc(b?.date||todayStr())}">
     <div class="row">
       <div class="grow"><label>분류</label><select id="bd-c">${BUD_CATS.map(c=>`<option ${b?.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
-      <div class="grow"><label>구분</label><select id="bd-k">${['집행','계획'].map(k=>`<option ${b?.kind===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div class="grow"><label>구분</label><select id="bd-k" onchange="_budKindToggle()">${['집행','계획','필요'].map(k=>`<option ${kind===k?'selected':''}>${k}</option>`).join('')}</select></div>
     </div>
-    <label>항목명</label><input id="bd-i" value="${esc(b?.item||'')}" placeholder="예: MC 교체, 절연저항계 교정">
+    <label>항목명</label><input id="bd-i" value="${esc(b?.item||'')}" placeholder="예: 도로점용수수료, MC 교체, 절연저항계 교정">
     <label>금액(원)</label><input id="bd-a" type="number" value="${esc(String(b?.amount??''))}">
+    <div id="bd-need" style="display:${needOn?'block':'none'};border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0">
+      <div class="muted" style="margin-bottom:6px">📌 필요예산 (내년 반영 대기) — 집행/계획 합계엔 안 잡힙니다</div>
+      <label>사유</label><input id="bd-reason" value="${esc(b?.reason||'')}" placeholder="예: 올해 미편성으로 집행 불가">
+      <div class="row">
+        <div class="grow"><label>반영 목표연도</label><input id="bd-ty" type="number" value="${esc(String(b?.targetYear||nextYr))}"></div>
+        <div class="grow"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bd-recur" type="checkbox" style="width:auto" ${b?.recur?'checked':''}> 매년 반복(필수)</label></div>
+      </div>
+    </div>
     <label>연결 설비(선택)</label><input id="bd-e" list="eqnames" value="${esc(b?.equipName||'')}">
     <datalist id="eqnames">${S.equipment.slice(0,600).map(e=>`<option value="${esc(e.name)}">`).join('')}</datalist>
     <label>비고</label><input id="bd-note" value="${esc(b?.note||'')}">
@@ -4007,13 +4033,27 @@ function editBudget(id){
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveBudget('${b?.id||''}')">저장</button></div>`);
 }
+function _budKindToggle(){
+  const el=document.getElementById('bd-need');if(el)el.style.display=($('#bd-k').value==='필요')?'block':'none';
+}
 async function saveBudget(id){
   const obj=id?S.budget.find(v=>v.id===id):{id:'BD'+uid()};
   Object.assign(obj,{date:$('#bd-d').value,category:$('#bd-c').value,kind:$('#bd-k').value,
-    item:$('#bd-i').value.trim(),amount:Number($('#bd-a').value||0),equipName:$('#bd-e').value.trim(),note:$('#bd-note').value.trim()});
+    item:$('#bd-i').value.trim(),amount:Number($('#bd-a').value||0),equipName:$('#bd-e').value.trim(),note:$('#bd-note').value.trim(),
+    reason:$('#bd-reason')?$('#bd-reason').value.trim():(obj.reason||''),
+    targetYear:$('#bd-ty')?($('#bd-ty').value||'').trim():(obj.targetYear||''),
+    recur:$('#bd-recur')?$('#bd-recur').checked:!!obj.recur});
   await dbPut('budget',obj);if(!id)S.budget.push(obj);
-  if(obj.date)S._budYear=obj.date.slice(0,4);
+  if(obj.kind!=='필요'&&obj.date)S._budYear=obj.date.slice(0,4);
   closeModal();render();toast('저장 완료');
+}
+async function budgetNeedToPlan(id){
+  const b=S.budget.find(v=>v.id===id);if(!b)return;
+  const ty=String(b.targetYear||(new Date().getFullYear()+1)).slice(0,4);
+  const plan={id:'BD'+uid(),date:ty+'-01-01',category:b.category||'기타',kind:'계획',
+    item:b.item||'',amount:Number(b.amount||0),equipName:b.equipName||'',note:b.reason?('[필요예산] '+b.reason):''};
+  await dbPut('budget',plan);S.budget.push(plan);S._budYear=ty;
+  render();toast(ty+'년 계획으로 추가됨'+(b.recur?' (매년 항목은 목록에 유지)':''));
 }
 async function delBudget(id){
   if(!(await confirmModal('이 항목을 삭제할까요?')))return;
@@ -4573,7 +4613,7 @@ function annualReport(){
   const ctop=Object.keys(cause).sort((a,b)=>cause[b]-cause[a]).slice(0,5).map(c=>c+' '+cause[c]+'건').join(', ');
   const chkY=S.checklogs.filter(l=>inY(l.date)).length;
   const inspY=S.inspections.reduce((n,i)=>n+((i.history||[]).filter(h=>inY(h.date)).length),0);
-  const bY=S.budget.filter(b=>inY(b.date));const exec=bY.filter(b=>b.kind!=='계획').reduce((s,b)=>s+Number(b.amount||0),0);
+  const bY=S.budget.filter(b=>b.kind!=='필요'&&inY(b.date));const exec=bY.filter(b=>b.kind!=='계획').reduce((s,b)=>s+Number(b.amount||0),0);
   const mY=S.measurements.filter(m=>inY(m.date));const mW=mY.filter(m=>measJudge(m)==='주의').length;
   const t=`[${Y}년 전기설비 유지보수 실적 보고]
 부서: 전력계통과   작성자: 허남원   작성일: ${todayStr()}
@@ -4610,7 +4650,7 @@ function vStats(){
   const soon=insp.filter(i=>i.dd!=null&&i.dd<=30).length;
   const inspDoneY=S.inspections.reduce((n,i)=>n+((i.history||[]).filter(h=>inY(h.date)).length),0);
   // 예산
-  const bY=S.budget.filter(b=>inY(b.date));
+  const bY=S.budget.filter(b=>b.kind!=='필요'&&inY(b.date));
   const exec=bY.filter(b=>b.kind!=='계획').reduce((s,b)=>s+Number(b.amount||0),0);
   const plan=bY.filter(b=>b.kind==='계획').reduce((s,b)=>s+Number(b.amount||0),0);
   const execRate=plan?Math.round(exec/plan*100):0;
