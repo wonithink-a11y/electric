@@ -2,22 +2,108 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v46.html
+  전력계통과 업무앱 app_v58.html
   ============================================================
   변경 이력
-  v46 (2026-07-28) : 보안 금고(현장 비번·전산 계정) 신설
+  v58 (2026-07-28) : 보안 금고(현장 비번·전산 계정) 신설
     - [신규 모듈] 더보기 > 관리·도구 > "🔐 보안 금고": 현장 물리 비번(전기실 도어락·판넬
-      다이얼)과 전산 계정(시스템명·ID·비번·접속경로)을 저장. 두 유형을 vault 스토어 하나에
-      type('site'/'account')로 구분해 관리.
+      다이얼)과 전산 계정(시스템명·ID·비번·접속경로)을 저장. vault 스토어 하나에
+      type('site'/'account')로 구분.
     - [보안] 마스터 비밀번호 → 기존 deriveKey(PBKDF2-SHA256-150k → AES-GCM) 재사용. 각 항목의
       모든 필드(이름·ID·비번·메모)를 통째로 AES-GCM 암호화해 IndexedDB에 저장(평문 미저장).
       마스터 키는 세션 메모리(_vaultKey)에만 두고 새로고침/잠그기 시 소멸. meta 'vaultKdf'에
-      salt+검증토큰(VAULT_OK 암호문)만 저장해 비번 확인.
+      salt+검증토큰만 저장해 비번 확인.
     - [보안] vault는 BACKUP_STORES·FB_SYNC_STORES 어디에도 미포함 → 평문 JSON 백업·Firebase·
       Drive 자동백업에 절대 올라가지 않음. 옮길 땐 금고 전용 암호화 백업(.vault, 마스터 비번으로만
       복호화)만 사용. AI API 전송 대상 아님.
     - [DB] DB_VER 10→11, STORES에 vault 추가(onupgradeneeded가 누락 스토어만 생성 → 기존 데이터
-      전부 유지, 별도 마이그레이션 불필요). 비번 분실 시 [금고 초기화]로 재설정(항목 삭제).
+      전부 유지, 마이그레이션 불필요). 비번 분실 시 [금고 초기화]로 재설정.
+  v57 (2026-07-15) : 검수 실수량 해제(취소) 버튼
+    - 검수 완료(초록 ✓)된 행에만 [해제] 버튼 표시 → 누르면 실수량 지움·✓/초록바 제거·카운트 감소.
+    - 잘못 입력한 검수를 되돌리기 쉬움. '0개'(정상 검수)와 '검수 안 함'(해제)을 구분 유지.
+    - CSS로 미검수 행에는 해제 버튼 숨김(.checked일 때만 노출) — DOM 조작 없이 자동 토글.
+  v56 (2026-07-15) : 더보기 서브탭 순서·기본값 변경
+    - 서브탭 순서: 관리·도구 ↔ 도면·문서 위치 교체 → 🧰관리·도구 · 📝보고서 · 🛡️안전·법령 · 🗂️도면·문서 · ⚙️데이터·설정.
+    - 더보기 진입 시 기본 표시 탭을 '관리·도구'로 변경(기존 도면·문서).
+  v55 (2026-07-15) : 정비자재 검수 조작 개선 — 실수량 저장 버튼
+    - 검수 행에서 실수량 칸 아래 [저장] 버튼 신설. 입력 후 저장 누르면 토스트+초록 ✓ 표시,
+      상단 '검수 N/…건' 카운트도 즉시 갱신(그룹 접힘 유지, 스크롤 안 튐).
+    - 검수 모드에서 행 탭 → 수정 모달 진입 제거(실수 방지). 수정·삭제는 목록 모드에서.
+    - 저장 시 그룹 펼침·스크롤 위치 보존(전체 재렌더 안 함).
+  v54 (2026-07-15) : 정비자재 검수 화면 가독성 개선
+    - 분류 단위 축소: 22개 대분류 → 8개 상위분류로 묶어 그룹 헤더 수 대폭 감소
+      (개폐·차단 / 계전·제어 / 계측 / 전원·표시 / 회전기·동력 / 유체·배관 / 구조·소모 / 기타).
+    - 행 재설계로 품명 잘림 해소: 1행=종류(한글, 굵게)+과배지, 2행=규격/품명 전체 줄바꿈 표시,
+      3행=자재번호·장부수량. 클릭해 들어가지 않아도 무슨 부품인지 화면에서 바로 확인.
+    - 상세 대분류(cat)·종류(type)는 그대로 저장(내보내기·검색에 유지). 표시 방식만 변경.
+  v53 (2026-07-15) : 정비자재 검수 — 과 배지·검색·내보내기 2탭
+    - 검수(종류별) 각 자재 행에 담당과 배지 표시(계통=파랑/설비=초록) — '전체'로 섞여도 구분.
+    - 검수 모드에 검색창 추가(품명·자재번호·종류·대분류). 목록 모드 검색도 자재번호·종류 포함.
+    - 내보내기 xlsx를 2개 탭으로: [원본순서] 원본 열·행순서 그대로(취합 부서 제출용) /
+      [정리(종류별)] 과→대분류→종류 정렬(자체 정리·검수용, 과부족 열 포함).
+  v52 (2026-07-15) : 정비자재 마스터 xlsx 연동 (예비품 재고)
+    - 회사 공통 자재 엑셀(정비자재마스터)을 앱에서 가져오기 → 창고 진열 순(대분류→종류)으로
+      재정렬해 검수. 각 자재에 seq(원본 행번호) 저장 → 내보내기는 항상 원본 순서로 복원.
+    - 적재 범위: 계전부 전력계통/전력설비만(약 426건). 그 외 부서는 제외.
+    - 261종 품목분류를 22개 대분류로 자동 롤업(matCat). 담당과 필터(계통/설비/전체).
+    - 예비품 화면 2모드: 📃 목록 / 🔍 검수(종류별, 실수량 즉시입력). 안전재고 이하 부족 경고.
+    - SheetJS(CDN) 지연로드 추가(기존 pdf.js/JSZip과 동일 패턴). spares 스토어에 필드 추가만
+      (seq/matNo/dept/cat/type/price/real/raw 등) — 신규 스토어·DB_VER 변경 없음, 기존 예비품 유지.
+    - 자재 실데이터는 로컬(IndexedDB)에만 저장(Firebase 미동기화) — 보안 원칙 유지.
+  v51 (2026-07-15) : 더보기 '문서·도면' 분리 — 성격별 탭 재편
+    - 기존 '문서·도면' 탭에 도면 문서함 + 보고서 생성(a방식)+ hwpx(b방식)이 섞여
+      길고 알아보기 어렵던 것을 두 개 칩으로 분리.
+      · 🗂️ 도면·문서 : 문서함(가져오기·등록·검색·열람·OCR) + 📋 매뉴얼 진행 추적(별도 카드로 분리)
+      · 📝 보고서 : 보고서 생성기(a방식) + hwpx 직접 생성(b방식)
+    - 더보기 칩: 🗂️도면·문서 · 📝보고서 · 🛡️안전·법령 · 🧰관리·도구 · ⚙️데이터·설정 (4→5)
+    - 표시 구조만 재배치, 기능 함수·데이터 무변경.
+  v50 (2026-07-15) : 홈 서브탭·더보기 명칭/그룹핑 정리 (내용과 일치)
+    - 홈 서브탭 이름 정정: '검사·현안'→'점검·검사'(실제 내용은 주기점검+법정검사,
+      현안 카드는 달력 탭에 있어 명칭 불일치였음), '이력'→'완료이력'.
+    - 더보기 '관리·도구' 재그룹핑: 예비품/예산/실적/메모가 한 카드에 섞여 있던 것을
+      '🧰 재고·예산' / '📈 실적·메모' 두 소제목으로 분리(메모가 제목에 없어 안 보이던 문제 해결).
+    - 표시 로직만 변경, 데이터·화면 함수 무변경.
+  v49 (2026-07-15) : 하단 탭 7→5 축소 (모바일 엄지 조작·홈·계통 우선)
+    - 최상위 탭: 🏠홈 · 🔌계통 · ⚡설비 · 📐도면 · ⚙️더보기 (자주 쓰는 홈·계통 앞 배치).
+    - 📋검사·✅체크는 최상위에서 내림 → 더보기 '🧰 관리·도구'에 진입 버튼 신설.
+      (검사 D-30·주기체크는 홈 대시보드에 이미 요약 노출되어 접근성 동일)
+    - VIEWS/화면 로직·데이터 무변경. insp/chk 화면은 그대로 go()로 진입.
+  v48 (2026-07-15) : 완료 현안 → 정비이력(설비별 고장·조치) 승격
+    - 완료된 현안 행에 '🔧 이력화' 버튼 추가 → 설비 선택 + hwpx 8필드
+      (날짜·설비·내용·원인·조치·차단범위·소요·비고) 입력 후 faults 스토어에 저장.
+    - 승격된 현안은 '이력화' 배지 표시, 중복 승격 방지(issues.promotedFaultId).
+      fault.fromIssue로 원본 현안 역참조.
+    - faults는 보안상 로컬(IndexedDB)에만 저장(Firebase 미동기화) — 기존 원칙 유지.
+    - 스키마 변경 없음(promotedFaultId/fromIssue는 선택 필드, 마이그레이션 불필요).
+  v47 (2026-07-15) : 현안 완료 데이터 보존 — 완료 후 사라지던 문제 해결
+    - (기존) 진행 중 현안에서 완료 체크 시 done=true로만 바뀌고 화면에서 사라져 내용 확인 불가.
+      데이터는 남아있었으나 어디서도 볼 수 없었음.
+    - homeIssuesCard: 진행 중 현안 아래 '완료된 현안 N건(펼치기)' 접이식 토글 추가.
+      완료일 표시 + 되돌리기(진행중 복원) + 삭제. (todos 완료 토글과 동일 UX)
+    - homeHistHtml(이력 탭): 완료한 현안을 주기업무·법정검사 완료이력과 함께 월별로 편입.
+      완료일(doneDate) 기준 월 그룹, 탭하면 현안 수정 열림 → 연말 실적·정비이력 정리에 바로 활용.
+    - 신규 함수 reopenIssue(진행중 복원)·delIssueHome(홈에서 삭제) 추가.
+    - 스키마 변경 없음: issues.done/doneDate는 v46부터 저장되던 필드(마이그레이션 불필요).
+      doneDate 누락된 과거 완료건은 date로 대체 표시(방어 처리).
+  v46 (2026-07-14) : 계통 뷰 재구성 — 경로/드릴다운/단선도 서브탭
+    - 전원계통 트리 화면을 3개 서브탭으로 개편(모바일 조작성 개선). 기존 전압탭 아코디언 방식이
+      "연결성 부족 + 펼치기 불편"하다는 문제를 해소.
+      · [↳ 경로] 설비 선택 → 인입~설비 세로 경로 체인 + 차단점 배지 + 차단범위 + LOTO 바로 시작 (모듈② 조회A/B)
+      · [☰ 드릴다운] 브레드크럼 + 직속 상/하위만 한 화면씩 탐색
+      · [▤ 단선도] 전체 계통 SVG를 한손 이동·두손가락(휠) 확대·미니맵으로 열람
+        + 시작노드(전체/인입/피더) 드롭다운으로 한 계통만 골라보기.
+        + 터치 개선: 박스 전체 탭 = 펼치기/접기(▸▾), 오른쪽 ⓘ 영역 = 차단경로 상세(작은 +/− 배지 폐지로 오탭 방지).
+        + 기본 펼침 깊이 확대(DIA_AUTO_DEPTH=3): 상위 3레벨은 기본으로 펼쳐 보이고 그 아래 분기만 접힘. 모두 펼치기/기본 접기.
+        + 루트 판정에 고아 노드 포함(treeRootNodes): 상위 연결이 끊긴 계통(예: DH 수전)도 전체보기·드롭다운에 표시.
+        + 접기 토글 시 확대·위치 유지, 피더 변경·전체보기 시에만 재맞춤.
+      · 도면 세부내용 통합: 노드에 details(도면에서 읽은 패널 내역·한 줄에 하나)와 docId(문서함 도면 연결) 필드 추가(스키마 확장·마이그레이션 불필요).
+        - editNode에 '연결 도면' 선택 + '도면 세부내용' textarea. nodeMenu에서 세부내용 표시 + 📄 도면 열기(viewDoc).
+        - 계통 화면 상단 검색창 재도입(treeFind): 이름·판넬·메모 + details까지 검색 → 매칭 노드로 이동·상세 표시(예: 'ROTARY FEEDER' 검색).
+        - 단선도 박스에 세부내용/도면 보유 표시(우하단 주황 점).
+    - 홈: '진행 중 현안'을 달력·할일 탭의 달력 아래·이번주 할일 위로 배치. 기본은 접힘(건수만 표시), 탭하면 펼쳐 내용 확인(details). 검사·현안 탭의 중복 제거. 기간 미정 유지보수(예: 터빈룸 팬 정비)는 현안으로 등록→완료 전까지 유지.
+    - 데이터 스키마 변경 없음(기존 S.tree {id,parentId,name,type,voltage,equipId,panelNo,note} 그대로 사용).
+      기존 헬퍼(pathUp/descendants/nodeKids/startLoto/nodeMenu 등) 재사용. 마이그레이션 불필요.
+    - vTree는 새 서브탭 렌더로 완전 교체. 구 전압탭 렌더(treeSvg/treeVoltTab/treeRootsForTab 등)는 더 이상 호출되지 않음(정의는 잔존·미사용). 상태값 _treeSubTab/_drillId/_treePathId 추가.
   v45 (2026-07-14) : 판넬번호 전용 필드 + 버전 동기화
     - [동기화] 배포용 app/index.html이 v32에서 멈춰있고 실제 개발은 도면모음 폴더의 app_v44.html로만
       진행되어온 상태를 확인·통합. 이 파일을 기준으로 app/index.html에 배포, v33~44에서 만든 기능
@@ -391,6 +477,16 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .item .t{flex:1;min-width:0}
 .item .t .n{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .item .t .d{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.matrow{align-items:flex-start}
+.item.matrow .t .n{white-space:normal;font-size:14px;font-weight:700}
+.item.matrow .mspec{font-size:13px;white-space:normal;word-break:break-word;line-height:1.35;margin-top:3px}
+.item.matrow .mmeta{font-size:11px;color:var(--dim);margin-top:3px}
+.item.matrow .inspcol{display:flex;flex-direction:column;gap:5px;flex:none;width:78px}
+.item.matrow .inspq{width:100%;text-align:center;padding:7px 4px;border-radius:8px}
+.item.matrow .inspsave{padding:6px 4px;font-size:12px;width:100%}
+.item.matrow.checked{border-left:3px solid #34d399;padding-left:6px}
+.item.matrow .inspclear{padding:5px 4px;font-size:11px;width:100%;display:none}
+.item.matrow.checked .inspclear{display:block}
 .item.click{cursor:pointer;border-radius:10px;transition:background .12s}
 .item.click:active{background:var(--panel2)}
 @media(hover:hover){.item.click:hover{background:color-mix(in srgb,var(--panel2) 60%,transparent)}}
@@ -535,6 +631,37 @@ hr{border:none;border-top:1px solid var(--line);margin:13px 0}
 .tg-n:active rect{stroke:var(--accent);}
 .tg-more{fill:var(--dim);font-size:10px;text-anchor:middle;}
 mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
+/* 계통 뷰 v46 — 경로/드릴다운/단선도 서브탭 */
+.tpath-node{display:flex;align-items:center;gap:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tpath-node.brk{border-color:var(--danger)}
+.tpath-node.cur{border:2px solid var(--accent)}
+.tpath-ic{font-size:15px;flex:none}
+.tpath-nm{font-size:14px;flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.tpath-meta{font-size:11px;color:var(--dim)}
+.tpath-brk{font-size:10px;font-weight:700;color:var(--danger);background:var(--panel);border:1px solid var(--danger);border-radius:20px;padding:2px 8px;white-space:nowrap;flex:none}
+.tpath-arrow{color:var(--dim);text-align:left;padding-left:20px;font-size:15px;line-height:1.2}
+.tscope{display:flex;align-items:center;gap:9px;font-size:14px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;margin-bottom:7px}
+.tscope-dot{width:7px;height:7px;border-radius:50%;background:var(--danger);flex:none}
+.tcrumb{display:flex;flex-wrap:wrap;gap:2px 6px;align-items:center;font-size:12px;margin-bottom:12px}
+.tcrumb-a{color:var(--accent);cursor:pointer}
+.tcrumb-sep{color:var(--dim)}
+.tcrumb-cur{color:var(--txt);font-weight:700}
+.tdrill-head{border:1px solid var(--accent);border-radius:10px;padding:12px;cursor:pointer}
+.tdrill-head.brk{border-color:var(--danger)}
+.tdrill-nm{font-size:16px;font-weight:700}
+.tdrill-meta{font-size:12px;color:var(--dim);margin-top:3px}
+.tkid{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
+.tkid-ic{font-size:15px;flex:none}
+.tkid-nm{font-size:14px;flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.tkid-arr{color:var(--dim);font-size:16px;flex:none}
+.tdia-box{position:relative;width:100%;height:62vh;min-height:360px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;overflow:hidden;touch-action:none}
+#tdia-svg{width:100%;height:100%;display:block;cursor:grab}
+.tdia-mini{position:absolute;right:8px;bottom:8px;width:118px;height:92px;background:var(--panel);border:1px solid var(--line);border-radius:8px;opacity:.95}
+#tdia-view{fill:rgba(120,160,220,.18);stroke:var(--accent);stroke-width:1.5}
+.issuebox>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:16px}
+.issuebox>summary::-webkit-details-marker{display:none}
+.issuebox>summary::after{content:'▾';color:var(--dim);font-size:13px;margin-left:8px}
+.issuebox[open]>summary::after{content:'▴'}
 </style>
 </head>
 <body>
@@ -546,11 +673,9 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <main id="app"></main>
 <nav id="nav">
   <button data-v="home"><span class="ic">🏠</span>홈</button>
-  <button data-v="docfind"><span class="ic">📐</span>도면</button>
-  <button data-v="equip"><span class="ic">⚡</span>설비</button>
   <button data-v="tree"><span class="ic">🔌</span>계통</button>
-  <button data-v="insp"><span class="ic">📋</span>검사</button>
-  <button data-v="chk"><span class="ic">✅</span>체크</button>
+  <button data-v="equip"><span class="ic">⚡</span>설비</button>
+  <button data-v="docfind"><span class="ic">📐</span>도면</button>
   <button data-v="more"><span class="ic">⚙️</span>더보기</button>
 </nav>
 <div id="modal-root"></div>
@@ -588,7 +713,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],vault:[],_vaultKdf:null,view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null,_treeVoltTab:'전체'};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],vault:[],_vaultKdf:null,view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null,_treeVoltTab:'전체',_treeSubTab:'path',_drillId:'',_treePathId:'',_treeDiaRoot:''};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -887,14 +1012,36 @@ function vHome(){
   return `
   <div class="chips subtab">
     <button class="chip ${tab==='cal'?'on':''}" onclick="S.homeTab='cal';render()">🗓️ 달력·할일</button>
-    <button class="chip ${tab==='work'?'on':''}" onclick="S.homeTab='work';render()">📋 검사·현안</button>
-    <button class="chip ${tab==='hist'?'on':''}" onclick="S.homeTab='hist';render()">📚 이력</button>
+    <button class="chip ${tab==='work'?'on':''}" onclick="S.homeTab='work';render()">📋 점검·검사</button>
+    <button class="chip ${tab==='hist'?'on':''}" onclick="S.homeTab='hist';render()">📚 완료이력</button>
   </div>
   ${tab==='cal'?homeCalTab():tab==='hist'?homeHistHtml():homeWorkTab()}
   <div class="botpad"></div>`;
 }
+function homeIssuesCard(){
+  const openIssues=S.issues.filter(i=>!i.done);
+  const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
+  return `<details class="card issuebox">
+    <summary><span>🔧 진행 중 현안</span><span class="cnt">${openIssues.length}건</span></summary>
+    <div class="muted" style="margin:8px 0">기간이 정해지지 않은 유지보수(예: 터빈룸 팬 정비)는 여기에 — 완료 처리 전까지 남습니다.</div>
+    ${openIssues.map(i=>`
+      <div class="item">
+        <div class="chk" onclick="doneIssue('${i.id}')"></div>
+        <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
+      </div>`).join('')||'<div class="empty">진행 중 현안 없음 👍</div>'}
+    <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
+    ${doneIssues.length?`<details class="donebox"><summary>✅ 완료된 현안 ${doneIssues.length}건 (펼치기)</summary>
+      ${doneIssues.map(i=>`<div class="item">
+        <div class="chk done" onclick="reopenIssue('${i.id}')" title="진행중으로 되돌리기">✓</div>
+        <div class="t" onclick="editIssue('${i.id}')"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(i.title)}${i.promotedFaultId?' <span class="badge b-green">이력화</span>':''}</div><div class="d">완료 ${esc(i.doneDate||i.date||'')}${i.note?' · '+esc(i.note):''}</div></div>
+        ${i.promotedFaultId?'':`<button class="btn ghost sm" onclick="promoteIssue('${i.id}')" title="정비이력으로 승격">🔧</button>`}
+        <button class="btn danger sm" onclick="delIssueHome('${i.id}')">✕</button></div>`).join('')}
+      <div class="section-note">완료 현안은 📚 이력 탭에도 월별로 정리됩니다. ✓ 되돌리기 · 🔧 정비이력으로 승격.</div>
+    </details>`:''}
+  </details>`;
+}
 function homeCalTab(){
-  return `${calHtml()}${todoWeekHtml()}${todoMonthHtml()}`;
+  return `${calHtml()}${homeIssuesCard()}${todoWeekHtml()}${todoMonthHtml()}`;
 }
 function _weekRange(){
   const t=new Date();const ts=todayStr();
@@ -950,7 +1097,6 @@ function homeWorkTab(){
   const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)}))
     .sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
   const soon=insp.filter(i=>i.dd!==null&&i.dd<=30);
-  const openIssues=S.issues.filter(i=>!i.done);
   return `
   <div class="searchwrap"><input placeholder="설비 검색 (이름·Tag No·판넬)" oninput="homeSearch(this.value)" id="home-q"></div>
   <div id="home-sr"></div>
@@ -961,14 +1107,6 @@ function homeWorkTab(){
         <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle)}</div></div>
         ${ddayBadge(i.dd)}
       </div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
-  </div>
-  <div class="card"><h2>🔧 진행 중 현안 <span class="cnt">${openIssues.length}건</span></h2>
-    ${openIssues.map(i=>`
-      <div class="item">
-        <div class="chk" onclick="doneIssue('${i.id}')"></div>
-        <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
-      </div>`).join('')||'<div class="empty">진행 중 현안 없음</div>'}
-    <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
   </div>`;
 }
 function homeSearch(q){
@@ -989,6 +1127,49 @@ async function doneIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
   i.done=true;i.doneDate=todayStr();
   await dbPut('issues',i);fbPush('issues',i);toast('현안 완료 처리');render();
+}
+async function reopenIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  i.done=false;delete i.doneDate;
+  await dbPut('issues',i);fbPush('issues',i);toast('진행중으로 되돌림');render();
+}
+async function delIssueHome(id){
+  if(!(await confirmModal('이 완료 현안을 삭제할까요? (이력에서도 사라집니다)')))return;
+  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);render();
+}
+function promoteIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  const opts=S.equipment.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+    .map(e=>`<option value="${e.id}">${esc(e.name)}${e.tagNo?' ('+esc(e.tagNo)+')':''}</option>`).join('');
+  openModal(`<h3>정비이력으로 승격</h3>
+    <div class="muted">완료 현안을 설비별 정비이력(고장·조치)으로 저장합니다. hwpx 보고서 필드로 남습니다.</div>
+    <label>설비 선택 *</label><select id="pi-eq"><option value="">— 설비 선택 —</option>${opts}</select>
+    <label>날짜</label><input id="pi-date" type="date" value="${esc(i.doneDate||i.date||todayStr())}">
+    <label>내용(증상/작업) *</label><input id="pi-content" value="${esc(i.title||'')}">
+    <label>원인</label><input id="pi-cause" value="">
+    <label>조치</label><textarea id="pi-action" rows="2">${esc(i.note||'')}</textarea>
+    <label>차단범위</label><input id="pi-block" value="">
+    <label>소요(시간/인원)</label><input id="pi-cost" value="">
+    <label>비고</label><input id="pi-note" value="">
+    <div class="row" style="margin-top:14px">
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="closeModal()">취소</button>
+      <button class="btn sm" onclick="savePromoteIssue('${i.id}')">정비이력 저장</button>
+    </div>`);
+}
+async function savePromoteIssue(id){
+  const i=S.issues.find(x=>x.id===id);if(!i)return;
+  const equipId=$('#pi-eq').value;
+  if(!equipId){toast('설비를 선택하세요');return}
+  const content=$('#pi-content').value.trim();if(!content){toast('내용을 입력하세요');return}
+  const e=S.equipment.find(x=>x.id===equipId);
+  const obj={id:uid(),equipId,equipName:e?.name||'',date:$('#pi-date').value||todayStr(),
+    content,cause:$('#pi-cause').value.trim(),action:$('#pi-action').value.trim(),
+    blockRange:$('#pi-block').value.trim(),cost:$('#pi-cost').value.trim(),note:$('#pi-note').value.trim(),
+    fromIssue:id};
+  await dbPut('faults',obj);S.faults.push(obj);
+  i.promotedFaultId=obj.id;await dbPut('issues',i);fbPush('issues',i);
+  closeModal();toast('정비이력으로 저장됨 — 설비 카드에서 확인');render();
 }
 function editIssue(id){
   const i=id?S.issues.find(x=>x.id===id):null;
@@ -1566,43 +1747,265 @@ function descendants(id){
   }
   return out;
 }
-function vTree(){
-  const allRoots=S.tree.filter(n=>!n.parentId);
-  const tab=S._treeVoltTab||'전체';
-  const roots=treeRootsForTab(tab);
-  return `
-  <div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
-    ${allRoots.length?`
-    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
-      ${TREE_VOLT_TABS.map(t=>`<button class="btn ${tab===t?'':'ghost'} sm" onclick="treeVoltTab('${t}')">${esc(t)}</button>`).join('')}
-    </div>
-    <div class="row" style="gap:6px;margin-bottom:6px">
-      <input id="tree-find" placeholder="이름·번호로 찾기 (예: VCB-504)" style="flex:1" onkeydown="if(event.key==='Enter')findTreeNode()">
-      <button class="btn sm" onclick="findTreeNode()">찾기</button>
-    </div>
-    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
-      <button class="btn ghost sm" onclick="treeZoom(-0.15)">－</button>
-      <div class="muted" style="min-width:44px;text-align:center;align-self:center">${Math.round((S._treeZoom||1)*100)}%</div>
-      <button class="btn ghost sm" onclick="treeZoom(0.15)">＋</button>
-      <button class="btn ghost sm" onclick="S._treeZoom=1;render()">100%</button>
-      <div class="grow"></div>
-      <button class="btn ghost sm" onclick="expandAllTree()">전체 펼치기</button>
-      <button class="btn ghost sm" onclick="collapseAllTree()">기본 보기</button>
-    </div>`:''}
-    ${!allRoots.length?'<div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>'
-      :(roots.length?roots.map(r=>treeSvg(r,tab)).join(''):`<div class="empty">'${esc(tab)}' 구간에 해당하는 노드가 없습니다.<br>노드 수정에서 전압등급을 '${esc(tab)}'(또는 관련 표기)로 지정하면 이 탭에 나타납니다.</div>`)}
-    <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
-    <div class="tree-legend">
-      ${Object.entries(NODE_TYPES).map(([k,v])=>`<span><span class="tleg-ic">${v[0]}</span>${v[1]}</span>`).join('')}
-      <span><span class="tleg-dot"></span>설비 연결됨</span>
-    </div>
-    ${allRoots.length?'<div class="section-note">💡 위 탭으로 22.9kV/6.9kV/저압 구간을 나눠 볼 수 있습니다 — 전압이 바뀌는 지점(예: 6.9kV VCB)은 점선 박스로 표시되고, 탭 배지를 누르면 그 아래 구간으로 이동합니다. 분기가 많은 지점은 기본적으로 접혀 보이며 ＋ 배지로 펼칩니다. 박스 본체를 탭하면 전체 이름·차단경로·메모. ＋/－ 버튼으로 확대·축소, 이름/번호로 찾기 가능.</div>':'<div class="section-note">💡 데이터 입력 자체가 계통 학습 — 주 1~2개 피더씩. 도면 원본은 이 기기에만 저장됩니다.</div>'}
-  </div>
-  <div class="card"><h2>🔒 LOTO 시행 이력 <span class="cnt">${S.lotologs.length}건</span></h2>
+/* 계통 뷰 v46: 경로(추천1)/드릴다운(추천2)/단선도(추천3) 서브탭 — 기존 S.tree·헬퍼 재사용 */
+function treeLotoCard(){
+  return `<div class="card"><h2>🔒 LOTO 시행 이력 <span class="cnt">${S.lotologs.length}건</span></h2>
     ${S.lotologs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>`
       <div class="item"><div class="t"><div class="n">${esc(l.date)} ${esc(l.target)}</div>
       <div class="d">${l.steps.filter(s=>s.done).length}/${l.steps.length} 단계 완료</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
   </div>`;
+}
+function vTree(){
+  const allRoots=S.tree.filter(n=>!n.parentId);
+  if(!allRoots.length){
+    return `<div class="card"><h2>🔌 전원계통 트리 <span class="cnt">0노드</span></h2>
+      <div class="empty">아직 입력된 계통이 없습니다.<br><br>이 트리는 <b>차단범위(LOTO) 계산용</b>이라 도면에서 자동 생성되지 않고,<br>단선도를 보며 직접 입력합니다 — 입력 과정 자체가 계통 학습입니다(주 1~2개 피더).<br>예: 22.9kV 수전 → 6.9kV F-05 VCB → BOILER동 MCC → MCCB #12 → 모터<br><br><button class="btn ghost sm" onclick="go(\'docfind\')">📐 도면 탭에서 단선도 보며 입력 시작</button></div>
+      <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
+    </div>`+treeLotoCard();
+  }
+  const sub=S._treeSubTab||'path';
+  const SUBS=[['path','↳ 경로'],['drill','☰ 드릴다운'],['diagram','▤ 단선도']];
+  const body=sub==='drill'?vTreeDrill():(sub==='diagram'?vTreeDiagram():vTreePath());
+  return `<div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
+    <div class="row" style="gap:6px;margin-bottom:8px">
+      <input id="tree-find" placeholder="이름·판넬·도면 세부내용 검색 (예: ROTARY FEEDER)" style="flex:1" onkeydown="if(event.key==='Enter')treeFind()">
+      <button class="btn sm" onclick="treeFind()">검색</button>
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:12px">
+      ${SUBS.map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')">${esc(l)}</button>`).join('')}
+    </div>
+    ${body}
+    <button class="btn ghost sm full" style="margin-top:14px" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
+    <div class="tree-legend">
+      ${Object.entries(NODE_TYPES).map(([k,v])=>`<span><span class="tleg-ic">${v[0]}</span>${v[1]}</span>`).join('')}
+      <span><span class="tleg-dot"></span>설비 연결됨</span>
+    </div>
+  </div>`+treeLotoCard();
+}
+function treeSubTab(t){S._treeSubTab=t;if(t==='diagram')_tdNeedFit=true;render();}
+/* 계통 검색: 이름·판넬·메모 + 도면 세부내용(details)까지 훑어 매칭 노드로 이동·상세 표시 */
+function treeFind(){
+  const q=($('#tree-find')?.value||'').trim().toLowerCase();
+  if(!q){toast('찾을 내용을 입력하세요');return;}
+  const hay=n=>((n.name||'')+' '+(n.panelNo||'')+' '+(n.note||'')+' '+(n.details||'')).toLowerCase();
+  const match=S.tree.find(n=>hay(n).includes(q));
+  if(!match){toast('일치하는 노드를 찾지 못했습니다');return;}
+  const inDetail=(match.details||'').toLowerCase().includes(q)&&!((match.name||'')+(match.panelNo||'')+(match.note||'')).toLowerCase().includes(q);
+  S._treeSubTab='drill';S._drillId=match.id;S._treeHighlight=match.id;
+  render();
+  nodeMenu(match.id);
+  if(inDetail)toast('도면 세부내용에서 찾음: '+match.name);
+}
+/* --- 추천1: 전원 경로 --- */
+function treeLeafNodes(){
+  const loads=S.tree.filter(n=>n.type==='load');
+  const arr=loads.length?loads:S.tree.filter(n=>nodeKids(n.id).length===0);
+  return arr.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+}
+function vTreePath(){
+  const leaves=treeLeafNodes();
+  if(!leaves.length)return `<div class="empty">부하설비(말단) 노드가 없습니다.<br>노드 유형을 '⚙️ 부하설비'로 지정하거나 드릴다운/단선도 탭에서 계통을 확인하세요.</div>`;
+  let id=S._treePathId;if(!id||!nodeById(id))id=leaves[0].id;
+  const path=pathUp(id).slice().reverse();
+  const brk=pathUp(id).slice(1).find(x=>x.type==='breaker');
+  const affected=brk?descendants(brk.id).filter(n=>n.type==='load'||nodeKids(n.id).length===0):[nodeById(id)];
+  const chain=path.map((n,i)=>{
+    const last=i===path.length-1,isBrk=n.type==='breaker';
+    const ic=(NODE_TYPES[n.type]||['·'])[0];
+    const meta=[n.voltage,n.panelNo].filter(Boolean).join(' · ');
+    const badge=isBrk?`<span class="tpath-brk">⚡차단점</span>`:'';
+    return `<div class="tpath-node${last?' cur':''}${isBrk?' brk':''}" onclick="nodeMenu('${n.id}')">
+        <span class="tpath-ic">${ic}</span>
+        <span class="tpath-nm">${esc(n.name)}${meta?`<span class="tpath-meta">${esc(meta)}</span>`:''}</span>${badge}
+      </div>${last?'':'<div class="tpath-arrow">↓</div>'}`;
+  }).join('');
+  return `<label>설비 선택</label>
+    <select onchange="S._treePathId=this.value;render()">${leaves.map(n=>`<option value="${n.id}"${n.id===id?' selected':''}>${esc(n.name)}${n.panelNo?' · '+esc(n.panelNo):''}</option>`).join('')}</select>
+    <div class="muted" style="margin:14px 2px 8px">↓ 전원 경로 (인입 → 설비)</div>
+    ${chain}
+    <button class="btn sm full" style="margin-top:12px" onclick="startLoto('${id}')">🔒 이 경로 LOTO 시작 (차단→검전→접지→표지)</button>
+    <div class="muted" style="margin:16px 2px 8px">⚡ 차단범위${brk?` — <b>${esc(brk.name)}</b> 개방 시`:' — 상위 차단기 없음'}</div>
+    ${affected.length?affected.map(n=>`<div class="tscope"><span class="tscope-dot"></span>${esc(n.name)}</div>`).join(''):'<div class="empty">영향 설비 없음</div>'}`;
+}
+/* --- 추천2: 드릴다운 --- */
+function drillTo(id){S._drillId=id;render();}
+function vTreeDrill(){
+  const roots=S.tree.filter(n=>!n.parentId);
+  let id=S._drillId;if(!id||!nodeById(id))id=roots[0]&&roots[0].id;
+  if(!id)return '<div class="empty">계통이 없습니다.</div>';
+  const cur=nodeById(id);
+  const crumbs=pathUp(id).slice().reverse();
+  const crumb=crumbs.map((n,i)=>i===crumbs.length-1
+    ?`<span class="tcrumb-cur">${esc(n.name)}</span>`
+    :`<a class="tcrumb-a" onclick="drillTo('${n.id}')">${esc(n.name)}</a><span class="tcrumb-sep">›</span>`).join(' ');
+  const ic=(NODE_TYPES[cur.type]||['·'])[0];
+  const meta=[cur.voltage,cur.panelNo].filter(Boolean).join(' · ');
+  const kids=nodeKids(id);
+  const kidHtml=kids.length?kids.map(k=>{
+    const kic=(NODE_TYPES[k.type]||['·'])[0],leaf=nodeKids(k.id).length===0;
+    const km=[k.voltage,k.panelNo].filter(Boolean).join(' · ');
+    return `<div class="tkid" onclick="drillTo('${k.id}')">
+        <span class="tkid-ic">${kic}</span>
+        <span class="tkid-nm">${esc(k.name)}${k.type==='breaker'?' <span class="tpath-brk" style="padding:1px 6px">⚡</span>':''}${km?`<span class="tpath-meta">${esc(km)}</span>`:''}</span>
+        <span class="tkid-arr">${leaf?'●':'›'}</span>
+      </div>`;
+  }).join(''):`<div class="empty" style="margin-top:8px">말단 노드입니다.<br><button class="btn ghost sm" style="margin-top:8px" onclick="nodeMenu('${id}')">경로·차단범위 보기</button></div>`;
+  return `<div class="tcrumb">${crumb}</div>
+    <div class="tdrill-head${cur.type==='breaker'?' brk':''}" onclick="nodeMenu('${id}')">
+      <div class="tdrill-nm">${ic} ${esc(cur.name)}</div>
+      <div class="tdrill-meta">${meta||'—'}${cur.type==='breaker'?' · 차단기':''} · 탭하면 상세·차단범위</div>
+    </div>
+    <div class="row" style="gap:6px;margin:10px 0 4px">
+      ${cur.parentId?`<button class="btn ghost sm" onclick="drillTo('${cur.parentId}')">↑ 상위로</button>`:''}
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="editNode('','${id}')">+ 하위 추가</button>
+    </div>
+    <div class="muted" style="margin:8px 2px">하위 ${kids.length}개</div>
+    ${kidHtml}`;
+}
+/* --- 추천3: 단선도 (피더 선택 + 접기/펼치기 + 팬·핀치줌·미니맵) --- */
+var _tdS=1,_tdX=0,_tdY=0,_tdBox=null,_tdNeedFit=true,_tdExpandAll=false;
+var DIA_AUTO_DEPTH=3;  // 이 깊이까지는 기본으로 펼쳐서 표시(분기 포함), 그 아래 분기는 접힘
+/* 루트: parentId가 없거나, 상위가 트리에 없는 고아 노드도 루트로(→ PB·DH 등 분리된 계통 모두 표시) */
+function treeRootNodes(){return S.tree.filter(n=>!n.parentId||!nodeById(n.parentId));}
+function diaRootOptions(){
+  const roots=treeRootNodes();
+  const opts=[{id:'',label:'전체 계통'}];
+  roots.forEach(r=>{
+    opts.push({id:r.id,label:'▸ '+r.name});
+    nodeKids(r.id).forEach(k=>opts.push({id:k.id,label:'　└ '+k.name}));
+  });
+  return opts;
+}
+/* 다이어그램 전용 토글: 개별 노드 탭 시 전체펼치기 모드 해제 후 해당 노드만 토글 */
+function diaToggle(id){if(_tdExpandAll)_tdExpandAll=false;toggleTreeNode(id);}
+function diaExpandAll(){_tdExpandAll=true;render();}
+function diaCollapseDefault(){_tdExpandAll=false;S._treeToggled.clear();render();}
+function vTreeDiagram(){
+  const roots=treeRootNodes();
+  if(!roots.length)return '<div class="empty">계통이 없습니다.</div>';
+  const sel=(S._treeDiaRoot&&nodeById(S._treeDiaRoot))?S._treeDiaRoot:'';
+  const d=treeDiagramSvg(sel);
+  _tdBox={minX:d.minX,minY:d.minY,W:d.W,H:d.H};
+  const opts=diaRootOptions();
+  return `<div class="row" style="gap:6px;margin-bottom:8px">
+      <select onchange="S._treeDiaRoot=this.value;_tdNeedFit=true;render()" style="flex:1">
+        ${opts.map(o=>`<option value="${o.id}"${o.id===sel?' selected':''}>${esc(o.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn ghost sm" onclick="treeDiaZoom(0.8)">－</button>
+      <button class="btn ghost sm" onclick="treeDiaFit()">전체 보기</button>
+      <button class="btn ghost sm" onclick="treeDiaZoom(1.25)">＋</button>
+      <div class="grow"></div>
+      <button class="btn ${_tdExpandAll?'':'ghost'} sm" onclick="diaExpandAll()">모두 펼치기</button>
+      <button class="btn ghost sm" onclick="diaCollapseDefault()">기본 접기</button>
+    </div>
+    <div class="tdia-box">
+      <svg id="tdia-svg" xmlns="http://www.w3.org/2000/svg"><g id="tdia-vp">${d.inner}</g></svg>
+      <svg id="tdia-mini" class="tdia-mini" xmlns="http://www.w3.org/2000/svg"><g transform="${d.miniT}">${d.inner}</g><rect id="tdia-view"></rect></svg>
+    </div>
+    <div class="section-note" style="text-align:center">박스 탭 = 펼치기/접기(▸▾) · 오른쪽 ⓘ = 차단경로 · 한 손가락 이동 · 두 손가락(휠) 확대</div>`;
+}
+function treeDiagramSvg(rootSel){
+  const roots=rootSel?[nodeById(rootSel)].filter(Boolean):treeRootNodes();
+  const boxW=124,boxH=48,hGap=16,vGap=42,pad=24,infoW=30;
+  const pos={};let leaf=0;const seen=new Set(),shown=[];
+  function diaColl(node,depth){
+    if(depth===0)return false;
+    if(_tdExpandAll)return false;
+    const baseDef=depth>=DIA_AUTO_DEPTH&&nodeKids(node.id).length>1;
+    return S._treeToggled.has(node.id)?!baseDef:baseDef;
+  }
+  function walk(node,depth){
+    if(seen.has(node.id))return (pos[node.id]||{x:0}).x;
+    seen.add(node.id);shown.push(node.id);
+    const kids=diaColl(node,depth)?[]:nodeKids(node.id);
+    if(!kids.length){pos[node.id]={x:leaf*(boxW+hGap),y:depth*(boxH+vGap),depth};leaf++;return pos[node.id].x;}
+    const xs=kids.map(k=>walk(k,depth+1));
+    pos[node.id]={x:(Math.min(...xs)+Math.max(...xs))/2,y:depth*(boxH+vGap),depth};
+    return pos[node.id].x;
+  }
+  roots.forEach(r=>{walk(r,0);leaf++;});
+  const xs=Object.values(pos).map(p=>p.x),ys=Object.values(pos).map(p=>p.y);
+  const minX=Math.min(...xs)-boxW/2-pad,maxX=Math.max(...xs)+boxW/2+pad;
+  const minY=Math.min(...ys)-pad,maxY=Math.max(...ys)+boxH+pad;
+  const W=maxX-minX,H=maxY-minY;
+  let edges='',boxes='';
+  shown.forEach(id=>{
+    const kids=nodeKids(id).filter(k=>pos[k.id]);if(!kids.length)return;
+    const x0=pos[id].x,yB=pos[id].y+boxH,busY=yB+vGap/2,cxs=kids.map(k=>pos[k.id].x);
+    edges+=`<line x1="${x0}" y1="${yB}" x2="${x0}" y2="${busY}" stroke="var(--line)" stroke-width="2"/>`;
+    if(kids.length>1)edges+=`<line x1="${Math.min(...cxs)}" y1="${busY}" x2="${Math.max(...cxs)}" y2="${busY}" stroke="var(--line)" stroke-width="2"/>`;
+    kids.forEach(k=>{edges+=`<line x1="${pos[k.id].x}" y1="${busY}" x2="${pos[k.id].x}" y2="${pos[k.id].y}" stroke="var(--line)" stroke-width="2"/>`;});
+  });
+  shown.forEach(id=>{
+    const n=nodeById(id),p=pos[id],isBrk=n.type==='breaker',ic=(NODE_TYPES[n.type]||['·'])[0];
+    const x=p.x-boxW/2,y=p.y,hasKids=nodeKids(id).length>0;
+    const isColl=diaColl(n,p.depth),chev=hasKids?(isColl?'▸':'▾'):'';
+    const mainW=hasKids?boxW-infoW:boxW,cx=x+mainW/2;
+    const full=n.name||'',maxc=hasKids?10:12,label=full.length>maxc?full.slice(0,maxc-1)+'…':full;
+    const meta=[n.panelNo,n.voltage].filter(Boolean).join(' · ');
+    boxes+=`<g>
+      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="var(--panel2)" stroke="${isBrk?'var(--danger)':'var(--accent)'}" stroke-width="${isBrk?2.5:1.4}"/>
+      ${hasKids?`<text x="${x+11}" y="${y+boxH/2+2}" font-size="14" text-anchor="middle" fill="var(--accent)" style="pointer-events:none">${chev}</text>`:''}
+      <text x="${cx}" y="${y+21}" font-size="12" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${ic} ${esc(label)}</text>
+      ${meta?`<text x="${cx}" y="${y+36}" font-size="9.5" text-anchor="middle" fill="var(--dim)" style="pointer-events:none">${esc(meta)}</text>`:''}
+      ${n.equipId?`<circle cx="${x+mainW-9}" cy="${y+9}" r="3.5" fill="var(--accent)" style="pointer-events:none"/>`:''}
+      ${(n.details||n.docId)?`<circle cx="${x+mainW-9}" cy="${y+boxH-9}" r="3.5" fill="var(--warn)" style="pointer-events:none"/>`:''}
+      <rect x="${x}" y="${y}" width="${mainW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="${hasKids?`diaToggle('${id}')`:`nodeMenu('${id}')`}"/>
+      ${hasKids?`<line x1="${x+mainW}" y1="${y+7}" x2="${x+mainW}" y2="${y+boxH-7}" stroke="var(--line)" stroke-width="1" style="pointer-events:none"/>
+        <rect x="${x+mainW}" y="${y}" width="${infoW}" height="${boxH}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="event.stopPropagation();nodeMenu('${id}')"/>
+        <text x="${x+mainW+infoW/2}" y="${y+boxH/2+5}" font-size="15" text-anchor="middle" fill="var(--accent)" style="pointer-events:none">ⓘ</text>`:''}
+    </g>`;
+  });
+  const mw=118,mh=92,ms=Math.min(mw/W,mh/H)*0.9;
+  const ox=(mw-W*ms)/2-minX*ms,oy=(mh-H*ms)/2-minY*ms;
+  return {inner:edges+boxes,minX,minY,W,H,miniT:`translate(${ox} ${oy}) scale(${ms})`};
+}
+function treeDiaApply(){
+  const vp=document.getElementById('tdia-vp');if(!vp||!_tdBox)return;
+  vp.setAttribute('transform',`translate(${_tdX} ${_tdY}) scale(${_tdS})`);
+  treeDiaMini();
+}
+function treeDiaMini(){
+  const svg=document.getElementById('tdia-svg'),rect=document.getElementById('tdia-view');if(!svg||!rect||!_tdBox)return;
+  const b=svg.getBoundingClientRect(),mw=118,mh=92,ms=Math.min(mw/_tdBox.W,mh/_tdBox.H)*0.9;
+  const ox=(mw-_tdBox.W*ms)/2-_tdBox.minX*ms,oy=(mh-_tdBox.H*ms)/2-_tdBox.minY*ms;
+  const vx=-_tdX/_tdS,vy=-_tdY/_tdS,vw=b.width/_tdS,vh=b.height/_tdS;
+  rect.setAttribute('x',vx*ms+ox);rect.setAttribute('y',vy*ms+oy);
+  rect.setAttribute('width',Math.max(4,vw*ms));rect.setAttribute('height',Math.max(4,vh*ms));
+}
+function treeDiaFit(){
+  const svg=document.getElementById('tdia-svg');if(!svg||!_tdBox)return;
+  const b=svg.getBoundingClientRect();
+  _tdS=Math.min(b.width/_tdBox.W,b.height/_tdBox.H)*0.92;
+  _tdX=(b.width-_tdBox.W*_tdS)/2-_tdBox.minX*_tdS;
+  _tdY=(b.height-_tdBox.H*_tdS)/2-_tdBox.minY*_tdS;
+  _tdNeedFit=false;treeDiaApply();
+}
+function treeDiaZoomAt(cx,cy,f){
+  const ns=Math.max(0.15,Math.min(5,_tdS*f)),k=ns/_tdS;
+  _tdX=cx-(cx-_tdX)*k;_tdY=cy-(cy-_tdY)*k;_tdS=ns;treeDiaApply();
+}
+function treeDiaZoom(f){const svg=document.getElementById('tdia-svg');if(!svg)return;const b=svg.getBoundingClientRect();treeDiaZoomAt(b.width/2,b.height/2,f);}
+function setupTreeDiagram(){
+  const svg=document.getElementById('tdia-svg');if(!svg)return;
+  if(!svg._wired){
+    svg._wired=true;
+    const pts=new Map();let last=null,pd=0;
+    const rel=e=>{const r=svg.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
+    svg.addEventListener('pointerdown',e=>{svg.setPointerCapture(e.pointerId);pts.set(e.pointerId,rel(e));
+      if(pts.size===1)last=rel(e);
+      if(pts.size===2){const a=[...pts.values()];pd=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);}});
+    svg.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,rel(e));
+      if(pts.size===1&&last){const p=rel(e);_tdX+=p.x-last.x;_tdY+=p.y-last.y;last=p;treeDiaApply();}
+      else if(pts.size===2){const a=[...pts.values()],d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y),mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};if(pd)treeDiaZoomAt(mid.x,mid.y,d/pd);pd=d;}});
+    const up=e=>{try{svg.releasePointerCapture(e.pointerId)}catch(_){}pts.delete(e.pointerId);if(pts.size<2)pd=0;if(pts.size===1)last=[...pts.values()][0];};
+    svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);
+    svg.addEventListener('wheel',e=>{e.preventDefault();const p=rel(e);treeDiaZoomAt(p.x,p.y,e.deltaY<0?1.12:0.89);},{passive:false});
+  }
+  if(_tdNeedFit)treeDiaFit();else treeDiaApply();
 }
 function treeVoltTab(t){
   S._treeVoltTab=t;S._treeHighlight=null;
@@ -1738,6 +2141,9 @@ function nodeMenu(id){
     ${blockPathSvg(id)}
     ${isBrk?`<div class="muted">이 차단기 개방 시 정전 영향</div>
       <div class="path-box">${descendants(id).map(d=>esc(d.name)).join('<br>')||'하위 노드 없음'}</div>`:''}
+    ${n.docId&&(S.docs||[]).find(d=>d.id===n.docId)?`<div class="muted" style="margin-top:8px">연결 도면</div>
+      <button class="btn ghost sm" onclick="closeModal();viewDoc('${n.docId}')">📄 ${esc(((S.docs||[]).find(d=>d.id===n.docId)||{}).title||'도면 열기')}</button>`:''}
+    ${n.details?`<div class="muted" style="margin-top:8px">도면 세부내용</div><div class="path-box">${esc(n.details).replace(/\n/g,'<br>')}</div>`:''}
     <div class="row" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm" onclick="editNode('','${id}')">+ 하위 추가</button>
       ${n.type==='load'||isBrk?`<button class="btn sm" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
@@ -1770,6 +2176,10 @@ function editNode(id,parentId){
     <div id="nd-sugg"></div>
     <label>판넬번호 (현장 표지, 예: VCB-106)</label><input id="nd-panel" value="${esc(n?.panelNo||'')}" placeholder="예: VCB-101, ACB-3">
     <label>메모 (정정값 등)</label><input id="nd-note" value="${esc(n?.note||'')}">
+    <label>연결 도면 (단선도 등 · 선택 — 상세에서 탭하면 열림)</label>
+    <select id="nd-doc"><option value="">(연결 안 함)</option>${(S.docs||[]).map(dc=>`<option value="${dc.id}" ${n?.docId===dc.id?'selected':''}>${esc(dc.title||dc.name||dc.id)}${dc.kind?' · '+esc(dc.kind):''}</option>`).join('')}</select>
+    <label>도면 세부내용 (패널 내역 · 한 줄에 하나 — 검색됨)</label>
+    <textarea id="nd-details" rows="5" placeholder="도면에서 읽은 내역을 한 줄씩 (예: MCCB-12  FFS ROTARY FEEDER MOTOR  380V 30kW)">${esc(n?.details||'')}</textarea>
     <div class="row" style="margin-top:14px"><div class="grow"></div>
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveNode('${n?.id||''}','${pid||''}')">저장</button></div>`);
@@ -1785,7 +2195,8 @@ async function saveNode(id,parentId){
   const name=$('#nd-name').value.trim();if(!name){toast('이름을 입력하세요');return}
   const obj=id?nodeById(id):{id:'N'+uid(),parentId:parentId||''};
   Object.assign(obj,{name,type:$('#nd-type').value,voltage:$('#nd-volt').value.trim(),
-    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim()});
+    equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim(),
+    docId:($('#nd-doc')?$('#nd-doc').value:'')||'',details:($('#nd-details')?$('#nd-details').value.trim():'')});
   await dbPut('tree',obj);
   if(!id)S.tree.push(obj);
   closeModal();render();toast('저장 완료');
@@ -2035,13 +2446,13 @@ async function saveChk(){
 
 /* ================= PART 9 : 더보기(설정) ================= */
 function vMore(){
-  const tab=S.moreTab||'doc';
+  const tab=S.moreTab||'tool';
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.moreTab='${v}';render()">${l}</button>`;
   return `
   <div class="chips">
-    ${chip('doc','🗂️ 문서·도면')}${chip('safe','🛡️ 안전·법령')}${chip('tool','🧰 관리·도구')}${chip('data','⚙️ 데이터·설정')}
+    ${chip('tool','🧰 관리·도구')}${chip('report','📝 보고서')}${chip('safe','🛡️ 안전·법령')}${chip('doc','🗂️ 도면·문서')}${chip('data','⚙️ 데이터·설정')}
   </div>
-  ${tab==='doc'?moreDoc():tab==='safe'?moreSafe():tab==='tool'?moreTool():moreData()}
+  ${tab==='doc'?moreDoc():tab==='report'?moreReport():tab==='safe'?moreSafe():tab==='tool'?moreTool():moreData()}
   <div class="botpad"></div>`;
 }
 function moreDoc(){
@@ -2052,12 +2463,18 @@ function moreDoc(){
     <button class="btn full" onclick="registerDoc()">📎 문서·매뉴얼 등록 (여러 개 선택 가능)</button>
     <button class="btn full" onclick="go('docfind')">📐 도면 검색·연계·해석 (도면 탭)</button>
     <button class="btn ghost full" onclick="openDocLibrary()">🗂️ 도면·문서 문서함 열기(찾아보기·열람)</button>
-    <button class="btn full" onclick="go('proc')">📋 매뉴얼 진행 추적 (단계·다음할일·AI질의)</button>
     <button class="btn ghost sm full" onclick="importOcrIndex()">📇 OCR 인덱스(JSON) 가져오기 — 오프라인 즉시 색인</button>
     ${S.docs.filter(d=>d.ext==='pdf'&&!(d.pages&&d.pages.length)).length?`<button class="btn ghost sm full" onclick="reindexDocs()">미색인 PDF 텍스트 재색인</button>`:''}
     ${S.docs.length?`<div class="muted" style="margin-top:6px">${docCountSummary()}</div>`:''}
     <div class="section-note">단선도는 반(盤)·계통 단위라 설비엔 '연결'로 참조합니다(설비 카드 → 관련 도면). 원본은 폴더에 유지, GitHub 코드엔 미포함. 도면 blob은 평문 백업 제외 → 기기 교체 시 재가져오기.</div>
   </div>
+  <div class="card"><h2>📋 매뉴얼 진행 추적</h2>
+    <div class="muted">설비 매뉴얼·절차서를 단계별로 진행 관리 — 다음 할 일 표시, 단계별 AI 질의.</div>
+    <button class="btn full" onclick="go('proc')">📋 매뉴얼 진행 추적 열기</button>
+  </div>`;
+}
+function moreReport(){
+  return `
   <div class="card"><h2>📝 보고서 생성기 <span class="cnt">a방식</span></h2>
     <div class="muted">정리 텍스트 자동 취합 → 복사 → Claude의 hwpx 스킬(new-hwpx-master 등)에 붙여넣어 공문/기안문 완성.</div>
     <button class="btn full" onclick="rptFault()">🔧 고장 조치 보고서</button>
@@ -2104,10 +2521,18 @@ function moreTool(){
     <button class="btn full" onclick="go('vault')">🔐 보안 금고 열기 ${!S._vaultKdf?'<span class="cnt">미설정</span>':(_vaultKey?`<span class="cnt">${S.vault.length}건</span>`:'<span class="cnt">잠김</span>')}</button>
     <div class="section-note">마스터 비밀번호로만 열립니다. 분실 시 복구 불가(초기화만 가능).</div>
   </div>
-  <div class="card"><h2>🧰 예비품 · 💰 예산 · 📈 실적</h2>
-    <div class="muted">예비품 재고(부족 경고)·예산 집행/계획·월간/연간 실적 집계. 데이터는 백업에 포함됩니다.</div>
+  <div class="card"><h2>📋 검사 · ✅ 체크</h2>
+    <div class="muted">법정검사 일정·수검이력과 주기 체크리스트. (홈 대시보드에도 D-30 검사·주기체크가 요약 표시됩니다)</div>
+    <button class="btn full" onclick="go('insp')">📋 법정검사 열기 <span class="cnt">${S.inspections.length}건</span></button>
+    <button class="btn full" onclick="go('chk')">✅ 주기 체크리스트 열기 <span class="cnt">${S.checklists.length}건</span></button>
+  </div>
+  <div class="card"><h2>🧰 재고 · 💰 예산</h2>
+    <div class="muted">예비품 재고(부족 경고)와 예산 집행/계획. 데이터는 백업에 포함됩니다.</div>
     <button class="btn full" onclick="go('spare')">🧰 예비품 재고 열기 <span class="cnt">${S.spares.length}건</span></button>
     <button class="btn full" onclick="go('budget')">💰 예산 집계 열기 <span class="cnt">${S.budget.length}건</span></button>
+  </div>
+  <div class="card"><h2>📈 실적 · 🗒️ 메모</h2>
+    <div class="muted">월간/연간 실적 자동집계와 점검·용역 특이사항 업무메모.</div>
     <button class="btn full" onclick="go('stats')">📈 실적 요약 (월간/연간 자동집계)</button>
     <button class="btn full" onclick="go('notes')">🗒️ 업무 메모 열기 <span class="cnt">${S.notes.length}건</span></button>
   </div>
@@ -3250,21 +3675,31 @@ function photoStrip(refType,refId){
 }
 
 /* ── 예비품 재고 ── */
-const _spLow=x=>x.minQty!=null&&x.minQty!==''&&Number(x.qty||0)<=Number(x.minQty);
+const _spLow=x=>x.minQty!=null&&x.minQty!==''&&Number(x.minQty)>0&&Number(x.qty||0)<=Number(x.minQty);
 function vSpare(){
   const low=S.spares.filter(_spLow);
-  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품 재고 <span class="cnt">${S.spares.length}</span></h2>
+  const mode=S._spareMode||'list';
+  const nMaster=S.spares.filter(s=>s.src==='master').length;
+  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품·정비자재 <span class="cnt">${S.spares.length}</span></h2>
       <button class="btn sm" onclick="editSpare()">+ 추가</button></div>
-    ${low.length?`<div class="section-note" style="color:#fca5a5">⚠️ 부족(최소수량 이하) ${low.length}건: ${low.slice(0,8).map(x=>esc(x.name)+' '+(x.qty||0)+'/'+x.minQty).join(', ')}</div>`:''}
-    <div class="row" style="margin:6px 0"><button class="btn ghost sm" onclick="useSpare('')">− 사용(차감)</button><button class="btn ghost sm" onclick="orderListDoc()">📋 발주 목록 생성</button></div>
-    <div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div>
-    <div id="splist">${spareListHtml()}</div>
+    ${low.length?`<div class="section-note" style="color:#fca5a5">⚠️ 부족(안전재고 이하) ${low.length}건: ${low.slice(0,8).map(x=>esc(x.name)+' '+(x.qty||0)+'/'+x.minQty).join(', ')}</div>`:''}
+    <div class="chips" style="margin:6px 0">
+      <button class="chip ${mode==='list'?'on':''}" onclick="S._spareMode='list';render()">📃 목록</button>
+      <button class="chip ${mode==='insp'?'on':''}" onclick="S._spareMode='insp';render()">🔍 검수(종류별) ${nMaster?'<span class="cnt">'+nMaster+'</span>':''}</button>
+    </div>
+    <div class="row" style="margin:6px 0;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost sm" onclick="importMaterialXlsx()">📥 자재마스터 가져오기(xlsx)</button>
+      <button class="btn ghost sm" onclick="exportMaterialXlsx()">📤 검수결과 내보내기(xlsx)</button>
+      <button class="btn ghost sm" onclick="useSpare('')">− 사용(차감)</button>
+      <button class="btn ghost sm" onclick="orderListDoc()">📋 발주 목록</button>
+    </div>
+    ${mode==='insp'?spareInspHtml():`<div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div><div id="splist">${spareListHtml()}</div>`}
     <button class="btn ghost sm full" onclick="go('more')">← 더보기로</button></div>`;
 }
 function spareListHtml(){
   const q=(S._spareQ||'').toLowerCase();
   let list=S.spares.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  if(q)list=list.filter(x=>((x.name||'')+' '+(x.spec||'')+' '+(x.location||'')+' '+(x.equipName||'')).toLowerCase().includes(q));
+  if(q)list=list.filter(x=>((x.name||'')+' '+(x.spec||'')+' '+(x.matNo||'')+' '+(x.type||'')+' '+(x.cat||'')+' '+(x.location||'')+' '+(x.equipName||'')).toLowerCase().includes(q));
   return list.map(x=>`<div class="item click" onclick="editSpare('${x.id}')">
       <div class="t"><div class="n">${esc(x.name)} ${_spLow(x)?'<span class="badge b-red">부족</span>':''}</div>
       <div class="d">${esc(x.spec||'')}${x.location?' · '+esc(x.location):''}${x.equipName?' · '+esc(x.equipName):''}</div></div>
@@ -3304,6 +3739,221 @@ async function saveSpare(id){
 async function delSpare(id){
   if(!(await confirmModal('이 예비품을 삭제할까요?')))return;
   await dbDel('spares',id);S.spares=S.spares.filter(v=>v.id!==id);closeModal();render();
+}
+
+/* ================= 정비자재 마스터 (xlsx 가져오기·검수·내보내기) v52 =================
+   - 원본 엑셀 순서를 seq(원본 행번호)로 보존 → 내보내기 시 원본 순서 재현
+   - 창고 진열(대분류→종류)로 재정렬해 검수. 실수량 입력 → 과부족 파악
+   - 범위: 계전부 전력계통/전력설비만 앱에 적재(MAT_DEPTS). 그 외는 제외 */
+const MAT_DEPTS={'계전부 전력계통':'전력계통과','계전부 전력설비':'전력설비과'};
+const MAT_RULES=[
+ ['베어링부속',['하우징','베어링유니트','슬리브','부시','리테이너']],
+ ['베어링',['베어링','볼베어링용볼']],
+ ['차단기',['차단기','nfb']],
+ ['개폐기·접촉기',['개폐기','접촉기','마그네트']],
+ ['계전기·릴레이·타이머',['계전기','릴레이','relay','타이머','timer']],
+ ['스위치·버튼',['스위치','버튼','토글','셀렉터','레버','리미트','switch']],
+ ['퓨즈·보호부품',['퓨즈','fuse','서지','피뢰','보호기']],
+ ['계기·센서·조절기',['압력계','온도계','게이지','gauge','트랜스미터','감지기','센서','미터','수위계','유량','계기용','계측','속도계','전도도','조절기','레귤레이터','지시계','기록계','분석기','검출']],
+ ['램프·표시등·부저',['램프','lamp','led','표시등','파일럿','부저','벨','신호등']],
+ ['콘덴서·변성기·변압기',['콘덴서','캐패시터','capacitor','변류기','변성기',' ct','pt','권선','변압기','트랜스']],
+ ['전동기·팬',['전동기','모터','motor','유도전동기','냉각팬','팬','fan','블로워','송풍']],
+ ['벨트',['벨트','belt']],
+ ['밸브',['밸브','valve','솔레노이드','스트레이너']],
+ ['필터',['필터','filter','엘리먼트']],
+ ['가스켓·씰·오링',['가스켓','개스킷','패킹','packing','씰','실링','메커니컬실','오링','o링','o-ring','오일실']],
+ ['배관·피팅',['니플','엘보우','소켓','플랜지','파이프','유니온','튜브','조인트','덕트','호스','커플링','플렉시블','강관','강판','소음기','밴드','캡,']],
+ ['전선·케이블·단자',['케이블','전선','단자','터미널','커넥터','서비스','부스바','배선']],
+ ['제어·전자모듈',['plc','로직','인버터','inverter','전자회로','기판','복합전자','모듈','컨트롤','pcb','드라이브','컨버터','전원공급','정류기','증폭기','통신']],
+ ['유압·공압',['유압','실린더','cylinder','공압','에어실','액추에이터']],
+ ['히터·전열',['히터','heater','전열']],
+ ['방진·기계부품',['진동방지','방진','롤러','샤프트','프로텍터','분할핀','체인','링크','기어','스프로킷','키,','핀,']],
+ ['배관강재·구조재',['탄소강','구조용','압연','형강','철판']],
+ ['공구·체결',['공구','드릴','비트','볼트','너트','와셔','나사','스프링','앵커']],
+];
+function matCat(typ,cls){
+  const hay=((typ||'')+' '+(cls||'')).toLowerCase();
+  for(const [name,kws] of MAT_RULES){for(const k of kws){if(hay.includes(k))return name;}}
+  return '기타';
+}
+function _numOr(v,d){if(v===null||v===undefined||v==='')return d;const n=Number(v);return isNaN(n)?d:n;}
+function loadSheetJS(){
+  if(window.XLSX)return Promise.resolve(window.XLSX);
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload=()=>window.XLSX?res(window.XLSX):rej(new Error('SheetJS 초기화 실패'));
+    sc.onerror=()=>rej(new Error('SheetJS 로드 실패 — 인터넷 연결 필요'));
+    document.head.appendChild(sc);
+  });
+}
+function importMaterialXlsx(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.xlsx,.xls';
+  inp.onchange=async()=>{
+    const file=inp.files[0];if(!file)return;
+    let XLSX;try{XLSX=await loadSheetJS();}catch(e){toast(e.message);return;}
+    try{
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      if(!rows.length){toast('빈 시트입니다');return;}
+      const hdr=rows[0].map(x=>String(x==null?'':x).trim());
+      const col=n=>hdr.indexOf(n);
+      const ci={dept:col('담당부서'),eq:col('설비구분'),matno:col('자재번호'),name:col('품명 및 규격'),
+        unit:col('단위'),cls:col('클래스'),stock:col('재고'),safe:col('안전재고'),price:col('단가'),
+        proc:col('조달품목'),note:col('부가정보')};
+      if(ci.dept<0||ci.matno<0){toast('형식 오류: 담당부서/자재번호 열을 찾을 수 없습니다');return;}
+      let typeCol=col('품목분류');if(typeCol<0)typeCol=16;
+      const existing=new Map(S.spares.filter(s=>s.matNo).map(s=>[s.matNo,s]));
+      const master=[];let added=0,updated=0,skipped=0;
+      for(let r=1;r<rows.length;r++){
+        const row=rows[r];if(!row||!row.length){continue;}
+        const dept=MAT_DEPTS[String(row[ci.dept]==null?'':row[ci.dept]).trim()];
+        if(!dept){skipped++;continue;}
+        const matNo=String(row[ci.matno]==null?'':row[ci.matno]).trim();if(!matNo){skipped++;continue;}
+        const typ=String(row[typeCol]==null?'':row[typeCol]).trim();
+        const cls=ci.cls>=0?String(row[ci.cls]==null?'':row[ci.cls]).trim():'';
+        const rec={seq:r+1,matNo,dept,eqKind:ci.eq>=0?String(row[ci.eq]==null?'':row[ci.eq]).trim():'',
+          cat:matCat(typ,cls),type:typ,
+          name:String(row[ci.name]==null?'':row[ci.name]).trim(),
+          unit:(ci.unit>=0?String(row[ci.unit]==null?'':row[ci.unit]).trim():'')||'EA',
+          qty:_numOr(row[ci.stock],0),minQty:_numOr(row[ci.safe],''),
+          price:_numOr(row[ci.price],''),procCode:ci.proc>=0?String(row[ci.proc]==null?'':row[ci.proc]).trim():'',
+          note:ci.note>=0?String(row[ci.note]==null?'':row[ci.note]).trim():'',
+          src:'master',raw:row,hdr,updated:todayStr()};
+        const ex=existing.get(matNo);
+        if(ex){rec.id=ex.id;rec.real=ex.real;rec.location=ex.location||'';updated++;}
+        else{rec.id='SP'+uid();added++;}
+        master.push(rec);
+      }
+      if(!master.length){toast('적재 대상(전력계통/전력설비) 자재가 없습니다');return;}
+      for(const rec of master){await dbPut('spares',rec);}
+      const ids=new Set(master.map(m=>m.id));
+      S.spares=S.spares.filter(s=>!ids.has(s.id)).concat(master);
+      S._spareMode='insp';render();
+      toast(`가져오기: 신규 ${added} · 갱신 ${updated} · 범위밖 ${skipped} 제외`);
+    }catch(e){toast('가져오기 실패: '+(e.message||e));}
+  };
+  inp.click();
+}
+async function exportMaterialXlsx(){
+  const mats=S.spares.filter(s=>s.src==='master'&&s.raw&&s.hdr);
+  if(!mats.length){toast('가져온 자재 마스터가 없습니다 — 먼저 가져오기 하세요');return;}
+  let XLSX;try{XLSX=await loadSheetJS();}catch(e){toast(e.message);return;}
+  const hdr=mats[0].hdr;
+  const cStock=hdr.indexOf('재고'),cReal=hdr.indexOf('실수량');
+  const bySeq=mats.slice().sort((a,b)=>(a.seq||0)-(b.seq||0));
+  const aoa1=[hdr];
+  for(const m of bySeq){const row=(m.raw||[]).slice();
+    if(cStock>=0)row[cStock]=m.qty;
+    if(cReal>=0&&m.real!=null&&m.real!=='')row[cReal]=m.real;
+    aoa1.push(row);}
+  const DORD={'전력계통과':1,'전력설비과':2};
+  const org=mats.slice().sort((a,b)=>(DORD[a.dept]||9)-(DORD[b.dept]||9)||String(a.cat).localeCompare(String(b.cat))||String(a.type).localeCompare(String(b.type))||String(a.matNo).localeCompare(String(b.matNo)));
+  const head2=['원본순서','담당과','설비구분','대분류','종류','자재번호','품명 및 규격','단위','재고','실수량','과부족','안전재고','단가','조달품목','비고'];
+  const aoa2=[head2];
+  for(const m of org){
+    const real=(m.real==null||m.real==='')?'':m.real;
+    const gap=(real===''?'':real-(Number(m.qty)||0));
+    aoa2.push([m.seq,m.dept,m.eqKind||'',m.cat,m.type,m.matNo,m.name,m.unit,(m.qty??0),real,gap,(m.minQty===''?'':m.minQty),(m.price===''?'':m.price),m.procCode||'',m.note||'']);
+  }
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa1),'원본순서');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa2),'정리(종류별)');
+  XLSX.writeFile(wb,`정비자재_검수결과_${todayStr()}.xlsx`);
+  toast(`내보내기 완료 — 탭1 원본순서 / 탭2 종류별 (${mats.length}건)`);
+}
+function spareInspHtml(){
+  const dept=S._spareDept||'전력계통과';
+  const depts=[...new Set(S.spares.filter(s=>s.dept).map(s=>s.dept))];
+  const deptChips=['전체',...depts].map(d=>`<button class="chipf ${dept===d?'on':''}" onclick="S._spareDept='${d}';render()">${esc(d)}</button>`).join('');
+  const hasMaster=S.spares.some(s=>s.src==='master');
+  if(!hasMaster)return `<div class="chips">${deptChips}</div><div class="empty">가져온 자재가 없습니다 — 📥 자재마스터 가져오기(xlsx)</div>`;
+  return `<div class="chips">${deptChips}</div>
+    <div class="searchwrap"><input placeholder="검색: 품명·자재번호·종류·대분류" value="${esc(S._spareQ||'')}" oninput="filterSpareInsp(this.value)"></div>
+    <div id="inspbody">${spareInspBody()}</div>`;
+}
+function _deptBadge(s){
+  if(s.dept==='전력계통과')return '<span class="badge b-blue">계통</span>';
+  if(s.dept==='전력설비과')return '<span class="badge b-green">설비</span>';
+  return s.dept?`<span class="badge b-gray">${esc(s.dept)}</span>`:'';
+}
+const MAT_GROUP={
+ '차단기':'개폐·차단','개폐기·접촉기':'개폐·차단','퓨즈·보호부품':'개폐·차단',
+ '계전기·릴레이·타이머':'계전·제어','스위치·버튼':'계전·제어','제어·전자모듈':'계전·제어',
+ '계기·센서·조절기':'계측',
+ '콘덴서·변성기·변압기':'전원·표시','램프·표시등·부저':'전원·표시','전선·케이블·단자':'전원·표시','히터·전열':'전원·표시',
+ '전동기·팬':'회전기·동력','베어링':'회전기·동력','베어링부속':'회전기·동력','벨트':'회전기·동력','방진·기계부품':'회전기·동력',
+ '밸브':'유체·배관','필터':'유체·배관','가스켓·씰·오링':'유체·배관','배관·피팅':'유체·배관','유압·공압':'유체·배관',
+ '배관강재·구조재':'구조·소모','공구·체결':'구조·소모','기타':'기타'
+};
+const MAT_GROUP_ORDER=['개폐·차단','계전·제어','계측','전원·표시','회전기·동력','유체·배관','구조·소모','기타'];
+function matGroup(cat){return MAT_GROUP[cat]||'기타';}
+function spareInspBody(){
+  const dept=S._spareDept||'전력계통과';
+  const q=(S._spareQ||'').toLowerCase();
+  let list=S.spares.filter(s=>s.cat&&s.src==='master');
+  if(dept!=='전체')list=list.filter(s=>s.dept===dept);
+  if(q)list=list.filter(s=>((s.name||'')+' '+(s.matNo||'')+' '+(s.type||'')+' '+(s.cat||'')+' '+(s.dept||'')+' '+(s.note||'')).toLowerCase().includes(q));
+  if(!list.length)return '<div class="empty">해당 자재 없음</div>';
+  const byG={};list.forEach(s=>{const g=matGroup(s.cat);(byG[g]=byG[g]||[]).push(s);});
+  const groups=MAT_GROUP_ORDER.filter(g=>byG[g]);
+  Object.keys(byG).forEach(g=>{if(!groups.includes(g))groups.push(g);});
+  const done=list.filter(s=>s.real!=null&&s.real!=='').length;
+  const body=groups.map(g=>{
+    const items=byG[g].slice().sort((a,b)=>String(a.cat).localeCompare(String(b.cat))||(a.type||'').localeCompare(b.type||'')||(a.name||'').localeCompare(b.name||''));
+    const rows=items.map(s=>{const chk=(s.real!=null&&s.real!=='');return `<div class="item matrow${chk?' checked':''}" id="row_${s.id}">
+        <div class="t">
+          <div class="n">${_deptBadge(s)} ${esc(s.type||'(미분류)')} ${_spLow(s)?'<span class="badge b-red">부족</span>':''}${chk?' <span class="badge b-green">✓</span>':''}</div>
+          <div class="mspec">${esc(s.name||'')}</div>
+          <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
+        </div>
+        <div class="inspcol">
+          <input class="inspq" id="rq_${s.id}" type="number" inputmode="numeric" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
+          <button class="btn sm inspsave" onclick="saveSpareReal('${s.id}')">저장</button>
+          <button class="btn ghost sm inspclear" onclick="clearSpareReal('${s.id}')">해제</button>
+        </div>
+      </div>`;}).join('');
+    return `<details class="card" style="margin:6px 0"><summary class="hist-sum">${esc(g)} <span class="cnt">${items.length}</span></summary>${rows}</details>`;
+  }).join('');
+  return `<div class="muted" style="margin:6px 0">창고 진열 순 검수 · <b id="inspdone">${done}</b>/${list.length}건 검수 · <span class="badge b-blue">계통</span> / <span class="badge b-green">설비</span>. 실수량 입력 후 [저장].</div>${body}`;
+}
+async function saveSpareReal(id){
+  const el=document.getElementById('rq_'+id);if(!el)return;
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  const was=(s.real!=null&&s.real!=='');
+  s.real=(el.value===''?'':Number(el.value));s.updated=todayStr();
+  await dbPut('spares',s);
+  const chk=(s.real!==''&&s.real!=null);
+  const row=document.getElementById('row_'+id);
+  if(row){row.classList.toggle('checked',chk);
+    const n=row.querySelector('.n');
+    if(n){const hasCheck=/✓/.test(n.innerHTML);
+      if(chk&&!hasCheck)n.innerHTML+=' <span class="badge b-green">✓</span>';
+      if(!chk&&hasCheck)n.innerHTML=n.innerHTML.replace(/\s*<span class="badge b-green">✓<\/span>/,'');}}
+  const dn=document.getElementById('inspdone');
+  if(dn){const cur=S.spares.filter(x=>x.src==='master'&&x.real!=null&&x.real!=='' && ((S._spareDept||'전력계통과')==='전체'||x.dept===(S._spareDept||'전력계통과'))).length;dn.textContent=cur;}
+  toast(`${s.type||s.name} 실수량 ${chk?s.real+(s.unit||''):'지움'} 저장`);
+}
+async function clearSpareReal(id){
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  s.real='';s.updated=todayStr();
+  await dbPut('spares',s);
+  const el=document.getElementById('rq_'+id);if(el)el.value='';
+  const row=document.getElementById('row_'+id);
+  if(row){row.classList.remove('checked');
+    const n=row.querySelector('.n');
+    if(n)n.innerHTML=n.innerHTML.replace(/\s*<span class="badge b-green">✓<\/span>/,'');}
+  const dn=document.getElementById('inspdone');
+  if(dn){const cur=S.spares.filter(x=>x.src==='master'&&x.real!=null&&x.real!=='' && ((S._spareDept||'전력계통과')==='전체'||x.dept===(S._spareDept||'전력계통과'))).length;dn.textContent=cur;}
+  toast('검수 해제됨');
+}
+function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
+async function setSpareReal(id,v){
+  const s=S.spares.find(x=>x.id===id);if(!s)return;
+  s.real=(v===''?'':Number(v));s.updated=todayStr();
+  await dbPut('spares',s);
 }
 
 /* ── 예산 집계 ── */
@@ -3699,15 +4349,19 @@ function homeHistHtml(){
   S.checklogs.forEach(l=>{const m=(l.date||'').slice(0,7);if(!m)return;(byM[m]=byM[m]||[]).push({...l,_k:'chk'});});
   S.inspections.forEach(i=>(i.history||[]).forEach(h=>{const m=(h.date||'').slice(0,7);if(!m)return;
     (byM[m]=byM[m]||[]).push({_k:'insp',date:h.date,name:i.name+(h.result?' · '+h.result:''),note:h.note,inspId:i.id});}));
+  S.issues.filter(i=>i.done).forEach(i=>{const d=i.doneDate||i.date||'';const m=d.slice(0,7);if(!m)return;
+    (byM[m]=byM[m]||[]).push({_k:'issue',date:d,name:i.title,note:i.note,issueId:i.id});});
   const months=Object.keys(byM).sort().reverse();
-  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
-  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료를 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획에 활용.</div>`+
+  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리, 현안 완료를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
+  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료 + 완료 현안을 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획·정비이력 정리에 활용.</div>`+
     months.map((m,idx)=>{
-    const logs=byM[m].slice().sort((a,b)=>b.date.localeCompare(a.date));
+    const logs=byM[m].slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const [y,mo]=m.split('-');
     return `<details class="card histcard" ${idx===0?'open':''}><summary class="hist-sum">${y}년 ${parseInt(mo,10)}월 <span class="cnt">${logs.length}건</span></summary>
       ${logs.map(l=>l._k==='insp'
         ?`<div class="histrow click" onclick="openInsp('${l.inspId}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">📋 검사</span></div>`
+        :l._k==='issue'
+        ?`<div class="histrow click" onclick="editIssue('${l.issueId}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">🔧 현안</span></div>`
         :`<div class="histrow click" onclick="openCheckResult('${l.id}')"><span class="hd">${esc(mdShort(l.date))}</span><span class="hn">${esc(l.name)}${l.note?' 📝':''}</span><span class="hc">${esc(cycleFromPeriod(l))}</span></div>`
       ).join('')}
     </details>`;
@@ -4432,6 +5086,7 @@ function render(){
   $('#hd-title').textContent=TITLES[S.view]||'';
   $('#hd-sub').textContent=todayStr();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.view));
+  if(S.view==='tree'&&(S._treeSubTab||'path')==='diagram')requestAnimationFrame(setupTreeDiagram);
 }
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 /* 테마(다크/라이트) */
