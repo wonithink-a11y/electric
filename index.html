@@ -1015,14 +1015,13 @@ function closeModal(){$('#modal-root').innerHTML=''}
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
-  const tab=S.homeTab||'week';
+  const tab=S.homeTab||'cal';
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';render()">${l}</button>`;
   return `
   <div class="chips subtab">
-    ${chip('issue','현안')}${chip('week','점검검사')}${chip('todo','할일')}${chip('hist','완료')}
+    ${chip('cal','달력')}${chip('issue','현안')}${chip('todo','할일')}${chip('week','점검검사')}${chip('hist','완료')}
   </div>
-  ${tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab()}
-  ${calHtml()}
+  ${tab==='cal'?calHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab()}
   <div class="botpad"></div>`;
 }
 function homeIssuesCard(){
@@ -4365,15 +4364,25 @@ function cycleFromPeriod(l){
   if(/-B$/.test(p))return '격년';if(/^\d{4}-\d{2}-\d{2}/.test(p))return '일간';if(/^\d{4}-\d{2}$/.test(p))return '월간';if(/^\d{4}$/.test(p))return '연간';return '';
 }
 function homeHistHtml(){
+  const flt=S._histFilter||'';
+  const all=[];
+  S.checklogs.forEach(l=>{if(l.date)all.push({...l,_k:'chk'});});
+  S.inspections.forEach(i=>(i.history||[]).forEach(h=>{if(h.date)
+    all.push({_k:'insp',date:h.date,name:i.name+(h.result?' · '+h.result:''),note:h.note,inspId:i.id});}));
+  S.issues.filter(i=>i.done).forEach(i=>{const d=i.doneDate||i.date||'';if(d)
+    all.push({_k:'issue',date:d,name:i.title,note:i.note,issueId:i.id});});
+  const c={all:all.length,issue:0,insp:0,chk:0};
+  all.forEach(x=>{c[x._k]=(c[x._k]||0)+1;});
+  const chipBtn=(v,l,n)=>`<button class="chip ${flt===v?'on':''}" onclick="S._histFilter='${v}';render()">${l}${n?` <span class="cnt">${n}</span>`:''}</button>`;
+  const chips=`<div class="chips subtab">
+    ${chipBtn('','전체',c.all)}${chipBtn('issue','🔧 현안',c.issue)}${chipBtn('insp','📋 검사',c.insp)}${chipBtn('chk','✅ 주기',c.chk)}
+  </div>`;
+  if(!all.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리, 현안 완료를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
+  const filtered=flt?all.filter(x=>x._k===flt):all;
   const byM={};
-  S.checklogs.forEach(l=>{const m=(l.date||'').slice(0,7);if(!m)return;(byM[m]=byM[m]||[]).push({...l,_k:'chk'});});
-  S.inspections.forEach(i=>(i.history||[]).forEach(h=>{const m=(h.date||'').slice(0,7);if(!m)return;
-    (byM[m]=byM[m]||[]).push({_k:'insp',date:h.date,name:i.name+(h.result?' · '+h.result:''),note:h.note,inspId:i.id});}));
-  S.issues.filter(i=>i.done).forEach(i=>{const d=i.doneDate||i.date||'';const m=d.slice(0,7);if(!m)return;
-    (byM[m]=byM[m]||[]).push({_k:'issue',date:d,name:i.title,note:i.note,issueId:i.id});});
+  filtered.forEach(x=>{const m=(x.date||'').slice(0,7);if(m)(byM[m]=byM[m]||[]).push(x);});
   const months=Object.keys(byM).sort().reverse();
-  if(!months.length)return `<div class="card"><div class="empty">완료 이력 없음 — 주기 업무를 완료하거나 법정검사 수검완료 처리, 현안 완료를 하면 월별로 여기에 날짜와 함께 쌓입니다</div></div>`;
-  return `<div class="muted" style="margin-bottom:8px">완료한 주기 업무 + 법정검사 수검완료 + 완료 현안을 월별로 정리 (날짜 · 이름 · 구분). 연말 실적·차년도 계획·정비이력 정리에 활용.</div>`+
+  const body=!months.length?`<div class="card"><div class="empty">해당 분류의 완료 이력이 없습니다</div></div>`:
     months.map((m,idx)=>{
     const logs=byM[m].slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const [y,mo]=m.split('-');
@@ -4386,6 +4395,7 @@ function homeHistHtml(){
       ).join('')}
     </details>`;
   }).join('');
+  return chips+`<div class="muted" style="margin:2px 2px 8px">완료한 주기 업무 + 법정검사 수검완료 + 완료 현안을 월별로 정리 (날짜 · 이름 · 구분). 분류 탭으로 골라 보기.</div>`+body;
 }
 
 /* ================= PART 6.6 : 측정값 기록 & 추세 (v14) ================= */
