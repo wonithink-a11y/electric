@@ -1027,7 +1027,7 @@ function vHome(){
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
   const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
-  return `<details class="card issuebox">
+  return `<details class="card issuebox" open>
     <summary><span>🔧 진행 중 현안</span><span class="cnt">${openIssues.length}건</span></summary>
     <div class="muted" style="margin:8px 0">기간이 정해지지 않은 유지보수(예: 터빈룸 팬 정비)는 여기에 — 완료 처리 전까지 남습니다.</div>
     ${openIssues.map(i=>`
@@ -5110,7 +5110,15 @@ function vaultImport(){
 
 const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
 const TITLES={home:'전력계통과 업무',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
-function go(v){S.view=v;render();window.scrollTo(0,0)}
+function go(v){
+  const st=S._navStack=S._navStack||[];
+  if(v!==S.view){
+    if(v==='home') st.length=0;                          // 홈은 최상위 → 이력 초기화
+    else if(st.length&&st[st.length-1]===v) st.pop();     // 이전 화면으로 되돌아감 → 팝(루프 방지)
+    else st.push(S.view);                                 // 새 화면 진입 → 현재 화면 저장
+  }
+  S.view=v;render();window.scrollTo(0,0);
+}
 function render(){
   $('#app').innerHTML=(VIEWS[S.view]||vHome)();
   $('#hd-title').textContent=TITLES[S.view]||'';
@@ -5234,7 +5242,8 @@ window.addEventListener('popstate',()=>{
   if(modalRoot && modalRoot.innerHTML.trim()!==''){ modalRoot.innerHTML=''; _refillGuard(); return; }
 
   if(typeof S!=='undefined' && S.view && S.view!=='home'){
-    S.view='home'; render(); _refillGuard(); return;
+    const st=S._navStack||[];
+    S.view=st.length?st.pop():'home'; render(); _refillGuard(); return;
   }
 
   showExitConfirm();
