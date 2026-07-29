@@ -2,9 +2,70 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 app_v58.html
+  전력계통과 업무앱 app_v60.html
   ============================================================
   변경 이력
+  v60 (2026-07-29) : 평상시 개폐상태(normalState)를 가압 경로 계산에 실제 반영
+    - [중요·안전] v59는 normalState 필드만 있고 계산에 쓰지 않았다(선언만 하고 미사용).
+      도면 판독(문서/도면판독_대장.md §7·§8)으로 평상시 상태가 확정되어 계산에 연결한다.
+      · 확정값: 460V 인입 LC-102·202·302·402 = N.C / 타이 LC-114·LC-311 = N.O /
+        ACB-103 = N.C · ACB-407 = N.O · D/G ACB = N.O /
+        6.9kV VCB-501 = N.C · VCB-601 = N.O · 타이 VCB-513 = N.C
+      · 특히 VCB-513은 '타이지만 평상시 닫힘'이다. v59는 tieTo가 있으면 무조건 열림으로 봐서
+        6.9kV BUS-2를 평상시 무전압으로 계산했다 — 실제와 반대. 이 버그가 v60에서 해소된다.
+    - normallyOpen(n) 신설: normalState 우선, 미입력 타이만 종전대로 '평상시 열림'으로 가정.
+    - energizedSet(openIds, opt) 2번째 인자를 확장. 기존 boolean(tiesOpen)도 그대로 받는다.
+      · opt=true  → {normal:true}  평상시 운전상태 반영(정전범위 조회용)
+      · opt=false → 보수적 가정: 타이 포함 전부 닫힐 수 있다고 봄(LOTO 격리계획용) — 종전과 동일
+      · opt={normal:true, forceClosed:[id...]} → 자동투입된 차단기를 닫힌 것으로 강제
+    - _adj: 타이 간선을 항상 포함하도록 변경. 평상시 개방은 이제 open 집합으로 처리하므로
+      간선을 지울 필요가 없고, N.C 타이(VCB-513)가 정상적으로 도통한다.
+    - _treeVer에 normalState 반영 — 상태를 바꿔도 인접 캐시가 갱신되도록(안 하면 옛 결과 표시).
+    - outageOf: energizedSet(open,{normal:true,forceClosed:forced})로 교체.
+      v59는 자동투입이 있으면 tiesOpen=false로 넘겨 계통 전체를 '닫힘'으로 봤다(과대 가압).
+    - stateWarnHtml 문구 교체: '미반영 경고'에서 '입력 현황 + 미입력분은 닫힘 가정' 안내로.
+    - 데이터: 데이터/계통트리_v2.json(노드 30개 normalState·panelNo 패치),
+      데이터/logic_cards_v3.json(86 연동 전개표 반영, 카드 19장). DB_VER 변경 없음(12 유지).
+
+  v59 (2026-07-29) : 가압 경로 기반 차단범위 + LOTO 역가압·자동투입 경고 + 로직 카드
+    - [중요·안전] 차단범위 계산을 '하위 트리 전개(descendants)'에서 '전원으로부터의 가압 경로
+      탐색(BFS)'으로 교체. 기존 방식은 이중 급전 모선(22.9kV VCB-101·102)이나 타이가 닫힌
+      구간에서 정전 범위를 과대 표시했음 — 실측: VCB-101 하나만 열면 구방식 77노드 정전으로
+      계산되나 실제로는 VCB-102로 계속 급전되어 0노드. 신설 energizedSet()/isolationPlan()은
+      실제 급전 경로만 따라간다.
+    - [중요·안전] LOTO 확장: 기존 startLoto()는 pathUp(상위 경로) 차단기만 나열해
+      ① 옆에서 들어오는 타이 급전, ② 86 동작 시 자동투입되는 차단기를 놓쳤음.
+      · 역가압 검출: 대상을 무전압으로 만든 뒤에도 살아있는 쪽과 이어진 연결(타이)을 자동 탐색해
+        "함께 잠글 차단기"로 승격. 격리가 불충분하면 반복 계산으로 최소 차단 집합을 산출하되,
+        부수 정전이 가장 적은 차단기를 고른다.
+      · 자동투입 검출: 로직 카드 trip[].sendTo에 CLOSE 지령이 있으면 그 대상을
+        "⚠ 86 동작 시 자동투입 — 반드시 잠금"으로 표시. 실사례: VCB-501 51 동작 → VCB-513·VCB-601 투입.
+      · LOTO 단계에 사유가 함께 표시되고 lotologs에 extras로 저장됨.
+    - 계통 트리 노드에 타이 상대측(tieTo) 선택 필드 추가. 타이 차단기는 부모-자식 트리로 표현이
+      안 되므로(모선↔모선 횡연결) 이 필드로 가압 그래프에 양방향 간선을 만든다. 선택 필드라
+      기존 데이터 무영향. 데이터/계통트리_타이보정_v1.json으로 27개 노드 일괄 주입 가능.
+    - 로직 카드(logic 스토어, DB_VER 11→12): 로직도(LG)·스키매틱(SD)에서 뽑은 투입조건·트립소스·
+      회선번호를 구조화 JSON으로 보관. [더보기 > 로직 카드 가져오기]로 주입(tag 기준 덮어쓰기).
+      logicByTag()가 판넬번호·노드명으로 카드를 찾아 노드 메뉴·LOTO에 연결. 카드가 없는 설비는
+      타이 검사만 수행 — 데이터가 덜 채워져도 앱 동작에 영향 없음.
+    - 성능: 인접 리스트 캐시(_adj) 도입. 없으면 역방향 타이 탐색이 매번 S.tree 전수 스캔이라
+      156노드 기준 격리계획 1회 51ms → 캐시 후 2.5ms.
+    - [안전장치] 평상시 개폐 상태(N.O/N.C) 미입력 경고(normalStateCoverage/stateWarnHtml).
+      가압 경로 계산은 '타이 제외 전 차단기 닫힘'을 가정하는데, 실제 계통에는 평상시 열어 두는
+      인입 차단기와 평상시 닫아 두는 타이가 있다(KEY 단선도 판독으로 확인). 단선도에는 표기가
+      있으나 계통 트리에 필드가 없어 계산이 실제 운전 상태와 어긋날 수 있다 → LOTO·정전범위
+      화면에 입력 현황(n/전체)과 함께 '단선도·현장 확인 필수'를 명시. 계통 노드에 normalState
+      선택 필드 신설(미확인/NC/NO). 계산 로직은 아직 이 값을 쓰지 않는다 — 도면 판독 완료 후
+      계통트리_v2.json과 함께 반영 예정.
+    - [편의] 한 번에 가져오기(importAll): JSON 여러 개를 한꺼번에 선택하면 내용의 필드로 종류를
+      판별(_sniffJson)해 seed → 계통트리 → 로직카드 → 해석노트 순으로 자동 주입. 파일명 무관.
+      기존엔 새 기기마다 4번 따로 넣어야 했음. 전체 백업 파일은 기존 데이터를 통째로 바꾸므로
+      여기서 처리하지 않고 [백업 복원]으로 안내만 한다.
+    - [편의] 데이터가 비었을 때 홈 상단에 안내 카드(emptyStateCard). IndexedDB는 출처(origin)별로
+      분리되므로 GitHub Pages에서 쓰던 데이터가 로컬 file://에서 안 보이는 것이 정상임을 명시.
+    - [버그] classifyDoc() 도면번호 정규식이 SL·LG만 인식해 SD(스키매틱·전개접속도)·GS(심볼)를
+      못 잡던 문제 수정. 602-1-E-SD-443-018 같은 번호가 docNo 없이 들어가 검색·연결이 안 됐음.
+    - DB 마이그레이션: DB_VER 11→12, 신규 스토어 logic 자동 생성(vault 등 기존 데이터 유지). 백업 포함.
   v58 (2026-07-28) : 보안 금고(현장 비번·전산 계정) 신설
     - [신규 모듈] 더보기 > 관리·도구 > "🔐 보안 금고": 현장 물리 비번(전기실 도어락·판넬
       다이얼)과 전산 계정(시스템명·ID·비번·접속경로)을 저장. vault 스토어 하나에
@@ -688,8 +749,8 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const DB_NAME='pwr_work_v1', DB_VER=11; // v11: vault(보안 금고: 현장 비번·전산 계정) 추가 (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
-const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault'];
+const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
+const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
 
 function openDB(){
@@ -720,7 +781,7 @@ function dbBulkPut(store,arr){
 }
 
 /* ================= PART 2 : 상태 & 유틸 ================= */
-const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],vault:[],_vaultKdf:null,view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null,_treeVoltTab:'전체',_treeSubTab:'path',_drillId:'',_treePathId:'',_treeDiaRoot:''};
+const S={equipment:[],inspections:[],checklists:[],checklogs:[],issues:[],faults:[],tree:[],laws:[],lotologs:[],drawings:[],docs:[],photos:[],spares:[],budget:[],todos:[],measurements:[],permits:[],procs:[],dwgnotes:[],notes:[],vault:[],logic:[],_vaultKdf:null,view:'home',equipMode:'list',_calYM:null,equipFilter:{q:'',plant:'',cat:''},detailId:null,_hwpxTpl:null,_noteTagSel:[],_fbCfg:null,_treeToggled:new Set(),_treeZoom:1,_treeHighlight:null,_treeVoltTab:'전체',_treeSubTab:'path',_drillId:'',_treePathId:'',_treeDiaRoot:''};
 
 async function loadAll(){
   [S.equipment,S.inspections,S.checklists,S.checklogs,S.issues,S.faults,S.tree,S.laws,S.lotologs,S.drawings]=await Promise.all(
@@ -731,6 +792,7 @@ async function loadAll(){
   try{S.dwgnotes=await dbAll('dwgnotes');}catch(e){S.dwgnotes=[];}
   try{S.notes=await dbAll('notes');}catch(e){S.notes=[];}
   try{S.vault=await dbAll('vault');}catch(e){S.vault=[];} // 암호문 그대로 보관(복호화는 잠금 해제 시)
+  try{S.logic=await dbAll('logic');}catch(e){S.logic=[];}
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
 }
@@ -790,7 +852,7 @@ function isChkDone(c){
 }
 
 /* ================= PART 3 : 내보내기 / 가져오기 ================= */
-const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes','notes'];
+const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','logic'];
 async function exportJSON(){
   const incDraw=S.drawings.length?await confirmModal('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
   const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
@@ -810,6 +872,104 @@ function pickFile(cb){
     try{cb(JSON.parse(await f.text()))}catch(e){toast('JSON 파싱 실패: '+e.message)}
   };
   inp.click();
+}
+/* ===== v59: 한 번에 가져오기 — 여러 JSON을 골라 넣으면 내용을 보고 알아서 분류 =====
+   기존엔 seed·타이보정·로직카드·해석노트를 각각 따로 넣어야 했다(새 기기마다 4번).
+   파일 이름이 아니라 내용의 필드로 판별하므로 파일명이 달라도 동작한다. */
+function _sniffJson(d){
+  if(!d||typeof d!=='object')return '알수없음';
+  if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
+  if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
+  if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
+  if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
+  if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
+  if(Array.isArray(d)&&d.length&&d[0].tag)return '로직카드';
+  return '알수없음';
+}
+async function _applyJson(kind,d){
+  if(kind==='seed'){
+    const eq=(d.equipment||[]).map(e=>({...e,location:e.location||'',feeder:e.feeder||'',spare:e.spare||'',memo:e.memo||''}));
+    const ins=(d.inspections||[]).map(i=>({...i,history:i.history||[]}));
+    const chk=(d.checklists||[]).map(c=>({...c}));
+    if([...eq,...ins,...chk].some(x=>x.id===undefined||x.id===null))throw new Error('id 없는 항목이 있습니다');
+    await dbBulkPut('equipment',eq);await dbBulkPut('inspections',ins);await dbBulkPut('checklists',chk);
+    const iss=(d.issues||[]).filter(x=>x.id),tds=(d.todos||[]).filter(x=>x.id),trn=(d.tree||[]).filter(x=>x.id);
+    if(iss.length)await dbBulkPut('issues',iss);
+    if(tds.length)await dbBulkPut('todos',tds);
+    if(trn.length){await dbBulkPut('tree',trn);invalidateAdj();}
+    if(d.responsibleAreas)await dbPut('meta',{id:'areas',value:d.responsibleAreas});
+    return `설비 ${eq.length} · 검사 ${ins.length} · 체크 ${chk.length}`+(trn.length?` · 계통 ${trn.length}노드`:'');
+  }
+  if(kind==='계통트리'){
+    const trn=d.tree.filter(x=>x.id);
+    await dbBulkPut('tree',trn);invalidateAdj();
+    return `계통 노드 ${trn.length}개 갱신`;
+  }
+  if(kind==='로직카드'){
+    const list=Array.isArray(d)?d:d.logic;let n=0;
+    for(const it of list){
+      const key=_normTag(it.tag);
+      const ex=(S.logic||[]).find(x=>_normTag(x.tag)===key);
+      await dbPut('logic',Object.assign(ex||{id:'LG'+uid()},it,{added:todayStr()}));n++;
+    }
+    return `로직 카드 ${n}장`;
+  }
+  if(kind==='해석노트'){
+    let n=0;
+    for(const it of d.notes){
+      const key=((it.tag||'')+'|'+(it.dwg||'')).toUpperCase();
+      const ex=(S.dwgnotes||[]).find(x=>(((x.tag||'')+'|'+(x.dwg||'')).toUpperCase())===key);
+      await dbPut('dwgnotes',Object.assign(ex||{id:'DN'+uid()},
+        {tag:it.tag,dwg:it.dwg||'',title:it.title||'',body:it.body||'',added:todayStr()}));n++;
+    }
+    return `해석 노트 ${n}건`;
+  }
+  throw new Error('알 수 없는 형식');
+}
+function importAll(){
+  const inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const files=[...(inp.files||[])];if(!files.length)return;
+    const jobs=[];
+    for(const f of files){
+      let d=null,kind='읽기실패';
+      try{d=JSON.parse(await f.text());kind=_sniffJson(d);}catch(e){}
+      jobs.push({name:f.name,kind,data:d});
+    }
+    const usable=jobs.filter(j=>j.data&&j.kind!=='알수없음'&&j.kind!=='백업'&&j.kind!=='읽기실패');
+    const skipped=jobs.filter(j=>!usable.includes(j));
+    const listHtml=jobs.map(j=>`<div class="item"><div class="t"><div class="n">${esc(j.name)}</div>
+      <div class="d">${j.kind==='백업'?'전체 백업 — [백업 복원]으로 따로 넣으세요':esc(j.kind)}</div></div>
+      <span class="badge ${usable.includes(j)?'b-green':'b-gray'}">${usable.includes(j)?'주입':'건너뜀'}</span></div>`).join('');
+    if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
+    const done=[],fail=[];
+    // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3};
+    usable.sort((a,b)=>order[a.kind]-order[b.kind]);
+    for(const j of usable){
+      try{done.push(`${j.kind}: ${await _applyJson(j.kind,j.data)}`);}
+      catch(e){fail.push(`${j.name} — ${e.message}`);}
+    }
+    await loadAll();render();
+    openModal(`<h3>📥 가져오기 결과</h3>
+      ${listHtml}
+      ${done.length?`<div class="muted" style="margin-top:10px">완료</div><div class="path-box">${done.map(esc).join('<br>')}</div>`:''}
+      ${fail.length?`<div class="muted" style="margin-top:8px;color:var(--danger)">실패</div><div class="path-box">${fail.map(esc).join('<br>')}</div>`:''}
+      ${skipped.some(j=>j.kind==='백업')?`<div class="section-note">전체 백업 파일은 기존 데이터를 통째로 바꾸므로 여기서 처리하지 않습니다. [백업·복원·동기화 > 백업 복원]을 쓰세요.</div>`:''}
+      <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+  };
+  inp.click();
+}
+/* 데이터가 비었을 때 홈 상단 안내 — 새 기기·새 출처(file:// ↔ https)에서 헤매지 않도록 */
+function emptyStateCard(){
+  if(S.equipment.length||S.tree.length)return '';
+  return `<div class="card" style="border-left:3px solid var(--accent,#4a9)">
+    <h2>📥 시작하려면 데이터를 넣으세요</h2>
+    <div class="muted">저장소는 주소(출처)별로 분리됩니다. GitHub Pages에서 쓰던 데이터는 로컬 파일로 열면 보이지 않습니다 — 사라진 게 아니라 다른 저장소입니다.</div>
+    <button class="btn full" style="margin-top:10px" onclick="importAll()">📥 초기 데이터 한 번에 가져오기</button>
+    <div class="section-note">데이터/ 폴더의 seed_data_v1.json · 계통트리_타이보정_v1.json · logic_cards_v2.json 을 <b>한꺼번에 선택</b>하면 알아서 분류해 넣습니다.<br>
+      기존 기기에서 쓰던 기록을 옮기려면 그쪽에서 [전체 백업 내보내기] 후 [백업 복원]을 쓰세요.</div>
+  </div>`;
 }
 // seed_data_v1.json 가져오기 (설비/검사/체크리스트 초기 주입)
 function importSeed(){
@@ -1018,6 +1178,7 @@ function vHome(){
   const tab=S.homeTab||'cal';
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';render()">${l}</button>`;
   return `
+  ${emptyStateCard()}
   <div class="chips subtab">
     ${chip('cal','달력')}${chip('issue','현안')}${chip('todo','할일')}${chip('week','점검검사')}${chip('hist','완료')}
   </div>
@@ -1730,7 +1891,8 @@ function blockPathSvg(id){
     if(isBrk)svg+=`<text x="${pad+bw-10}" y="${y+bh/2+4}" font-size="9" fill="var(--danger)" text-anchor="end">⚡차단</text>`;});
   return `<div style="overflow-x:auto;margin:6px 0"><svg viewBox="0 0 ${bw+pad*2} ${totalH}" style="height:auto;min-width:${bw+pad*2}px;max-width:100%">${svg}</svg></div>`;
 }
-// 조회 B: 하위 전체 (정전 영향 범위)
+// 조회 B(구): 하위 전체 — 단순 트리 전개. v59부터 정전범위 판정에는 쓰지 않는다(이중급전·타이 미반영).
+// '구조상 하위'가 필요한 곳에만 유지.
 function descendants(id){
   const out=[],stack=[id];let guard=0;
   while(stack.length&&guard++<2000){
@@ -1738,6 +1900,247 @@ function descendants(id){
     for(const k of nodeKids(cur)){out.push(k);stack.push(k.id)}
   }
   return out;
+}
+
+/* ================= PART 6.5B : 가압 경로 탐색 & 격리 계획 (v59) =================
+   왜 새로 만들었나 — descendants()는 부모→자식 한 방향으로만 내려가므로
+   ① 22.9kV 인입 2회선처럼 이중 급전인 모선, ② 타이 차단기로 옆에서 들어오는 급전을
+   반영하지 못한다. 그 결과 VCB-101 하나만 열어도 전 플랜트 정전으로 계산되고(실측 77노드),
+   반대로 타이를 통한 역가압은 아예 보이지 않는다(= LOTO에서 가장 위험한 누락).
+   여기서는 '전원 노드에서 출발해 닫힌 차단기를 통과하며 도달 가능한 노드'를 실제로 탐색한다.
+   간선 = 부모-자식 + 타이(tieTo) 양방향. 열린 차단기는 통과 불가.                     */
+
+// 인접 리스트 캐시 — nodeNeighbors를 노드마다 부르면 역방향 타이 탐색이 매번 S.tree 전수
+// 스캔이라 O(n²)가 된다(156노드 기준 격리계획 1회 51ms). 캐시로 2.5ms.
+let _adjCache={v:null,map:null};
+/* v60: normalState도 버전에 포함. 안 하면 평상시 상태를 바꿔도 캐시가 살아 있어 옛 결과가 나온다. */
+function _treeVer(){return S.tree.length+':'+S.tree.reduce((a,n)=>a+(n.parentId?1:0)+(n.tieTo?2:0)+(n.normalState==='NO'?4:n.normalState==='NC'?8:0),0);}
+function invalidateAdj(){_adjCache={v:null,map:null};}
+/* v60: 타이 간선을 '항상' 포함한다.
+   v59는 tiesOpen일 때 tieTo 간선을 아예 지웠는데, 그러면 평상시 닫힌 타이(VCB-513 N.C)가
+   도통하지 못해 6.9kV BUS-2가 무전압으로 계산됐다. 이제 개폐 여부는 energizedSet의 open
+   집합에서 처리하므로 인접 리스트는 계통의 물리적 연결만 담는다. */
+function _adj(){
+  const v=_treeVer();
+  if(_adjCache.map&&_adjCache.v===v)return _adjCache.map;
+  const m=new Map();
+  const add=(a,b)=>{if(!a||!b)return;let l=m.get(a);if(!l){l=[];m.set(a,l)}l.push(b)};
+  for(const n of S.tree){
+    if(n.parentId){add(n.id,n.parentId);add(n.parentId,n.id);}
+    if(n.tieTo){add(n.id,n.tieTo);add(n.tieTo,n.id);}
+  }
+  _adjCache={v,map:m};
+  return m;
+}
+/* 평상시 열려 있는 차단기인가 — v60 신설.
+   normalState가 입력돼 있으면 그것을 따르고(타이라도 N.C면 닫힘), 미입력이면 종전 가정을
+   유지한다: 타이는 열림, 나머지는 닫힘. 도면 근거는 문서/도면판독_대장.md §7·§8. */
+function normallyOpen(n){
+  if(!n)return false;
+  if(n.normalState==='NO')return true;
+  if(n.normalState==='NC')return false;
+  return !!n.tieTo;
+}
+// 인접 노드(개별 조회용): 부모 · 자식 · 타이 상대측(양방향)
+function nodeNeighbors(id,tiesOpen){
+  const out=[],n=nodeById(id);if(!n)return out;
+  if(n.parentId)out.push(n.parentId);
+  for(const k of nodeKids(id))out.push(k.id);
+  if(tiesOpen)return out;
+  if(n.tieTo)out.push(n.tieTo);
+  for(const t of S.tree)if(t.tieTo===id)out.push(t.id);
+  return out;
+}
+/* 전원에서 도달 가능한(=가압된) 노드 집합. openIds의 차단기는 통과 불가.
+   열린 차단기 자신은 '한쪽이 살아있을 수 있으므로' live에 넣되 더 전파하지 않는다(안전측 판정).
+
+   두 번째 인자 opt — v60에서 확장(기존 boolean 호출도 그대로 동작):
+     true  / {normal:true}  평상시 운전상태를 반영. normalState='NO'인 차단기와 미입력 타이를
+                            열린 것으로 본다. → 정전범위 조회(outageOf)용.
+     false / 생략           보수적 가정. 타이 포함 모든 차단기가 닫힐 수 있다고 본다.
+                            → LOTO 격리계획(isolationPlan)용. 안전측이므로 기본값으로 둔다.
+     {normal:true, forceClosed:[id...]}  자동투입 등으로 '닫힌다'고 확정된 차단기를 강제로 닫음. */
+function energizedSet(openIds,opt){
+  const o=(opt===true)?{normal:true}:(!opt)?{normal:false}:opt;
+  const forceClosed=new Set(o.forceClosed||[]);
+  const open=new Set(openIds||[]);
+  if(o.normal)for(const n of S.tree){
+    if(n.type==='breaker'&&normallyOpen(n)&&!forceClosed.has(n.id))open.add(n.id);
+  }
+  forceClosed.forEach(id=>open.delete(id));
+  const live=new Set(),adj=_adj();
+  // 급전 시작점은 '최상위 노드(부모 없음)' = 한전 인입만. 계통 내부의 type='source'(비상발전기 등)는
+  // 평상시 정지 상태이므로 시작점으로 삼지 않는다 — 그렇게 하면 양방향 탐색이 발전기에서 거꾸로
+  // 올라가 계통 전체를 '가압'으로 만들어 격리 판정이 무력화된다(실측: 156노드 전부 live).
+  // 내부 전원은 대신 backfeedSources()가 '기동 방지' 경고로 따로 잡는다.
+  const srcs=S.tree.filter(n=>!n.parentId);
+  const st=[];
+  for(const s of srcs){if(!live.has(s.id)){live.add(s.id);st.push(s.id)}}
+  let g=0;
+  while(st.length&&g++<8000){
+    const cur=st.pop();
+    if(open.has(cur))continue;
+    const nb=adj.get(cur);if(!nb)continue;
+    for(const id of nb){if(live.has(id))continue;live.add(id);st.push(id);}
+  }
+  return live;
+}
+/* 하나만 더 열면 대상이 죽는 차단기 중 '부수 정전이 가장 적은' 것 하나.
+   상류로 갈수록 대상은 죽지만 무관한 구역까지 정전되므로, 살아남는 노드가 가장 많은 후보를 고른다.
+   (예: L/C-2 격리에 VCB-509를 여는 것도 수학적으론 가능하지만 L/C-1까지 죽인다 → LC-114 선택) */
+function feedersInto(nodeId,open){
+  let best=null,bestLive=-1;
+  for(const c of S.tree){
+    if(c.type!=='breaker'||open.has(c.id))continue;
+    const o=new Set(open);o.add(c.id);
+    const lv=energizedSet([...o]);
+    if(lv.has(nodeId))continue;
+    if(lv.size>bestLive){bestLive=lv.size;best=c.id;}
+  }
+  return best?[best]:[];
+}
+// 죽은 구역에 접해 있으면서 반대편이 살아있는 차단기 = 닫히면(또는 자동투입되면) 역가압
+function adjacentFeeders(live){
+  const out=[];
+  for(const n of S.tree){
+    if(n.type!=='breaker')continue;
+    const nb=nodeNeighbors(n.id);
+    const hasLive=nb.some(x=>live.has(x));
+    const hasDead=nb.some(x=>!live.has(x))||!live.has(n.id);
+    if(hasLive&&hasDead)out.push(n.id);
+  }
+  return out;
+}
+/* 로직 카드 조회 — 판넬번호(panelNo) 우선, 없으면 노드명에 태그가 포함되는지로 매칭 */
+const _normTag=s=>String(s||'').toUpperCase().replace(/[-_.\s]/g,'');
+function logicByTag(node){
+  if(!node||!(S.logic||[]).length)return null;
+  const keys=[node.panelNo,node.name].filter(Boolean).map(_normTag);
+  for(const c of S.logic){
+    const t=_normTag(c.tag);if(!t)continue;
+    if(keys.some(k=>k===t||k.indexOf(t)>=0))return c;
+  }
+  return null;
+}
+function nodeByTag(tag){
+  const k=_normTag(tag);if(!k)return null;
+  return S.tree.find(n=>_normTag(n.panelNo)===k)||S.tree.find(n=>_normTag(n.name).indexOf(k)>=0)||null;
+}
+/* 이 차단기가 트립하면 '투입 지령'을 받는 차단기들 (86 자동투입) — LOTO 최대 함정 */
+function autoCloseFrom(node){
+  const c=logicByTag(node);if(!c)return [];
+  const out=[];
+  for(const t of (c.trip||[]))for(const s of (t.sendTo||[])){
+    if(!/CLOSE|투입/i.test(s))continue;
+    const m=String(s).match(/([A-Z]{2,4}-\d+)/);
+    if(m)out.push({tag:m[1],why:(t.label||'보호동작')+' 시 자동투입 — 반드시 잠금'});
+  }
+  const seen=new Set();
+  return out.filter(x=>seen.has(x.tag)?false:(seen.add(x.tag),true));
+}
+/* 이 차단기가 트립하면 함께 트립하는 상위 차단기 (51G·26W 등) */
+function cascadeTripFrom(node){
+  const c=logicByTag(node);if(!c)return [];
+  const out=[];
+  for(const t of (c.trip||[]))for(const s of (t.sendTo||[])){
+    if(!/TRIP|트립/i.test(s))continue;
+    const m=String(s).match(/([A-Z]{2,4}-\d+)/);
+    if(m)out.push({tag:m[1],why:(t.label||'보호동작')+' 시 동시 트립'});
+  }
+  const seen=new Set();
+  return out.filter(x=>seen.has(x.tag)?false:(seen.add(x.tag),true));
+}
+/* 평상시 개폐 상태(N.O/N.C) 입력 현황 — v59 안전장치.
+   가압 경로 계산은 '타이를 제외한 모든 차단기가 닫혀 있다'고 가정한다. 그런데 실제 계통에는
+   평상시 열어 두는 인입 차단기(예비 변압기측·예비 모선측)와 평상시 닫아 두는 타이가 존재한다.
+   도면에는 N.O/N.C가 표기되어 있으나 계통 트리에는 그 필드가 없다 → 계산이 실제 운전 상태와
+   어긋날 수 있다. 데이터가 채워지기 전까지는 '확신에 찬 오답'을 내지 않도록 화면에 명시한다.
+   noteState()가 빈 문자열을 반환하면 전 차단기에 상태가 입력된 것이다. */
+function normalStateCoverage(){
+  const brks=S.tree.filter(n=>n.type==='breaker');
+  const set=brks.filter(n=>n.normalState==='NO'||n.normalState==='NC');
+  return {total:brks.length,filled:set.length};
+}
+function stateWarnHtml(){
+  const c=normalStateCoverage();
+  if(!c.total)return '';
+  if(c.filled===c.total)return `<div class="section-note" style="border-left:3px solid var(--ok,#2f9e44);padding-left:10px;margin:8px 0">
+    ✅ 평상시 개폐 상태(N.O/N.C)가 차단기 <b>${c.total}개 전부</b>에 입력되어 계산에 반영됐습니다.
+    그래도 <b>조작 전 현장·ECMS 실제 표시 확인</b>은 생략하지 마십시오.</div>`;
+  return `<div class="section-note" style="border-left:3px solid var(--warn,#e0a800);padding-left:10px;margin:8px 0">
+    ⚠️ 평상시 개폐 상태(N.O/N.C) 입력 <b>${c.filled}/${c.total}</b>개. 입력된 것은 계산에 반영됩니다.
+    <b>미입력 차단기는 '평상시 닫힘'(타이는 열림)으로 가정</b>하므로, 평상시 열어 두는 인입 차단기가
+    섞여 있으면 실제와 다릅니다. <b>단선도·현장 확인 필수.</b></div>`;
+}
+/* 정전 구역 안에 있는 내부 전원(비상발전기·UPS 등) — 기동하면 그 구역이 다시 살아난다.
+   차단·잠금 대상이 아니라 '기동 방지' 조치 대상이므로 별도로 알린다. */
+function backfeedSources(live){
+  return S.tree.filter(n=>n.type==='source'&&n.parentId&&!live.has(n.id));
+}
+/* 격리 계획: 대상 노드를 무전압으로 만들기 위해 실제로 열어야 할 차단기 집합 */
+function isolationPlan(nodeId){
+  const target=nodeById(nodeId);if(!target)return null;
+  const reasons={},open=new Set();
+  const isBrk=target.type==='breaker';
+  /* 판정 기준 노드(probe) — 차단기를 대상으로 하면 그 '부하측'을 기준으로 무전압을 판정한다.
+     energizedSet은 열린 차단기 자신을 안전측으로 live에 넣으므로(선로측이 살아있을 수 있음),
+     차단기 노드를 그대로 기준 삼으면 영원히 '가압'으로 나와 격리 판정이 성립하지 않는다. */
+  const kids=nodeKids(nodeId);
+  const probe=(isBrk&&kids.length)?kids[0].id:nodeId;
+  const first=pathUp(nodeId).find(n=>n.type==='breaker');
+  if(first){open.add(first.id);reasons[first.id]=isBrk?'주 차단 — 작업 대상 차단기':'주 차단 — 상위 경로 최근접 차단기';}
+  // 차단기를 대상으로 하면 선로측(전원측)도 죽여야 하므로 바로 위 차단기를 함께 잠근다
+  let lineNote='';
+  if(isBrk){
+    const upBrk=pathUp(nodeId).slice(1).find(n=>n.type==='breaker');
+    if(upBrk){if(!open.has(upBrk.id)){open.add(upBrk.id);reasons[upBrk.id]='선로측 차단 — 이 차단기의 전원측을 무전압으로';}}
+    else lineNote='이 차단기의 선로측에는 상위 차단기가 없습니다(전원 직결). 선로측까지 무전압이 필요하면 한전 정전 협의 등 별도 조치가 필요합니다.';
+  }
+  // 전원 노드가 없거나 대상이 전원과 안 이어져 있으면 가압 판정 불가 → 구버전 동작으로 폴백
+  const anyLive=energizedSet([]);
+  if(!anyLive.size||!anyLive.has(nodeId)){
+    pathUp(nodeId).filter(x=>x.type==='breaker').forEach(b=>{
+      if(!open.has(b.id)){open.add(b.id);reasons[b.id]='상위 경로 차단기';}});
+    return {open:[...open],reasons,dead:[],live:anyLive,ok:false,
+      warn:'계통 트리에 전원(인입) 노드가 없거나 대상이 전원과 이어져 있지 않아 가압 경로를 계산하지 못했습니다. 경로상 차단기만 나열합니다 — 계통도를 직접 확인하세요.'};
+  }
+  let live=energizedSet([...open]),guard=0,warn='';
+  while(live.has(probe)&&guard++<6){
+    const f=feedersInto(probe,open);
+    if(!f.length){warn='남은 급전 경로를 차단기 하나로 끊을 수 없습니다. 계통도를 직접 확인하고 필요한 차단기를 수동으로 추가하세요.';break;}
+    f.forEach(id=>{if(!open.has(id)){open.add(id);reasons[id]='역가압 경로 — 이 차단기로도 전기가 들어옵니다';}});
+    live=energizedSet([...open]);
+  }
+  adjacentFeeders(live).forEach(id=>{
+    if(open.has(id))return;
+    open.add(id);reasons[id]='경계 차단기 — 닫히면 살아있는 쪽에서 역가압';
+  });
+  [...open].forEach(id=>{
+    autoCloseFrom(nodeById(id)).forEach(a=>{
+      const t=nodeByTag(a.tag);
+      if(t&&!open.has(t.id)){open.add(t.id);reasons[t.id]='⚠ '+a.why;}
+      else if(!t)warn=warn||('로직 카드상 '+a.tag+' 가 자동투입되지만 계통 트리에 해당 노드가 없습니다. 수동 확인 필요.');
+    });
+  });
+  live=energizedSet([...open]);
+  return {open:[...open],reasons,dead:S.tree.filter(n=>!live.has(n.id)),live,
+    ok:!live.has(probe),warn,lineNote,
+    srcWarn:backfeedSources(live).map(n=>n.name),
+    probeName:(nodeById(probe)||{}).name||''};
+}
+/* 조회 B(신): 이 차단기를 열었을 때 실제로 정전되는 노드 — 이중급전·타이 반영 */
+function outageOf(nodeId){
+  const n=nodeById(nodeId);if(!n)return {dead:[],casc:[],auto:[],forced:[]};
+  const casc=cascadeTripFrom(n),auto=autoCloseFrom(n);
+  const open=new Set([nodeId]);
+  casc.forEach(c=>{const t=nodeByTag(c.tag);if(t)open.add(t.id)});
+  const forced=[];
+  auto.forEach(a=>{const t=nodeByTag(a.tag);if(t){open.delete(t.id);forced.push(t.id)}});
+  /* v60: 평상시 운전상태(normal:true)를 기준으로 보고, 자동투입 대상만 강제로 닫는다.
+     v59는 자동투입이 있으면 tiesOpen=false로 넘겨 계통 전체를 닫힘으로 봐서 정전범위를
+     과소평가했다(자동투입과 무관한 타이까지 닫힌 것으로 계산). */
+  const live=energizedSet([...open],{normal:true,forceClosed:forced});
+  return {dead:S.tree.filter(x=>!live.has(x.id)),casc,auto,forced};
 }
 /* 계통 뷰 v46: 경로(추천1)/드릴다운(추천2)/단선도(추천3) 서브탭 — 기존 S.tree·헬퍼 재사용 */
 function treeLotoCard(){
@@ -2131,14 +2534,22 @@ function nodeMenu(id){
     <div class="muted" style="margin-top:6px">차단 경로 (상위 방향)</div>
     <div class="path-box">${blockPathText(id)}</div>
     ${blockPathSvg(id)}
-    ${isBrk?`<div class="muted">이 차단기 개방 시 정전 영향</div>
-      <div class="path-box">${descendants(id).map(d=>esc(d.name)).join('<br>')||'하위 노드 없음'}</div>`:''}
+    ${isBrk?(()=>{const o=outageOf(id);const lc=logicByTag(n);return `
+      <div class="muted">이 차단기 개방 시 실제 정전 범위 <span class="cnt">${o.dead.length}</span></div>
+      <div class="path-box">${o.dead.map(d=>esc(d.name)).join('<br>')||'정전 없음 — 다른 경로(타이·이중급전)로 계속 가압됩니다'}</div>
+      ${o.casc.length?`<div class="muted" style="margin-top:6px">동시 트립 (로직 카드)</div>
+        <div class="path-box">${o.casc.map(c=>esc(c.tag)+' — '+esc(c.why)).join('<br>')}</div>`:''}
+      ${o.auto.length?`<div class="muted" style="margin-top:6px;color:var(--danger)">⚠️ 자동투입 (로직 카드)</div>
+        <div class="path-box">${o.auto.map(c=>esc(c.tag)+' — '+esc(c.why)).join('<br>')}</div>`:''}
+      ${!lc?`<div class="section-note">로직 카드 없음 — 동시 트립·자동투입은 판정하지 못했습니다. [더보기 > 로직 카드 가져오기]</div>`:''}
+      ${stateWarnHtml()}`;})():''}
     ${n.docId&&(S.docs||[]).find(d=>d.id===n.docId)?`<div class="muted" style="margin-top:8px">연결 도면</div>
       <button class="btn ghost sm" onclick="closeModal();viewDoc('${n.docId}')">📄 ${esc(((S.docs||[]).find(d=>d.id===n.docId)||{}).title||'도면 열기')}</button>`:''}
     ${n.details?`<div class="muted" style="margin-top:8px">도면 세부내용</div><div class="path-box">${esc(n.details).replace(/\n/g,'<br>')}</div>`:''}
     <div class="row" style="margin-top:12px;flex-wrap:wrap">
       <button class="btn sm" onclick="editNode('','${id}')">+ 하위 추가</button>
       ${n.type==='load'||isBrk?`<button class="btn sm" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
+      ${logicByTag(n)?`<button class="btn sm" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
       <button class="btn ghost sm" onclick="copyPath('${id}')">📋 경로 복사</button>
       ${e?`<button class="btn ghost sm" onclick="openEquip('${e.id}')">설비 카드</button>`:''}
     </div>
@@ -2167,6 +2578,16 @@ function editNode(id,parentId){
     <input type="hidden" id="nd-eqid" value="${esc(n?.equipId||'')}">
     <div id="nd-sugg"></div>
     <label>판넬번호 (현장 표지, 예: VCB-106)</label><input id="nd-panel" value="${esc(n?.panelNo||'')}" placeholder="예: VCB-101, ACB-3">
+    <label>평상시 개폐 상태 (차단기만 · 단선도의 N.O/N.C 표기)</label>
+    <select id="nd-nstate">
+      <option value="" ${!n?.normalState?'selected':''}>- 미확인 -</option>
+      <option value="NC" ${n?.normalState==='NC'?'selected':''}>N.C — 평상시 닫힘(투입)</option>
+      <option value="NO" ${n?.normalState==='NO'?'selected':''}>N.O — 평상시 열림(개방)</option>
+    </select>
+    <label>타이 상대측 (이 노드가 타이 차단기일 때만)</label>
+    <select id="nd-tie"><option value="">- 없음 (일반 차단기·모선) -</option>
+      ${S.tree.filter(x=>x.id!==n?.id).map(x=>`<option value="${x.id}" ${n?.tieTo===x.id?'selected':''}>${esc(x.name)}${x.panelNo?' ('+esc(x.panelNo)+')':''}</option>`).join('')}</select>
+    <div class="section-note">타이(모선연락) 차단기는 부모-자식 관계로 표현되지 않습니다. 여기서 반대편 모선을 지정해야 정전범위·LOTO 계산에서 역가압을 잡아냅니다.</div>
     <label>메모 (정정값 등)</label><input id="nd-note" value="${esc(n?.note||'')}">
     <label>연결 도면 (단선도 등 · 선택 — 상세에서 탭하면 열림)</label>
     <select id="nd-doc"><option value="">(연결 안 함)</option>${(S.docs||[]).map(dc=>`<option value="${dc.id}" ${n?.docId===dc.id?'selected':''}>${esc(dc.title||dc.name||dc.id)}${dc.kind?' · '+esc(dc.kind):''}</option>`).join('')}</select>
@@ -2188,44 +2609,70 @@ async function saveNode(id,parentId){
   const obj=id?nodeById(id):{id:'N'+uid(),parentId:parentId||''};
   Object.assign(obj,{name,type:$('#nd-type').value,voltage:$('#nd-volt').value.trim(),
     equipId:$('#nd-eq').value.trim()?$('#nd-eqid').value:'',panelNo:$('#nd-panel').value.trim(),note:$('#nd-note').value.trim(),
+    tieTo:($('#nd-tie')?$('#nd-tie').value:'')||'',
+    normalState:($('#nd-nstate')?$('#nd-nstate').value:'')||'',
     docId:($('#nd-doc')?$('#nd-doc').value:'')||'',details:($('#nd-details')?$('#nd-details').value.trim():'')});
   await dbPut('tree',obj);
   if(!id)S.tree.push(obj);
+  invalidateAdj(); // 타이 상대측이 바뀌면 가압 경로 캐시를 버려야 함
   closeModal();render();toast('저장 완료');
 }
 async function delNode(id){
   const kids=nodeKids(id);
   if(kids.length){toast(`하위 노드 ${kids.length}개를 먼저 삭제/이동하세요`);return}
   if(!(await confirmModal('이 노드를 삭제할까요?')))return;
-  await dbDel('tree',id);S.tree=S.tree.filter(n=>n.id!==id);
+  await dbDel('tree',id);S.tree=S.tree.filter(n=>n.id!==id);invalidateAdj();
   closeModal();render();
 }
 /* LOTO 체크리스트 — 산안법 안전보건규칙 §318~320 정전작업 절차 */
+/* v59: 상위 경로 차단기만 나열하던 것 → 가압 경로 계산 기반으로 교체.
+   옆에서 들어오는 타이 급전(역가압)과 86 동작 시 자동투입되는 차단기까지 포함시킨다. */
 function startLoto(nodeId){
   const n=nodeById(nodeId);if(!n)return;
-  const brks=pathUp(nodeId).filter(x=>x.type==='breaker');
-  const steps=[];
-  for(const b of brks){
-    steps.push({label:`① 차단: ${b.name} 개방`,done:false});
-    steps.push({label:`② 잠금·표지: ${b.name} 시건장치 및 꼬리표 부착`,done:false});
-  }
-  steps.push({label:'③ 검전: 작업 부위 검전기로 무전압 확인',done:false});
-  steps.push({label:'④ 잔류전하 방전 (콘덴서·케이블)',done:false});
-  steps.push({label:'⑤ 접지: 단락접지기구 설치',done:false});
-  steps.push({label:'⑥ 작업 구역 표지 설치 후 작업 개시',done:false});
-  S._loto={id:'L'+uid(),date:todayStr(),target:n.name,nodeId,steps};
+  const plan=isolationPlan(nodeId);
+  const steps=[],seen=new Set();
+  const addCb=(node,why)=>{
+    if(!node||seen.has(node.id))return;seen.add(node.id);
+    steps.push({label:`① 차단: ${node.name} 개방`,why:why||'',cb:node.id,done:false});
+    steps.push({label:`② 잠금·표지: ${node.name} 시건장치 및 꼬리표 부착`,why:'',cb:node.id,done:false});
+  };
+  const order=id=>{const r=plan.reasons[id]||'';return r.indexOf('주 차단')===0?0:r.indexOf('역가압 경로')===0?1:r.indexOf('⚠')===0?2:3;};
+  plan.open.slice().sort((a,b)=>order(a)-order(b)).forEach(id=>addCb(nodeById(id),plan.reasons[id]));
+  if(!steps.length)steps.push({label:'① 차단: 계통 트리에 차단기가 없습니다 — 현장 확인 후 수동 기재',why:'',done:false});
+  steps.push({label:'③ 검전: 작업 부위 검전기로 무전압 확인',why:'',done:false});
+  steps.push({label:'④ 잔류전하 방전 (콘덴서·케이블)',why:'',done:false});
+  steps.push({label:'⑤ 접지: 단락접지기구 설치',why:'',done:false});
+  steps.push({label:'⑥ 작업 구역 표지 설치 후 작업 개시',why:'',done:false});
+  S._loto={id:'L'+uid(),date:todayStr(),target:n.name,nodeId,steps,
+    warn:plan.warn||'',lineNote:plan.lineNote||'',srcWarn:plan.srcWarn||[],ok:plan.ok,probeName:plan.probeName||'',
+    extras:plan.open.filter(id=>(plan.reasons[id]||'').indexOf('주 차단')!==0).map(id=>(nodeById(id)||{}).name||id),
+    deadCnt:(plan.dead||[]).length};
   renderLoto();
 }
 function renderLoto(){
   const l=S._loto;if(!l)return;
   const done=l.steps.filter(s=>s.done).length;
+  const autoWarn=l.steps.some(s=>(s.why||'').indexOf('⚠')===0);
   openModal(`<h3>🔒 LOTO — ${esc(l.target)}</h3>
     <div class="muted">${esc(l.date)} · ${done}/${l.steps.length} 완료 · 근거: 산업안전보건기준에 관한 규칙 §318~320 (원문은 law.go.kr 확인)</div>
     <div class="path-box">${blockPathText(l.nodeId)}</div>
+    ${autoWarn?`<div class="section-note" style="border-left:3px solid var(--danger);padding-left:10px;margin:8px 0">
+      ⚠️ 보호계전기(86) 동작 시 <b>자동으로 투입되는 차단기</b>가 있습니다. 주 차단기만 잠그면 이 경로로 모선이 다시 살아납니다.</div>`:''}
+    ${stateWarnHtml()}
+    ${l.lineNote?`<div class="section-note" style="border-left:3px solid var(--warn,#e0a800);padding-left:10px;margin:8px 0">🔌 ${esc(l.lineNote)}</div>`:''}
+    ${l.srcWarn&&l.srcWarn.length?`<div class="section-note" style="border-left:3px solid var(--danger);padding-left:10px;margin:8px 0">
+      ⚡ 정전 구역 안에 <b>내부 전원</b>이 있습니다: ${esc(l.srcWarn.join(', '))}<br>기동하면 구역이 다시 가압됩니다 — 기동 방지(제어전원 차단·자동기동 해제) 조치를 함께 하세요.</div>`:''}
+    ${l.warn?`<div class="section-note" style="border-left:3px solid var(--warn,#e0a800);padding-left:10px;margin:8px 0">${esc(l.warn)}</div>`:''}
+    ${l.ok&&l.probeName?`<div class="muted" style="margin-top:6px">✅ 무전압 확인 기준: <b>${esc(l.probeName)}</b> (부하측)</div>`:''}
+    ${l.extras&&l.extras.length?`<div class="muted" style="margin-top:6px">함께 잠글 차단기: <b>${esc(l.extras.join(', '))}</b></div>`:''}
     ${l.steps.map((s,i)=>`<div class="loto-step">
       <div class="chk ${s.done?'done':''}" onclick="S._loto.steps[${i}].done=!S._loto.steps[${i}].done;renderLoto()">✓</div>
-      <div style="font-size:14px;${s.done?'color:var(--dim);text-decoration:line-through':''}">${esc(s.label)}</div>
+      <div>
+        <div style="font-size:14px;${s.done?'color:var(--dim);text-decoration:line-through':''}">${esc(s.label)}</div>
+        ${s.why?`<div style="font-size:12px;color:${(s.why||'').indexOf('⚠')===0?'var(--danger)':'var(--dim)'};margin-top:1px">${esc(s.why)}</div>`:''}
+      </div>
     </div>`).join('')}
+    <div class="section-note">차단 대상은 전원에서 오는 가압 경로를 계산해 산출했습니다(이중 급전·타이 반영). 로직 카드가 없는 설비는 자동투입 검사를 못 하므로 도면을 함께 확인하세요.</div>
     <div class="row" style="margin-top:14px">
       <div class="grow"></div>
       <button class="btn ghost sm" onclick="S._loto=null;closeModal()">취소</button>
@@ -2234,7 +2681,7 @@ function renderLoto(){
 }
 async function saveLoto(){
   const l=S._loto;if(!l)return;
-  await dbPut('lotologs',{id:l.id,date:l.date,target:l.target,steps:l.steps});
+  await dbPut('lotologs',{id:l.id,date:l.date,target:l.target,steps:l.steps,extras:l.extras||[],warn:l.warn||''});
   S.lotologs.push(l);S._loto=null;
   closeModal();render();toast('LOTO 시행 기록 저장');
 }
@@ -2462,6 +2909,7 @@ function vMore(){
     ${row("moreFaultSheet()",'🔍','고장모드 라이브러리',FAULTMODE_LIB.length)}
   </div>
   <div class="card"><h2>보안·학습</h2>
+    ${row("moreLogicSheet()",'⚡','로직 카드 (투입조건·트립·회선)',cnt('logic'))}
     ${row("go('vault')",'🔐','보안 금고',vb)}
     ${row("S._quiz=null;S._qi=0;S._qok=0;S._qrv=0;go('study')",'🎴','계통 학습','')}
   </div>
@@ -2537,7 +2985,12 @@ function moreSetupSheet(){
   openModal(`<h3>🩺 자가진단·초기데이터</h3>
     <div class="muted">설비 ${cnt('equipment')} · 검사 ${cnt('inspections')} · 체크 ${cnt('checklists')} · 고장 ${cnt('faults')}</div>
     <button class="btn full" onclick="closeModal();selfTest()">🩺 자가진단 (기능·저장 점검)</button>
-    <button class="btn full" onclick="closeModal();importSeed()">📥 초기 데이터 가져오기 (seed_data_v1.json)</button>
+    <button class="btn full" onclick="closeModal();importAll()">📥 한 번에 가져오기 (여러 JSON 선택)</button>
+    <div class="section-note">seed · 계통트리 보정 · 로직 카드 · 해석 노트를 <b>한꺼번에 선택</b>하면 내용을 보고 알아서 분류해 넣습니다.
+      파일명이 달라도 되고, 넣는 순서도 알아서 맞춥니다(seed → 계통트리 → 로직카드 → 해석노트).</div>
+    <div class="muted" style="margin-top:10px">개별로 넣기</div>
+    <button class="btn ghost sm full" onclick="closeModal();importSeed()">📥 초기 데이터만 (seed_data_v1.json)</button>
+    <button class="btn ghost sm full" onclick="closeModal();importLogicCards()">⚡ 로직 카드만 (logic_cards_*.json)</button>
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
 function moreInfoSheet(){
@@ -3301,12 +3754,90 @@ async function genHwpxMonthly(){
   }catch(e){toast('생성 오류: '+e.message);}
 }
 
+/* ================= PART 9.75 : 로직 카드 (logic 스토어, v59) =================
+   로직도(LG)·스키매틱(SD)에서 뽑은 투입조건·트립소스·회선번호를 구조화 JSON으로 보관.
+   보안: 실 판넬번호·계통 구성이 들어가므로 기기 로컬(IndexedDB)에만 저장. 코드에 하드코딩 금지. */
+async function importLogicCards(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=async()=>{
+    const f=inp.files[0];if(!f)return;
+    let data;try{data=JSON.parse(await f.text());}catch(e){toast('JSON 파싱 실패: '+e.message);return;}
+    const list=Array.isArray(data)?data:(data.logic||[]);
+    if(!list.length||!list[0].tag){toast('로직 카드 형식 아님 — {logic:[{tag,...}]}');return;}
+    if(!(await confirmModal(list.length+'장의 로직 카드를 이 기기(로컬)에 가져올까요?\n같은 태그는 덮어쓰기됩니다.')))return;
+    let n=0;
+    for(const it of list){
+      const key=_normTag(it.tag);
+      const ex=(S.logic||[]).find(x=>_normTag(x.tag)===key);
+      const obj=Object.assign(ex||{id:'LG'+uid()},it,{added:todayStr()});
+      await dbPut('logic',obj);if(!ex)S.logic.push(obj);n++;
+    }
+    await loadAll();render();toast('로직 카드 '+n+'장 반영');
+  };
+  inp.click();
+}
+function _logicTermHtml(t,depth){
+  depth=depth||0;
+  const pad=`padding-left:${depth*14}px`;
+  if(t.v!==undefined||(t.label&&!t.terms))
+    return `<div style="${pad};font-size:13px;padding-top:3px">· ${esc(t.label||t.v||'')}
+      ${t.ckt?`<span class="badge b-blue">회선 ${esc(t.ckt)}</span>`:''}
+      ${t.zone?`<span class="badge b-gray">${esc(t.zone)}</span>`:''}
+      ${t.check?`<div style="font-size:12px;color:var(--dim);padding-left:10px">확인: ${esc(t.check)}</div>`:''}</div>`;
+  const kids=(t.terms||[]).map(x=>_logicTermHtml(x,depth+1)).join('');
+  return `<div style="${pad};font-size:13px;padding-top:3px"><b>${esc(t.label||'')} [${esc(t.op||'')}]</b>${kids}</div>`;
+}
+function openLogicCard(nodeIdOrTag){
+  const n=nodeById(nodeIdOrTag);
+  const c=n?logicByTag(n):(S.logic||[]).find(x=>_normTag(x.tag)===_normTag(nodeIdOrTag));
+  if(!c){toast('로직 카드 없음');return;}
+  const roleTxt={close:'투입',trip:'트립',indicate:'표시',interlock:'인터록',remote:'원방',power:'전원'};
+  openModal(`<h3>⚡ 로직 카드 — ${esc(c.tag)}</h3>
+    <div class="muted">${esc([c.name,c.volt,c.loc].filter(Boolean).join(' · '))}</div>
+    <div class="muted" style="margin-top:4px">로직도 ${esc(c.logicDwg||'-')}${c.schemDwg?' · 스키매틱 '+esc(c.schemDwg):''}
+      <span class="badge ${c.conf==='high'?'b-green':'b-gray'}">확신도 ${esc(c.conf||'-')}</span></div>
+    ${c.gap?`<div class="section-note">미확보: ${esc(c.gap)}</div>`:''}
+    ${c.close?`<div class="muted" style="margin-top:10px">투입 조건</div>${_logicTermHtml(c.close)}`:''}
+    ${c.transferClose?`<div class="muted" style="margin-top:8px">전환 투입</div>${_logicTermHtml(c.transferClose)}`:''}
+    ${(c.trip||[]).length?`<div class="muted" style="margin-top:10px">트립 소스 <span class="cnt">${c.trip.length}</span></div>
+      ${c.trip.map(t=>`<div class="item"><div class="t"><div class="n">${esc(t.label)}</div>
+        <div class="d">${esc([t.relay,t.lockout?'락아웃 '+t.lockout:'',t.ckt?'회선 '+t.ckt:'',t.zone].filter(Boolean).join(' · '))}
+        ${(t.sendTo||[]).length?'<br><b style="color:var(--danger)">→ '+esc(t.sendTo.join(' / '))+'</b>':''}</div></div>
+        <span class="badge ${t.cause==='protect'?'b-red':'b-gray'}">${esc(t.cause||'')}</span></div>`).join('')}`:''}
+    ${(c.alarm||[]).length?`<div class="muted" style="margin-top:8px">경보 (트립 아님)</div>
+      ${c.alarm.map(a=>`<div class="item"><div class="t"><div class="n">${esc(a.label)}</div><div class="d">${esc(a.act||'')}</div></div></div>`).join('')}`:''}
+    ${(c.circuits||[]).length?`<div class="muted" style="margin-top:10px">회선번호 <span class="cnt">${c.circuits.length}</span></div>
+      ${c.circuits.map(x=>`<div class="item"><div class="t"><div class="n">회선 ${esc(x.no)} — ${esc(x.desc)}</div>
+        <div class="d">${esc([x.dev,x.tb,x.wire].filter(Boolean).join(' · '))}</div></div>
+        <span class="badge b-gray">${esc(roleTxt[x.role]||x.role||'')}</span></div>`).join('')}`:
+      `<div class="section-note" style="margin-top:8px">회선번호 없음 — 이 설비는 스키매틱(SD 도면)이 확보되지 않았습니다.</div>`}
+    ${(c.field||[]).length?`<div class="muted" style="margin-top:10px">실무 포인트</div>
+      <div class="path-box">${c.field.map(x=>esc(x)).join('<br>')}</div>`:''}
+    <div class="section-note">참고용 — 실제 조작 전 반드시 원본 도면·현장 확인.</div>
+    <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
+function moreLogicSheet(){
+  const list=(S.logic||[]).slice().sort((a,b)=>String(a.tag).localeCompare(String(b.tag)));
+  openModal(`<h3>⚡ 로직 카드 <span class="cnt">${list.length}장</span></h3>
+    <div class="muted">차단기별 투입조건·트립소스·회선번호. 계통 트리 노드 메뉴와 LOTO에서 자동 참조됩니다.</div>
+    ${list.map(c=>`<div class="item click" onclick="closeModal();openLogicCard('${esc(c.tag)}')">
+      <div class="t"><div class="n">${esc(c.tag)} — ${esc(c.name||'')}</div>
+        <div class="d">${esc(c.logicDwg||'')} · 트립 ${(c.trip||[]).length} / 회선 ${(c.circuits||[]).length}</div></div>
+      <span class="badge ${c.conf==='high'?'b-green':'b-gray'}">${esc(c.conf||'')}</span></div>`).join('')
+      ||'<div class="empty">로직 카드 없음 — 자가진단·초기데이터 &gt; 로직 카드 가져오기</div>'}
+    <div class="section-note">실 판넬번호·계통 구성이 들어 있습니다. 이 기기(IndexedDB)에만 저장되며 GitHub·평문 JSON 외부 업로드 금지.</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost sm" onclick="closeModal();importLogicCards()">📥 가져오기</button>
+      <div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
+
 /* ================= PART 9.9 : 도면 문서함 (모듈③ — 반·계통 단위 라이브러리) ================= */
 /* 도면은 설비가 소유하지 않고 문서함에 두고 설비가 '참조 링크'. 기기 로컬(IndexedDB)에만 저장. */
 function classifyDoc(name,folder){
   const base=name.replace(/\.[^.]+$/,'');
   const up=base.toUpperCase();
-  const noM=base.match(/602-\d-E-(?:SL|LG)-\d{3}-\d{3}/)||base.match(/\d-I-LG-\d{3}(?:-\d{3})?/);
+  // v59: SD(스키매틱·전개접속도)·GS(심볼·범례) 누락 수정 — 602-1-E-SD-443-018 같은 번호를 못 잡던 버그
+  const noM=base.match(/602-\d-E-(?:SL|LG|SD|GS)-\d{3}-\d{3}/)||base.match(/\d-I-(?:LG|SD)-\d{3}(?:-\d{3})?/);
   const docNo=noM?noM[0]:'';
   const f=folder||'';
   let plant='';
@@ -3322,7 +3853,8 @@ function classifyDoc(name,folder){
   if(/LOGIC/i.test(up))kind='로직도';
   else if(/LOOP/i.test(up))kind='루프도';
   else if(/-LG-\d/.test(up))kind='로직도';
-  else if(/SCHEMATIC/i.test(up))kind='스키매틱';
+  else if(/SCHEMATIC|전개접속|-SD-\d/i.test(up))kind='스키매틱';
+  else if(/SYMBOL|LEGEND|-GS-\d/i.test(up))kind='심볼·범례';
   else if(/CONFIGURATION.*(CONTROL|MONITORING)/i.test(up))kind='제어·감시';
   else if(/SYNCHRO|PHASING/i.test(up))kind='동기·위상';
   else if(/SINGLE LINE|KEY SINGLE/i.test(up))kind='단선도';
