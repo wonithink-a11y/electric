@@ -6,7 +6,10 @@
   ============================================================
   변경 이력
   v61 (2026-07-29) : 계산 결과의 그래픽화 — 상태 계통도 + 로직↔스키매틱 연계도
-    - sldStateSvg(states,seeds) / _sldSet() : 가압·개방·자동투입·정전을 색으로 칠한 계통도 SVG.
+    - sldStateSvg(states,seeds) / _sldSet() : 가압·개방·자동투입·정전을 색으로 칠한 '단선도' SVG.
+      모선=가로 굵은 바(자식 폭만큼) · 차단기=사각+스텁 · 변압기=겹친 두 원 · 전원/부하=박스.
+      같은 depth라도 모선은 별도 줄로 빼서 가로 바가 기기 기호를 덮지 않게 한다.
+      계통트리에 변압기 type이 없어(seed가 전부 bus) 이름에 kVA·MVA가 있으면 변압기로 그린다(표시용 판정).
       계통 전체를 그리면 폰에서 못 읽으므로 대상의 상위경로 + 직하위 + 타이 상대측 + 상태 지정
       노드 일부(기본 26)만 추려 depth별 행으로 배치. 박스 탭 → nodeMenu. 나머지는 '외 N개'로 표기.
       · 사용처: nodeMenu(차단기 개방 시 정전범위) · renderLoto(격리계획)
@@ -14,6 +17,8 @@
       스키매틱 DC110V 제어회로 래더(우)를 회선번호로 연결한 SVG. term.ckt ∩ circuit.no 가 있으면
       초록 실선, 없으면 회색 점선(= 배선이 없는 조건 — IED 내부 로직·기계 인터록).
       회선번호가 있는 카드(LC-202)는 래더가 그려지고, 없으면 '스키매틱 미확보'로 표시.
+      기본은 압축 표시(조건이 지목한 회선 + 투입코일/시험분리점), [전체 회선 보기]로 펼침(S._schemFull).
+      조건 문구는 _condShort()로 짧은 표시명("투입 지령"·"86 리셋"·"서비스 위치") — 원문은 아래 목록에 그대로.
       · 사용처: openLogicCard 투입 조건 위
     - 계산 로직(energizedSet/isolationPlan/outageOf)은 변경 없음. DB_VER 변경 없음(12).
   v60 (2026-07-29) : 평상시 개폐상태(normalState)를 가압 경로 계산에 실제 반영
@@ -760,6 +765,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
+const APP_VER='v61'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2188,44 +2194,85 @@ function sldStateSvg(states,seeds,opt){
   const depth={};nodes.forEach(n=>{depth[n.id]=pathUp(n.id).length-1});
   const rows={};nodes.forEach(n=>{(rows[depth[n.id]]=rows[depth[n.id]]||[]).push(n)});
   const ds=Object.keys(rows).map(Number).sort((a,b)=>a-b);
-  const bw=108,bh=36,hGap=12,vGap=34,pad=12;
-  const maxCols=Math.max.apply(null,ds.map(d=>rows[d].length));
-  const W=pad*2+maxCols*bw+(maxCols-1)*hGap;
-  const H=pad*2+ds.length*bh+(ds.length-1)*vGap;
+  /* v61.1: 박스 나열 → 실제 단선도 기호로 교체.
+     모선=가로 굵은 바(자식들 폭만큼 뻗음) · 차단기=작은 사각 + 위아래 스텁 · 변압기=겹친 두 원 ·
+     전원/부하=사각 박스. 도면을 보던 눈으로 바로 읽히게 하는 것이 목적. */
+  const colW=124,pad=14;
+  /* 모선은 가로 바가 행 전체를 가로지르므로 같은 depth의 차단기와 같은 줄에 두면 기호를 덮는다.
+     → 한 depth를 '모선 줄'과 '기기 줄'로 나눈다(부모-자식 관계가 아니므로 순서를 바꿔도 안전). */
+  /* 계통트리 데이터에는 변압기 전용 type이 없고 전부 'bus'로 들어와 있다(seed 기준).
+     이름에 kVA·TR-n이 있으면 변압기 기호로 그린다 — 계산에는 영향 없는 표시용 판정. */
+  const kindOf=n=>(n.type==='bus'&&/\d\s*(kVA|MVA)/i.test(n.name||''))?'xfmr':n.type;
+  const rowsList=[];
+  ds.forEach(d=>{
+    const bs=rows[d].filter(n=>kindOf(n)==='bus'),ot=rows[d].filter(n=>kindOf(n)!=='bus');
+    if(bs.length)rowsList.push(bs);
+    if(ot.length)rowsList.push(ot);
+  });
+  const rowTop=[];let acc=pad;
+  rowsList.forEach(list=>{rowTop.push(acc);acc+=(kindOf(list[0])==='bus'?44:70)});
+  const maxCols=Math.max.apply(null,rowsList.map(l=>l.length));
+  const W=pad*2+maxCols*colW,H=acc+pad;
   const pos={};
   // 위 행부터 배치하고, 아래 행은 '부모의 x' 순으로 정렬 → 연결선이 서로 엇갈리지 않는다
-  ds.forEach((d,ri)=>{
+  rowsList.forEach((list0,ri)=>{
     const key=n=>(n.parentId&&pos[n.parentId])?pos[n.parentId].x:1e9;
-    const list=rows[d].sort((a,b)=>key(a)-key(b)||String(a.name||'').localeCompare(String(b.name||'')));
-    const rowW=list.length*bw+(list.length-1)*hGap;
-    const x0=(W-rowW)/2;
-    list.forEach((n,i)=>{pos[n.id]={x:x0+i*(bw+hGap),y:pad+ri*(bh+vGap)}});
+    const list=list0.sort((a,b)=>key(a)-key(b)||String(a.name||'').localeCompare(String(b.name||'')));
+    const x0=(W-list.length*colW)/2;
+    list.forEach((n,i)=>{pos[n.id]={x:x0+i*colW+colW/2,y:rowTop[ri]}});
   });
+  const CY=n=>pos[n.id].y+(kindOf(n)==='bus'?20:22), TOPY=n=>kindOf(n)==='bus'?CY(n):pos[n.id].y+4, BOTY=n=>kindOf(n)==='bus'?CY(n):pos[n.id].y+40;
+  const busSpan=n=>{
+    const xs=[pos[n.id].x];
+    nodeKids(n.id).forEach(k=>{if(pos[k.id])xs.push(pos[k.id].x)});
+    if(n.parentId&&pos[n.parentId])xs.push(pos[n.parentId].x);
+    return [Math.min.apply(null,xs)-30,Math.max.apply(null,xs)+30];
+  };
   let edges='';
   nodes.forEach(n=>{
-    const c=pos[n.id];
     if(n.parentId&&pos[n.parentId]){
-      const p=pos[n.parentId];
-      const x1=p.x+bw/2,y1=p.y+bh,x2=c.x+bw/2,y2=c.y,my=(y1+y2)/2;
+      const p=nodeById(n.parentId);
+      const x2=pos[n.id].x, x1=(p.type==='bus')?x2:pos[p.id].x;
+      const y1=BOTY(p), y2=TOPY(n), my=(y1+y2)/2;
       const dead=st(n.id)==='dead'||st(n.parentId)==='dead';
       edges+=`<path d="M${x1} ${y1} V${my.toFixed(1)} H${x2} V${y2}" fill="none" stroke="${dead?'var(--dim)':_SLD_COL.live}" stroke-width="2" opacity="${dead?0.55:1}"/>`;
     }
     if(n.tieTo&&pos[n.tieTo]){
-      const b=pos[n.tieTo];
-      edges+=`<path d="M${c.x+bw/2} ${c.y+bh/2} L${b.x+bw/2} ${b.y+bh/2}" fill="none" stroke="var(--dim)" stroke-width="1.6" stroke-dasharray="5,4"/>`;
+      const b=nodeById(n.tieTo);
+      edges+=`<path d="M${pos[n.id].x} ${CY(n)} L${pos[b.id].x} ${CY(b)}" fill="none" stroke="var(--dim)" stroke-width="1.6" stroke-dasharray="5,4"/>`;
     }
   });
   let boxes='';
   nodes.forEach(n=>{
-    const p=pos[n.id],s=st(n.id),col=_SLD_COL[s]||'var(--line)';
-    const nm=(n.name||'').length>13?(n.name||'').slice(0,12)+'…':(n.name||'');
-    const [ic]=NODE_TYPES[n.type]||['·'];
+    const p=pos[n.id],s=st(n.id),col=_SLD_COL[s]||'var(--line)',cy=CY(n),x=p.x,kd=kindOf(n);
+    const dash=s==='dead'?' stroke-dasharray="4,3"':'';
+    const cut=(t,k)=>{t=String(t||'');return t.length>k?t.slice(0,k-1)+'…':t};
+    let g='';
+    if(kd==='bus'){
+      const [xl,xr]=busSpan(n);
+      // 라벨은 모선 바 왼쪽 끝이 아니라 '자기 열' 위에 — 한 줄에 모선이 둘이면 끝끼리 겹친다
+      g=`<line x1="${xl}" y1="${cy}" x2="${xr}" y2="${cy}" stroke="${col}" stroke-width="4.5"${dash}/>
+         <text x="${x}" y="${cy-8}" font-size="10" text-anchor="middle" fill="var(--txt)">${esc(cut(n.name,17))}</text>`;
+    }else if(kd==='breaker'){
+      g=`<line x1="${x}" y1="${p.y+4}" x2="${x}" y2="${cy-10}" stroke="${col}" stroke-width="2"${dash}/>
+         <line x1="${x}" y1="${cy+10}" x2="${x}" y2="${p.y+40}" stroke="${col}" stroke-width="2"${dash}/>
+         <rect x="${x-10}" y="${cy-10}" width="20" height="20" rx="2.5" fill="${s==='live'?col:'var(--panel2)'}" stroke="${col}" stroke-width="2.4"/>
+         <text x="${x}" y="${p.y+54}" font-size="9.5" text-anchor="middle" fill="var(--txt)">${esc(cut(n.name,15))}</text>`;
+    }else if(kd==='xfmr'){
+      g=`<line x1="${x}" y1="${p.y+4}" x2="${x}" y2="${cy-13}" stroke="${col}" stroke-width="2"${dash}/>
+         <line x1="${x}" y1="${cy+13}" x2="${x}" y2="${p.y+40}" stroke="${col}" stroke-width="2"${dash}/>
+         <circle cx="${x}" cy="${cy-5}" r="8" fill="none" stroke="${col}" stroke-width="2"/>
+         <circle cx="${x}" cy="${cy+5}" r="8" fill="none" stroke="${col}" stroke-width="2"/>
+         <text x="${x}" y="${p.y+54}" font-size="9.5" text-anchor="middle" fill="var(--txt)">${esc(cut(n.name,15))}</text>`;
+    }else{
+      const w=kd==='source'?104:100,h=26;
+      g=`<rect x="${x-w/2}" y="${cy-h/2}" width="${w}" height="${h}" rx="${n.type==='source'?7:3}" fill="var(--panel2)" stroke="${col}" stroke-width="2"${dash}/>
+         <text x="${x}" y="${cy+4}" font-size="10" text-anchor="middle" fill="var(--txt)">${esc(cut(n.name,14))}</text>
+         <line x1="${x}" y1="${cy+h/2}" x2="${x}" y2="${p.y+40}" stroke="${col}" stroke-width="2"${dash}/>`;
+    }
+    const tag=(s==='open'||s==='auto')?`<text x="${x}" y="${p.y+64}" font-size="9" text-anchor="middle" fill="${col}">${_SLD_TXT[s]}</text>`:'';
     boxes+=`<g onclick="nodeMenu('${n.id}')" style="cursor:pointer">
-      <rect x="${p.x}" y="${p.y}" width="${bw}" height="${bh}" rx="9" fill="var(--panel2)" stroke="${col}" stroke-width="${s==='live'?1.6:2.6}" ${s==='dead'?'stroke-dasharray="4,3"':''}/>
-      <rect x="${p.x+6}" y="${p.y+6}" width="7" height="7" rx="1.5" fill="${col}"/>
-      <text x="${p.x+bw/2+5}" y="${p.y+15}" font-size="11" text-anchor="middle" fill="var(--txt)">${ic} ${esc(nm)}</text>
-      <text x="${p.x+bw/2+5}" y="${p.y+28}" font-size="9" text-anchor="middle" fill="${col}">${esc(_SLD_TXT[s]||'')}</text>
-    </g>`;
+      <rect x="${x-colW/2}" y="${p.y}" width="${colW}" height="${kd==='bus'?44:70}" fill="transparent"/>${g}${tag}</g>`;
   });
   const legend=['live','open','auto','dead'].map(k=>
     `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px;color:var(--dim)">
@@ -2233,7 +2280,7 @@ function sldStateSvg(states,seeds,opt){
   return `<div style="overflow-x:auto;margin:8px 0">
       <svg viewBox="0 0 ${W} ${H}" style="min-width:${Math.min(W,320)}px;width:${W}px;max-width:100%;height:auto">${edges}${boxes}</svg>
     </div>
-    <div style="margin:2px 0 6px">${legend}<span style="font-size:11px;color:var(--dim)">· 점선 = 타이 · 박스 탭 = 상세</span></div>
+    <div style="margin:2px 0 6px">${legend}<span style="font-size:11px;color:var(--dim)">· 점선 = 타이 · 기호 탭 = 상세</span></div>
     ${r.over?`<div class="section-note">그림에는 주요 기기만 표시했습니다 — 목록에 있는 나머지 ${r.over}개 노드는 생략.</div>`:''}`;
 }
 /* 계통 뷰 v46: 경로(추천1)/드릴다운(추천2)/단선도(추천3) 서브탭 — 기존 S.tree·헬퍼 재사용 */
@@ -2992,6 +3039,8 @@ function vMore(){
   const vb=!S._vaultKdf?'미설정':(_vaultKey?(S.vault.length+'건'):'잠김');
   const row=(oc,ic,nm,bd)=>`<div class="item click" onclick="${oc}"><div class="t"><div class="n">${ic} ${nm}</div></div>${bd?`<span class="cnt">${bd}</span>`:''}<span style="color:var(--dim);margin-left:8px;font-size:18px">›</span></div>`;
   return `
+  <div class="muted" style="margin:2px 2px 10px">앱 ${APP_VER} · 계통 ${cnt('tree')}노드 · 설비 ${cnt('equipment')} · 로직 카드 ${cnt('logic')}장 · 도면 ${cnt('docs')}
+    ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 logic_cards_v3.json을 넣어야 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`+`
   <div class="card"><h2>업무</h2>
     ${row("go('insp')",'📋','법정검사',cnt('inspections'))}
     ${row("go('chk')",'✅','주기 체크리스트',cnt('checklists'))}
@@ -3914,6 +3963,17 @@ function _schemSym(kind,x,y,col){
   if(kind==='nc')s+=`<line x1="${x-11}" y1="${y+8}" x2="${x+11}" y2="${y-8}" stroke="${col}" stroke-width="2"/>`;
   return s;
 }
+/* 조건 문구를 좁은 화면용 짧은 표시명으로. 원문은 아래 텍스트 목록(_logicTermHtml)에 그대로 남는다.
+   도면 원문이 영문·괄호 설명 혼용이라 그대로 자르면 "CLOSE 지령 (ECMS /" 처럼 잘린다. */
+function _condShort(t){
+  const s=String(t.label||t.v||'');
+  const M=[[/병렬/,'병렬 인터록'],[/CLOSE|투입\s*지령/i,'투입 지령'],[/^\s*86|L\.O\.R/i,'86 리셋'],
+    [/SERVICE/i,'서비스 위치'],[/SYN|동기/i,'동기 확인'],[/TEST/i,'시험위치 아님'],
+    [/PERM/i,'전환 허가'],[/TIE|타이/i,'타이 상태'],[/열림|OPEN/i,'상대 차단기 열림'],[/닫힘|CLOSED/i,'상대 차단기 닫힘']];
+  for(const [re,v] of M)if(re.test(s))return v;
+  const cut=s.split(/[(（—\-·,]/)[0].trim()||s;
+  return cut.length>16?cut.slice(0,15)+'…':cut;
+}
 function logicSchemSvg(c){
   if(!c||!c.close)return '';
   let terms=(c.close.terms||[]).slice(0,8);
@@ -3924,7 +3984,12 @@ function logicSchemSvg(c){
   // 확장은 3자리 이상 회선번호로만 — "86XA 7-8" 의 '86' 같은 기기번호가 회선번호로 오인되면
   // 엉뚱한 행(IED 입력 등)이 래더에 끌려 들어온다.
   const tNums=[];terms.forEach(t=>_cktNums(t.ckt).filter(n=>n.length>=3).forEach(n=>tNums.push(n)));
-  const rail=(c.circuits||[]).filter(x=>x.role==='close'||_cktNums(x.no).some(n=>tNums.indexOf(n)>=0)).slice(0,11);
+  const hit=x=>_cktNums(x.no).some(n=>tNums.indexOf(n)>=0);
+  /* 기본은 압축 표시 — 투입조건이 지목한 회선 + 투입코일/시험분리점만. 모터충전·표시등·IED 입력까지
+     다 그리면 폰에서 11행이 되어 정작 조건-회선 대응이 안 보인다. [전체 회선]으로 펼칠 수 있다. */
+  const full=(c.circuits||[]).filter(x=>x.role==='close'||hit(x));
+  const rail=(S._schemFull?full:full.filter(x=>hit(x)||['coil','jp'].indexOf(_schemKind(x))>=0)).slice(0,11);
+  const hidden=full.length-rail.length;
   const pw=(c.circuits||[]).find(x=>x.role==='power');
   const GRN='var(--ok,#2f9e44)',GRY='var(--dim)',RED='var(--danger)';
   const W=690,lx=6,lw=250,rx=430,rh=66,top=76,bh=48;
@@ -3957,7 +4022,7 @@ function logicSchemSvg(c){
     const idx=idxOf(t);
     const col=grp?RED:GRN;
     out+=`<rect x="${lx}" y="${y-bh/2}" width="${lw}" height="${bh}" rx="9" fill="var(--panel2)" stroke="${col}" stroke-width="1.8"/>`;
-    out+=`<text x="${lx+12}" y="${y-4}" font-size="12" fill="var(--txt)">${esc(String(t.label||t.v||'').slice(0,20))}</text>`;
+    out+=`<text x="${lx+12}" y="${y-4}" font-size="12.5" fill="var(--txt)">${esc(_condShort(t))}</text>`;
     const sub=t.ckt?('회선 '+String(t.ckt).slice(0,26)):(grp?'내부 로직 · 회선 없음':(t.src?String(t.src).slice(0,26):'회선 없음'));
     out+=`<text x="${lx+12}" y="${y+13}" font-size="10" fill="${idx>=0?GRN:GRY}">${esc(sub)}${t.zone?' · '+esc(t.zone):''}</text>`;
     if(rail.length){
@@ -3972,9 +4037,12 @@ function logicSchemSvg(c){
     </div>
     <div style="font-size:11px;color:var(--dim);margin-bottom:6px">
       실선(초록) = 회선번호로 두 도면이 이어진 조건 · 점선(회색) = 배선 없는 조건(IED 내부 로직·기계 인터록) ·
-      좌우로 밀어서 보세요</div>`;
+      좌우로 밀어서 보세요</div>
+    ${(hidden>0||S._schemFull)?`<button class="btn ghost sm" onclick="S._schemFull=!S._schemFull;openLogicCard(S._logicArg)">
+      ${S._schemFull?'▲ 주요 회선만':'▼ 전체 회선 보기 ('+hidden+'행 더)'}</button>`:''}`;
 }
 function openLogicCard(nodeIdOrTag){
+  S._logicArg=nodeIdOrTag; // [전체 회선] 토글이 같은 카드를 다시 열 때 쓴다
   const n=nodeById(nodeIdOrTag);
   const c=n?logicByTag(n):(S.logic||[]).find(x=>_normTag(x.tag)===_normTag(nodeIdOrTag));
   if(!c){toast('로직 카드 없음');return;}
