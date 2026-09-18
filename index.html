@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 (v67) — 단일 HTML PWA
+  전력계통과 업무앱 (v68) — 단일 HTML PWA
   - 설비·계통 실데이터는 이 파일에 포함되지 않습니다. 앱의 [초기 데이터 한 번에 가져오기]로 기기 안(IndexedDB)에만 넣습니다.
   - 빌드·번들러 없음. 브라우저로 열면 동작.
 -->
@@ -273,7 +273,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v67'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v68'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -506,7 +506,7 @@ function emptyStateCard(){
     <h2>📥 시작하려면 데이터를 넣으세요</h2>
     <div class="muted">저장소는 주소(출처)별로 분리됩니다. GitHub Pages에서 쓰던 데이터는 로컬 파일로 열면 보이지 않습니다 — 사라진 게 아니라 다른 저장소입니다.</div>
     <button class="btn full" style="margin-top:10px" onclick="importAll()">📥 초기 데이터 한 번에 가져오기</button>
-    <div class="section-note"><b>데이터/_폰전송/</b> 폴더의 파일 17개(seed_data_v1 · 계통설비_seed · 계통트리_v2~v12 · logic_cards_v4~v6 · dcs_도면색인_v1)를 <b>한꺼번에 선택</b>하면 알아서 분류·순서대로 넣습니다. 옛 파일(계통트리_타이보정·logic_cards_v1~3)은 넣지 마세요.<br>
+    <div class="section-note"><b>데이터/_폰전송/</b> 폴더의 파일 18개(seed_data_v1 · 계통설비_seed · 계통트리_v2~v12 · logic_cards_v4~v7 · dcs_도면색인_v1)를 <b>한꺼번에 선택</b>하면 알아서 분류·순서대로 넣습니다. 옛 파일(계통트리_타이보정·logic_cards_v1~3)은 넣지 마세요.<br>
       기존 기기에서 쓰던 기록을 옮기려면 그쪽에서 [전체 백업 내보내기] 후 [백업 복원]을 쓰세요.</div>
   </div>`;
 }
@@ -3680,7 +3680,8 @@ function _logicTermHtml(t,depth){
     return `<div style="${pad};font-size:13px;padding-top:3px">· ${esc(t.label||t.v||'')}
       ${t.ckt?`<span class="badge b-blue">회선 ${esc(t.ckt)}</span>`:''}
       ${t.zone?`<span class="badge b-gray">${esc(t.zone)}</span>`:''}
-      ${t.check?`<div style="font-size:12px;color:var(--dim);padding-left:10px">확인: ${esc(t.check)}</div>`:''}</div>`;
+      ${t.check?`<div style="font-size:12px;color:var(--dim);padding-left:10px">확인: ${esc(t.check)}</div>`:''}
+      ${t.note?`<div style="font-size:12px;color:var(--dim);padding-left:10px">↳ ${esc(t.note)}</div>`:''}</div>`;
   const kids=(t.terms||[]).map(x=>_logicTermHtml(x,depth+1)).join('');
   return `<div style="${pad};font-size:13px;padding-top:3px"><b>${esc(t.label||'')} [${esc(t.op||'')}]</b>${kids}</div>`;
 }
@@ -3796,14 +3797,14 @@ function openLogicCard(nodeIdOrTag){
   const roleTxt={close:'투입',trip:'트립',indicate:'표시',interlock:'인터록',remote:'원방',power:'전원'};
   openModal(`<h3>⚡ 로직 카드 — ${esc(c.tag)}</h3>
     <div class="muted">${esc([c.name,c.volt,c.loc].filter(Boolean).join(' · '))}</div>
-    <div class="muted" style="margin-top:4px">로직도 ${esc(c.logicDwg||'-')}${c.schemDwg?' · 스키매틱 '+esc(c.schemDwg):''}
+    <div class="muted" style="margin-top:4px">로직도 ${esc(c.logicDwg||'-')}${c.loopDwg?' · 루프도 '+esc(c.loopDwg):''}${c.schemDwg?' · 스키매틱 '+esc(c.schemDwg):''}
       <span class="badge ${c.conf==='high'?'b-green':'b-gray'}">확신도 ${esc(c.conf||'-')}</span></div>
     ${c.gap?`<div class="section-note">미확보: ${esc(c.gap)}</div>`:''}
-    ${c.close?`<div class="muted" style="margin-top:10px">투입 조건</div>${logicSchemSvg(c)}${_logicTermHtml(c.close)}`:''}
+    ${c.close?`<div class="muted" style="margin-top:10px">${c.kind==='dcs'?'기동·개폐 조건':'투입 조건'}</div>${c.kind==='dcs'?'':logicSchemSvg(c)}${_logicTermHtml(c.close)}`:''}
     ${c.transferClose?`<div class="muted" style="margin-top:8px">전환 투입</div>${_logicTermHtml(c.transferClose)}`:''}
     ${(c.trip||[]).length?`<div class="muted" style="margin-top:10px">트립 소스 <span class="cnt">${c.trip.length}</span></div>
-      ${c.trip.map(t=>`<div class="item"><div class="t"><div class="n">${esc(t.label)}</div>
-        <div class="d">${esc([t.relay,t.lockout?'락아웃 '+t.lockout:'',t.ckt?'회선 '+t.ckt:'',t.zone].filter(Boolean).join(' · '))}
+      ${c.trip.map(t=>`<div class="item"><div class="t"><div class="n" style="white-space:normal;line-height:1.4">${esc(t.label)}</div>
+        <div class="d" style="white-space:normal">${esc([t.relay,t.lockout?'락아웃 '+t.lockout:'',t.ckt?'회선 '+t.ckt:'',t.zone].filter(Boolean).join(' · '))}${t.note?'<br>↳ '+esc(t.note):''}
         ${(t.sendTo||[]).length?'<br><b style="color:var(--danger)">→ '+esc(t.sendTo.join(' / '))+'</b>':''}</div></div>
         <span class="badge ${t.cause==='protect'?'b-red':'b-gray'}">${esc(t.cause||'')}</span></div>`).join('')}`:''}
     ${(c.alarm||[]).length?`<div class="muted" style="margin-top:8px">경보 (트립 아님)</div>
@@ -3812,12 +3813,14 @@ function openLogicCard(nodeIdOrTag){
       ${c.circuits.map(x=>`<div class="item"><div class="t"><div class="n">회선 ${esc(x.no)} — ${esc(x.desc)}</div>
         <div class="d">${esc([x.dev,x.tb,x.wire].filter(Boolean).join(' · '))}</div></div>
         <span class="badge b-gray">${esc(roleTxt[x.role]||x.role||'')}</span></div>`).join('')}`:
-      `<div class="section-note" style="margin-top:8px">회선번호 없음 — 이 설비는 스키매틱(SD 도면)이 확보되지 않았습니다.</div>`}
+      (c.kind==='dcs'?'':`<div class="section-note" style="margin-top:8px">회선번호 없음 — 이 설비는 스키매틱(SD 도면)이 확보되지 않았습니다.</div>`)}
     ${(c.field||[]).length?`<div class="muted" style="margin-top:10px">실무 포인트</div>
       <div class="path-box">${c.field.map(x=>esc(x)).join('<br>')}</div>`:''}
+    ${c.kind==='dcs'?`<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px"><button class="btn ghost sm" onclick="closeModal();dcsSearch2('${esc(c.tag)}')">📑 관련 로직·루프 시트 보기</button></div>`:''}
     <div class="section-note">참고용 — 실제 조작 전 반드시 원본 도면·현장 확인.</div>
     <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
 }
+function dcsSearch2(q){S.docQ=q;go('docfind');setTimeout(()=>{const el=$('#dfq');if(el){el.value=q;const b=$('#dfres');if(b)b.innerHTML=docFindResults(q);}},80);}
 function moreLogicSheet(){
   const list=(S.logic||[]).slice().sort((a,b)=>String(a.tag).localeCompare(String(b.tag)));
   openModal(`<h3>⚡ 로직 카드 <span class="cnt">${list.length}장</span></h3>
@@ -4853,7 +4856,7 @@ function dcsResultsHtml(q){
         <div class="n" style="white-space:normal;line-height:1.4"><span class="badge ${d.type==='로직도'?'b-blue':'b-green'}">${esc(d.type)} ${esc(d.sheet)}</span> ${esc(d.title)}</div>
         <div class="d" style="white-space:normal">${esc([d.group,d.no].filter(Boolean).join(' · '))}${d.read?' · <b style="color:var(--ok,#2f9e44)">내용 요약 있음</b>':''}</div>
         ${d.summary?`<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent)">요약 보기</summary><div style="font-size:12.5px;line-height:1.6;margin-top:4px">${esc(d.summary)}<div class="section-note">AI 판독 요약 — 참고용. 값은 원본 시트에서 확인.</div></div></details>`:''}
-        ${(d.refs||[]).length?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${d.refs.map(r=>`<button class="chipf" onclick="dcsSearch('${esc(r)}')">↔ ${esc(dcsShort(r))}</button>`).join('')}</div>`:''}
+        ${(d.refs||[]).length||(d.cards||[]).length?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${(d.cards||[]).filter(t=>(S.logic||[]).some(c=>_normTag(c.tag)===_normTag(t))).map(t=>`<button class="chipf on" onclick="openLogicCard('${esc(t)}')">📋 로직 카드 ${esc(t)}</button>`).join('')}${(d.refs||[]).map(r=>`<button class="chipf" onclick="dcsSearch('${esc(r)}')">↔ ${esc(dcsShort(r))}</button>`).join('')}</div>`:''}
       </div>
       <button class="btn ${have(d)?'':'ghost'} sm" onclick="openDcsSheet('${esc(d.no)}')">${have(d)?'열기':'PDF 없음'}</button></div>`).join('')}
     ${hit.length>40?`<div class="muted">… 외 ${hit.length-40}건 — 검색어를 더 좁히세요</div>`:''}
