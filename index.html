@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 (v64) — 단일 HTML PWA
+  전력계통과 업무앱 (v65) — 단일 HTML PWA
   - 설비·계통 실데이터는 이 파일에 포함되지 않습니다. 앱의 [초기 데이터 한 번에 가져오기]로 기기 안(IndexedDB)에만 넣습니다.
   - 빌드·번들러 없음. 브라우저로 열면 동작.
 -->
@@ -273,7 +273,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v61'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v65'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
