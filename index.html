@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 (v65) — 단일 HTML PWA
+  전력계통과 업무앱 (v66) — 단일 HTML PWA
   - 설비·계통 실데이터는 이 파일에 포함되지 않습니다. 앱의 [초기 데이터 한 번에 가져오기]로 기기 안(IndexedDB)에만 넣습니다.
   - 빌드·번들러 없음. 브라우저로 열면 동작.
 -->
@@ -273,7 +273,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v65'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v66'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1980,11 +1980,18 @@ function diaCollapseDefault(){_tdExpandAll=false;S._treeToggled.clear();render()
 function vTreeDiagram(){
   const roots=treeRootNodes();
   if(!roots.length)return '<div class="empty">계통이 없습니다.</div>';
-  const sel=(S._treeDiaRoot&&nodeById(S._treeDiaRoot))?S._treeDiaRoot:'';
-  const d=treeDiagramSvg(sel);
-  _tdBox={minX:d.minX,minY:d.minY,W:d.W,H:d.H};
-  const opts=diaRootOptions();
+  const mode=S._treeDiaMode||'key';
+  let sel=(S._treeDiaRoot&&nodeById(S._treeDiaRoot))?S._treeDiaRoot:'';
+  if(mode==='key'&&(!sel||!roots.some(r=>r.id===sel)))sel=roots[0].id;
+  const d=mode==='key'?keyDiagramSvg(sel):treeDiagramSvg(sel);
+  _tdBox={minX:d.minX,minY:d.minY,W:d.W,H:d.H,key:!!d.key,rootCx:d.rootCx||0};
+  const plant=r=>/DH/.test(r.name)?'DH 열원설비':(/PB|발전/.test(r.name)?'PB 발전설비':r.name);
+  const opts=mode==='key'?roots.map(r=>({id:r.id,label:plant(r)+' — '+r.name.replace(/\s*\(.*$/,'')})):diaRootOptions();
   return `<div class="row" style="gap:6px;margin-bottom:8px">
+      <button class="btn ${mode==='key'?'':'ghost'} sm grow" onclick="S._treeDiaMode='key';_tdNeedFit=true;render()">▦ KEY 단선도</button>
+      <button class="btn ${mode==='tree'?'':'ghost'} sm grow" onclick="S._treeDiaMode='tree';_tdNeedFit=true;render()">▤ 박스 트리</button>
+    </div>
+    <div class="row" style="gap:6px;margin-bottom:8px">
       <select onchange="S._treeDiaRoot=this.value;_tdNeedFit=true;render()" style="flex:1">
         ${opts.map(o=>`<option value="${o.id}"${o.id===sel?' selected':''}>${esc(o.label)}</option>`).join('')}
       </select>
@@ -1994,14 +2001,16 @@ function vTreeDiagram(){
       <button class="btn ghost sm" onclick="treeDiaFit()">전체 보기</button>
       <button class="btn ghost sm" onclick="treeDiaZoom(1.25)">＋</button>
       <div class="grow"></div>
-      <button class="btn ${_tdExpandAll?'':'ghost'} sm" onclick="diaExpandAll()">모두 펼치기</button>
-      <button class="btn ghost sm" onclick="diaCollapseDefault()">기본 접기</button>
+      ${mode==='key'?'':`<button class="btn ${_tdExpandAll?'':'ghost'} sm" onclick="diaExpandAll()">모두 펼치기</button>
+      <button class="btn ghost sm" onclick="diaCollapseDefault()">기본 접기</button>`}
     </div>
     <div class="tdia-box">
       <svg id="tdia-svg" xmlns="http://www.w3.org/2000/svg"><g id="tdia-vp">${d.inner}</g></svg>
       <svg id="tdia-mini" class="tdia-mini" xmlns="http://www.w3.org/2000/svg"><g transform="${d.miniT}">${d.inner}</g><rect id="tdia-view"></rect></svg>
     </div>
-    <div class="section-note" style="text-align:center">박스 탭 = 펼치기/접기(▸▾) · 오른쪽 ⓘ = 차단경로 · 한 손가락 이동 · 두 손가락(휠) 확대</div>`;
+    <div class="section-note" style="text-align:center">${mode==='key'
+      ?'<span style="color:var(--ok,#2f9e44)">━</span> 평상시 가압 · <span style="color:var(--dim)">━</span> 정지(N.O) · <span style="color:var(--accent)">┅</span> 타이/이중인입 · 기기 탭 = 상세·차단범위 · 점선/실선 블록 탭 = 그 MCC 드릴다운'
+      :'박스 탭 = 펼치기/접기(▸▾) · 오른쪽 ⓘ = 차단경로 · 한 손가락 이동 · 두 손가락(휠) 확대'}</div>`;
 }
 function treeDiagramSvg(rootSel){
   const roots=rootSel?[nodeById(rootSel)].filter(Boolean):treeRootNodes();
@@ -2059,6 +2068,171 @@ function treeDiagramSvg(rootSel){
   const ox=(mw-W*ms)/2-minX*ms,oy=(mh-H*ms)/2-minY*ms;
   return {inner:edges+boxes,minX,minY,W,H,miniT:`translate(${ox} ${oy}) scale(${ms})`};
 }
+/* ================= v66: KEY 단선도 — 'KEY SINGLE LINE DIAGRAM' 형식 자동 배치 =================
+   기존 단선도(박스 트리)는 노드 하나하나가 같은 크기 박스라 모선·변압기·차단기 구분이 안 보였다.
+   여기서는 실제 KEY 단선도처럼 모선=가로 굵은 바, 차단기=작은 사각, 변압기=두 원, 전동기=M 원으로 그리고
+   같은 전압 모선은 같은 높이에 맞춘다. PB·DH는 루트별로 따로 그린다.
+   그리지 않는 것: MCC 이하 회선(블록 '▸ N회로'로 접음 — 탭하면 드릴다운), SPARE 회선(개수만 바에 표기).
+   색: 초록 = 평상시 가압, 회색 = 평상시 정지(N.O 등). 점선 청록 = 타이/이중 인입 연결. */
+const _KD_GAP=10;
+function _kdKind(n){
+  if(n.type==='source')return n.parentId?'gen':'src';
+  if(n.type==='breaker')return 'brk';
+  const nm=n.name||'';
+  if((n.type==='bus'||n.type==='load')&&/\d\s*(kVA|MVA)/i.test(nm)&&!/CAPACITOR|콘덴서|UPS|AVR|충전|BATTERY|발전기|GENERATOR|AUX TR/i.test(nm))return 'xfmr';
+  return n.type==='bus'?'bus':'load';
+}
+function _kdBusRole(n){
+  const v=n.voltage||'';
+  if(/kV/.test(v)&&!/DC/i.test(v))return 'bar';
+  if(/ESSENTIAL MCC|^460V COMMON MCC/i.test(n.name||''))return 'special';
+  if(/460/.test(v)){
+    if(/L\/C|LOAD CENTER/i.test(n.name||''))return 'bar';
+    let p=nodeById(n.parentId);while(p&&p.type==='breaker')p=nodeById(p.parentId);
+    if(p&&_kdKind(p)==='xfmr')return 'bar';
+  }
+  return 'block';
+}
+function _kdHasStruct(n,d){
+  if(d>4)return false;
+  const k=_kdKind(n);
+  if(k==='xfmr'||k==='gen')return true;
+  if(/충전|UPS|AVR|BATTERY|DC SYS/i.test(n.name||''))return true;
+  return nodeKids(n.id).some(c=>_kdHasStruct(c,d+1));
+}
+function _kdShort(s,m){s=String(s||'');return s.length>m?s.slice(0,m-1)+'…':s;}
+function _kdBrkLabel(n){
+  const nm=n.name||'',m=nm.match(/[VAGM]?CB-\d+|ACB\(LC-\d+\)|MC-\d+|DS-?\d+|LC-\d+/);
+  const lab=n.panelNo&&n.panelNo.length<=12?n.panelNo:(m?m[0]:_kdShort(nm.split(/\s/)[0],9));
+  const r=nm.match(/\d+\s*AF/);
+  return [lab,r?r[0].replace(/\s/g,''):(n.normalState==='NO'?'N.O':'')];
+}
+function _kdBuild(node,depth){
+  const kind=_kdKind(node);
+  const it={id:node.id,node,kind,ch:[],w:0,cx:0,y:0,h:0,spare:0};
+  if(depth>40)return it;
+  const kids=nodeKids(node.id);
+  const isSpare=k=>k.type==='breaker'&&/SPARE|예비/i.test(k.name||'')&&!nodeKids(k.id).length&&!k.tieTo;
+  if(kind==='bus'){
+    const role=_kdBusRole(node);
+    if(role==='block'){
+      it.kind='block';it.count=kids.filter(k=>!isSpare(k)).length;return it;
+    }
+    it.kind='bar';
+    const live=kids.filter(k=>!isSpare(k));it.spare=kids.length-live.length;
+    if(role==='special'){
+      const st=live.filter(k=>_kdHasStruct(k,0)),rest=live.length-st.length;
+      it.ch=st.map(k=>_kdBuild(k,depth+1));
+      if(rest>0)it.ch.push({id:node.id+'#rest',node,kind:'block',ch:[],w:0,cx:0,y:0,h:0,count:rest,rest:true,drill:node.id});
+    }else it.ch=live.map(k=>_kdBuild(k,depth+1));
+    return it;
+  }
+  if(kind==='load'){
+    if(kids.length){it.kind='node';it.ch=kids.filter(k=>!isSpare(k)).map(k=>_kdBuild(k,depth+1));}
+    return it;
+  }
+  if(kind==='gen')return it;
+  it.ch=kids.filter(k=>!isSpare(k)).map(k=>_kdBuild(k,depth+1));
+  return it;
+}
+const _KD_H={src:32,brk:30,xfmr:50,bar:22,block:46,load:52,gen:34,node:24};
+const _KD_MW={src:150,brk:68,xfmr:116,bar:80,block:96,load:92,gen:70,node:90};
+function _kdMeasure(it){
+  it.h=_KD_H[it.kind]||30;
+  let s=0;it.ch.forEach(c=>{_kdMeasure(c);s+=c.w;});
+  it.w=Math.max(_KD_MW[it.kind]||60,s);
+  it.cw=s;
+}
+function _kdAssignX(it,x0){
+  it.cx=x0+it.w/2;
+  let cur=x0+(it.w-it.cw)/2;
+  it.ch.forEach(c=>{_kdAssignX(c,cur);cur+=c.w;});
+}
+function _kdLayoutY(it,y,lvl,LY){
+  if(it.kind==='bar'){it.y=Math.max(y,LY[lvl]||0);LY[lvl]=Math.max(LY[lvl]||0,it.y);lvl++;}
+  else it.y=y;
+  it.ch.forEach(c=>_kdLayoutY(c,it.y+it.h+_KD_GAP,lvl,LY));
+}
+function keyDiagramSvg(rootId){
+  const root=nodeById(rootId);if(!root)return {inner:'',minX:0,minY:0,W:10,H:10,miniT:'',key:true,rootCx:0};
+  const top=_kdBuild(root,0);
+  _kdMeasure(top);_kdAssignX(top,0);
+  const LY={};for(let i=0;i<6;i++)_kdLayoutY(top,0,0,LY);
+  const items=[];(function walk(i){items.push(i);i.ch.forEach(walk);})(top);
+  const byId={};items.forEach(i=>byId[i.id]=i);
+  const live=energizedSet([],{normal:true});
+  const C=id=>live.has(id)?'var(--ok,#2f9e44)':'var(--dim)';
+  let edges='',shapes='',ties='';
+  items.forEach(it=>{
+    const cx=it.cx,y=it.y,n=it.node,col=C(n.id),oc=it.rest?`keyDrill('${it.drill}')`:(it.kind==='block'?`keyDrill('${n.id}')`:`nodeMenu('${n.id}')`);
+    const hit=(x,yy,w,h)=>`<rect x="${x}" y="${yy}" width="${w}" height="${h}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="${oc}"/>`;
+    // 하위 연결선
+    if(it.kind==='bar'){
+      const xs=it.ch.map(c=>c.cx);
+      let x1=Math.min(cx-16,...(xs.length?xs.map(v=>v-22):[cx-30])),x2=Math.max(cx+16,...(xs.length?xs.map(v=>v+22):[cx+30]));
+      it.x1=x1;it.x2=x2;
+      it.ch.forEach(c=>{const ey=c.kind==='bar'?c.y+16:c.y;edges+=`<line x1="${c.cx}" y1="${y+21}" x2="${c.cx}" y2="${ey}" stroke="${C(c.node.id)}" stroke-width="2"/>`;});
+    }else if(it.ch.length){
+      const yb=y+it.h;
+      it.ch.forEach(c=>{
+        const ey=c.kind==='bar'?c.y+16:c.y,my=(yb+ey)/2,cc=C(c.node.id);
+        edges+=c.cx===cx?`<line x1="${cx}" y1="${yb}" x2="${cx}" y2="${ey}" stroke="${cc}" stroke-width="2"/>`
+          :`<path d="M${cx} ${yb} V${my} H${c.cx} V${ey}" fill="none" stroke="${cc}" stroke-width="2"/>`;
+      });
+    }
+    // 기호
+    if(it.kind==='src'){
+      shapes+=`<rect x="${cx-70}" y="${y}" width="140" height="26" rx="6" fill="var(--panel2)" stroke="${col}" stroke-width="1.6"/>
+        <text x="${cx}" y="${y+16}" font-size="10.5" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">⚡ ${esc(_kdShort(n.name.replace(/\s*\(.*/,''),20))}</text>${hit(cx-70,y,140,26)}`;
+    }else if(it.kind==='brk'){
+      const [lab,sub]=_kdBrkLabel(n),no=n.normalState==='NO';
+      shapes+=`<rect x="${cx-6}" y="${y+9}" width="12" height="12" fill="${no?'var(--panel)':col}" stroke="${no?'var(--danger)':col}" stroke-width="${no?2:1.4}" ${no?'stroke-dasharray="3 2"':''}/>
+        <text x="${cx+10}" y="${y+16}" font-size="9.5" fill="var(--txt)" style="pointer-events:none">${esc(lab)}</text>
+        ${sub?`<text x="${cx+10}" y="${y+26}" font-size="8.5" fill="var(--dim)" style="pointer-events:none">${esc(sub)}</text>`:''}${hit(cx-8,y+4,64,24)}`;
+    }else if(it.kind==='xfmr'){
+      const nm=n.name||'',m=nm.match(/\d[\d.\/]*\s*(?:kVA|MVA)/i),l2=m?m[0]:'',l1=_kdShort(nm.replace(m?m[0]:'','').replace(/\s*[\(→].*$/,'').trim(),12);
+      shapes+=`<circle cx="${cx}" cy="${y+15}" r="9" fill="none" stroke="${col}" stroke-width="1.8"/><circle cx="${cx}" cy="${y+27}" r="9" fill="none" stroke="${col}" stroke-width="1.8"/>
+        <text x="${cx+14}" y="${y+21}" font-size="9.5" fill="var(--txt)" style="pointer-events:none">${esc(l1)}</text>
+        <text x="${cx+14}" y="${y+32}" font-size="8.5" fill="var(--dim)" style="pointer-events:none">${esc(l2)}</text>${hit(cx-12,y+4,90,40)}`;
+    }else if(it.kind==='bar'){
+      shapes+=`<rect x="${it.x1}" y="${y+16}" width="${it.x2-it.x1}" height="5" rx="2" fill="${col}"/>
+        <text x="${it.x1}" y="${y+11}" font-size="10.5" font-weight="700" fill="var(--txt)" style="pointer-events:none">${esc(_kdShort((n.name||'').replace(/\s*\(.*$/,''),26))}${it.spare?` <tspan font-size="8.5" font-weight="400" fill="var(--dim)">· SPARE ${it.spare}</tspan>`:''}</text>${hit(it.x1,y+12,it.x2-it.x1,14)}`;
+    }else if(it.kind==='block'){
+      const t=it.rest?'기타 회선':_kdShort((n.name||'').replace(/\s*\(.*$/,''),12);
+      shapes+=`<rect x="${cx-44}" y="${y}" width="88" height="40" rx="8" fill="var(--panel2)" stroke="${it.rest?'var(--dim)':col}" stroke-width="1.5" ${it.rest?'stroke-dasharray="4 3"':''}/>
+        <text x="${cx}" y="${y+17}" font-size="10" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${esc(t)}</text>
+        <text x="${cx}" y="${y+31}" font-size="9" text-anchor="middle" fill="var(--accent)" style="pointer-events:none">▸ ${it.count}회선</text>${hit(cx-44,y,88,40)}`;
+    }else if(it.kind==='load'){
+      const nm=(n.name||'').replace(/^[\dA-Z]+(?:-[\dA-Z]+){2,4}\s+/,''),motor=/kW|MOTOR|PUMP|펌프|FAN|송풍/i.test(n.name||'');
+      shapes+=motor?`<circle cx="${cx}" cy="${y+12}" r="11" fill="var(--panel2)" stroke="${col}" stroke-width="1.6"/><text x="${cx}" y="${y+16}" font-size="11" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">M</text>`
+        :`<rect x="${cx-12}" y="${y+2}" width="24" height="20" rx="3" fill="var(--panel2)" stroke="${col}" stroke-width="1.5"/>`;
+      shapes+=`<text x="${cx}" y="${y+38}" font-size="9" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${esc(_kdShort(nm.replace(/\s*\(.*$/,''),12))}</text>${hit(cx-44,y,88,46)}`;
+    }else if(it.kind==='gen'){
+      shapes+=`<circle cx="${cx}" cy="${y+14}" r="12" fill="var(--panel2)" stroke="${col}" stroke-width="1.6"/><text x="${cx}" y="${y+18}" font-size="12" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">G</text>
+        <text x="${cx}" y="${y+33}" font-size="8.5" text-anchor="middle" fill="var(--dim)" style="pointer-events:none">${esc(_kdShort((n.name||'').replace(/\s*\(.*$/,''),12))}</text>${hit(cx-30,y,60,36)}`;
+    }else{ // node
+      shapes+=`<rect x="${cx-40}" y="${y+2}" width="80" height="18" rx="5" fill="var(--panel2)" stroke="${col}" stroke-width="1.2"/>
+        <text x="${cx}" y="${y+15}" font-size="9" text-anchor="middle" fill="var(--txt)" style="pointer-events:none">${esc(_kdShort((n.name||'').replace(/\s*\(.*$/,''),12))}</text>${hit(cx-40,y+2,80,18)}`;
+    }
+  });
+  // 타이·이중 인입 연결(점선)
+  items.forEach(it=>{
+    const t=it.kind==='brk'&&it.node.tieTo&&byId[it.node.tieTo];if(!t)return;
+    const sx=it.cx,sy=it.y+it.h-2;let tx,ty;
+    if(t.kind==='bar'){ty=t.y+18;tx=sx>=t.x1&&sx<=t.x2?sx:(sx<t.x1?t.x1-10:t.x2+10);}
+    else{tx=t.cx;ty=t.y+t.h/2;}
+    const d=ty>sy?`M${sx} ${sy} V${ty} H${tx}`:`M${sx} ${sy} V${sy+12} H${tx} V${ty}`;
+    ties+=`<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="6 4" style="pointer-events:none"/>
+      <text x="${(sx+tx)/2+4}" y="${Math.max(sy+10,ty)-4}" font-size="8.5" fill="var(--accent)" style="pointer-events:none">TIE</text>`;
+  });
+  const pad=40,xs=items.map(i=>i.cx),minX=Math.min(...items.map(i=>i.x1!=null?i.x1:i.cx-i.w/2))-pad,maxX=Math.max(...items.map(i=>i.x2!=null?i.x2:i.cx+i.w/2))+pad;
+  const minY=-pad/2,maxY=Math.max(...items.map(i=>i.y+i.h))+pad;
+  const W=maxX-minX,H=maxY-minY,mw=118,mh=92,ms=Math.min(mw/W,mh/H)*0.9;
+  const ox=(mw-W*ms)/2-minX*ms,oy=(mh-H*ms)/2-minY*ms;
+  return {inner:edges+ties+shapes,minX,minY,W,H,miniT:`translate(${ox} ${oy}) scale(${ms})`,key:true,rootCx:top.cx};
+}
+function keyDrill(id){S._treeSubTab='drill';S._drillId=id;render();}
+
 function treeDiaApply(){
   const vp=document.getElementById('tdia-vp');if(!vp||!_tdBox)return;
   vp.setAttribute('transform',`translate(${_tdX} ${_tdY}) scale(${_tdS})`);
@@ -2072,12 +2246,17 @@ function treeDiaMini(){
   rect.setAttribute('x',vx*ms+ox);rect.setAttribute('y',vy*ms+oy);
   rect.setAttribute('width',Math.max(4,vw*ms));rect.setAttribute('height',Math.max(4,vh*ms));
 }
-function treeDiaFit(){
+function treeDiaFit(initial){
   const svg=document.getElementById('tdia-svg');if(!svg||!_tdBox)return;
   const b=svg.getBoundingClientRect();
   _tdS=Math.min(b.width/_tdBox.W,b.height/_tdBox.H)*0.92;
   _tdX=(b.width-_tdBox.W*_tdS)/2-_tdBox.minX*_tdS;
   _tdY=(b.height-_tdBox.H*_tdS)/2-_tdBox.minY*_tdS;
+  /* v66: KEY 단선도는 전체가 폭 3000 안팎이라 '전체 보기'로 시작하면 글자가 안 읽힌다 — 처음엔 읽히는 배율로 맨 위(전원)에서 시작 */
+  if(initial===true&&_tdBox.key){
+    _tdS=Math.max(_tdS,Math.min(0.8,b.width/440));
+    _tdX=b.width/2-_tdBox.rootCx*_tdS;_tdY=10-_tdBox.minY*_tdS;
+  }
   _tdNeedFit=false;treeDiaApply();
 }
 function treeDiaZoomAt(cx,cy,f){
@@ -2101,7 +2280,7 @@ function setupTreeDiagram(){
     svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);
     svg.addEventListener('wheel',e=>{e.preventDefault();const p=rel(e);treeDiaZoomAt(p.x,p.y,e.deltaY<0?1.12:0.89);},{passive:false});
   }
-  if(_tdNeedFit)treeDiaFit();else treeDiaApply();
+  if(_tdNeedFit)treeDiaFit(true);else treeDiaApply();
 }
 function treeVoltTab(t){
   S._treeVoltTab=t;S._treeHighlight=null;
