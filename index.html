@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <!--
-  전력계통과 업무앱 (v66) — 단일 HTML PWA
+  전력계통과 업무앱 (v67) — 단일 HTML PWA
   - 설비·계통 실데이터는 이 파일에 포함되지 않습니다. 앱의 [초기 데이터 한 번에 가져오기]로 기기 안(IndexedDB)에만 넣습니다.
   - 빌드·번들러 없음. 브라우저로 열면 동작.
 -->
@@ -273,7 +273,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v66'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v67'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -319,6 +319,7 @@ async function loadAll(){
   try{S.vault=await dbAll('vault');}catch(e){S.vault=[];} // 암호문 그대로 보관(복호화는 잠금 해제 시)
   try{S.logic=await dbAll('logic');}catch(e){S.logic=[];}
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
+  try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
 }
 const $=s=>document.querySelector(s);
@@ -403,6 +404,7 @@ function pickFile(cb){
    파일 이름이 아니라 내용의 필드로 판별하므로 파일명이 달라도 동작한다. */
 function _sniffJson(d){
   if(!d||typeof d!=='object')return '알수없음';
+  if(/^dwg-index/.test(d.schema||'')&&Array.isArray(d.docs))return '도면색인';
   if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
   if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
@@ -445,6 +447,10 @@ async function _applyJson(kind,d){
     }
     return `로직 카드 ${n}장`;
   }
+  if(kind==='도면색인'){
+    await dbPut('meta',{id:'dwgindex',docs:d.docs,generated:d.generated||'',added:todayStr()});
+    return `도면 색인 ${d.docs.length}시트`;
+  }
   if(kind==='해석노트'){
     let n=0;
     for(const it of d.notes){
@@ -475,7 +481,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -500,7 +506,7 @@ function emptyStateCard(){
     <h2>📥 시작하려면 데이터를 넣으세요</h2>
     <div class="muted">저장소는 주소(출처)별로 분리됩니다. GitHub Pages에서 쓰던 데이터는 로컬 파일로 열면 보이지 않습니다 — 사라진 게 아니라 다른 저장소입니다.</div>
     <button class="btn full" style="margin-top:10px" onclick="importAll()">📥 초기 데이터 한 번에 가져오기</button>
-    <div class="section-note"><b>데이터/_폰전송/</b> 폴더의 파일 16개(seed_data_v1 · 계통설비_seed · 계통트리_v2~v12 · logic_cards_v4~v6)를 <b>한꺼번에 선택</b>하면 알아서 분류·순서대로 넣습니다. 옛 파일(계통트리_타이보정·logic_cards_v1~3)은 넣지 마세요.<br>
+    <div class="section-note"><b>데이터/_폰전송/</b> 폴더의 파일 17개(seed_data_v1 · 계통설비_seed · 계통트리_v2~v12 · logic_cards_v4~v6 · dcs_도면색인_v1)를 <b>한꺼번에 선택</b>하면 알아서 분류·순서대로 넣습니다. 옛 파일(계통트리_타이보정·logic_cards_v1~3)은 넣지 마세요.<br>
       기존 기기에서 쓰던 기록을 옮기려면 그쪽에서 [전체 백업 내보내기] 후 [백업 복원]을 쓰세요.</div>
   </div>`;
 }
@@ -3833,12 +3839,13 @@ function classifyDoc(name,folder){
   const base=name.replace(/\.[^.]+$/,'');
   const up=base.toUpperCase();
   // v59: SD(스키매틱·전개접속도)·GS(심볼·범례) 누락 수정 — 602-1-E-SD-443-018 같은 번호를 못 잡던 버그
-  const noM=base.match(/602-\d-E-(?:SL|LG|SD|GS)-\d{3}-\d{3}/)||base.match(/\d-I-(?:LG|SD)-\d{3}(?:-\d{3})?/);
+  const noM=base.match(/602-\d-E-(?:SL|LG|SD|GS)-\d{3}-\d{3}/)||base.match(/\d-I-(?:LG|LP|SD)-\d{3}(?:-\d{3})?/);
   const docNo=noM?noM[0]:'';
   const f=folder||'';
   let plant='';
   if(/SRF/i.test(f))plant='SRF'; else if(/DH/.test(f))plant='DH'; else if(/PB/.test(f))plant='PB';
   else if(/602-2/.test(base))plant='DH'; else if(/602-1/.test(base))plant='PB';
+  else if(/^\d-I-/.test(base))plant='DH';
   else if(/LOGIC/i.test(base)||/설비/.test(f))plant='로직(공통)';
   let level='기타';
   if(/-441-/.test(base)||/KEY SINGLE|22\.?9\s*KV/i.test(up))level='22.9kV 수전';
@@ -3849,6 +3856,7 @@ function classifyDoc(name,folder){
   if(/LOGIC/i.test(up))kind='로직도';
   else if(/LOOP/i.test(up))kind='루프도';
   else if(/-LG-\d/.test(up))kind='로직도';
+  else if(/-LP-\d/.test(up))kind='루프도';
   else if(/SCHEMATIC|전개접속|-SD-\d/i.test(up))kind='스키매틱';
   else if(/SYMBOL|LEGEND|-GS-\d/i.test(up))kind='심볼·범례';
   else if(/CONFIGURATION.*(CONTROL|MONITORING)/i.test(up))kind='제어·감시';
@@ -3858,7 +3866,7 @@ function classifyDoc(name,folder){
   if(!title)title=base.replace(/_/g,' ').trim();
   return {docNo,plant,level,kind,title};
 }
-const _isDrawFile=n=>/(602-\d-E-(SL|LG)|\d-I-LG-|SINGLE LINE|LOGIC|LOAD CENTER|\bMCC\b|SWITCHGEAR|LIGHTING|UPS|SCHEMATIC|LOOP|CONFIGURATION|ACB|수처리동)/i.test(n)&&/\.(pdf|jpe?g|png)$/i.test(n);
+const _isDrawFile=n=>/(602-\d-E-(SL|LG)|\d-I-(?:LG|LP|SD)-|SINGLE LINE|LOGIC|LOAD CENTER|\bMCC\b|SWITCHGEAR|LIGHTING|UPS|SCHEMATIC|LOOP|CONFIGURATION|ACB|수처리동)/i.test(n)&&/\.(pdf|jpe?g|png)$/i.test(n);
 async function importDocs(){
   const inp=document.createElement('input');inp.type='file';inp.multiple=true;
   try{inp.webkitdirectory=true;}catch(e){}
@@ -4808,6 +4816,50 @@ function vDocFind(){
   <div id="dfres">${docFindResults(q)}</div>
   <div class="botpad"></div>`;
 }
+
+/* ================= v67: DCS 로직·루프 색인 =================
+   현장에서 태그(121-M-PP-002, HV-23001, 26004, PDIC-26037 …)로 그 설비의 로직도·루프도 시트를 바로 찾는다.
+   색인(dcs_도면색인_v1.json)은 도면 자체가 아니라 '어느 시트에 무엇이 있나' 목록이다. PDF는 도면 문서함에 있어야 열린다. */
+const _dx=s=>String(s||'').toLowerCase().replace(/[-_.\s()\/]/g,'');
+function dcsIndex(){return (S._dwgIndex&&S._dwgIndex.docs)||[];}
+function dcsDocFor(no){
+  const k=String(no).toLowerCase();
+  return S.docs.find(d=>{const n=(d.name||'').toLowerCase(),i=n.indexOf(k);return i>=0&&!/\d/.test(n[i+k.length]||'');});
+}
+function dcsFind(q){
+  const terms=String(q||'').toLowerCase().trim().split(/\s+/).filter(Boolean).map(_dx).filter(Boolean);
+  if(!terms.length)return [];
+  return dcsIndex().filter(d=>{
+    const hay=_dx([d.no,d.type,d.sheet,d.title,d.group,...(d.tags||[])].join('|'));
+    return terms.every(t=>hay.includes(t));
+  });
+}
+function dcsShort(no){return String(no).replace(/^2-I-/,'').replace(/-54[23]-/,'-');}
+function openDcsSheet(no){
+  const d=dcsDocFor(no);
+  if(!d){toast('이 시트의 PDF가 문서함에 없습니다 — '+no+' 을(를) 도면·문서 관리에서 가져오세요');return;}
+  viewDoc(d.id);
+}
+function dcsSearch(q){S.docQ=q;const el=$('#dfq');if(el)el.value=q;const b=$('#dfres');if(b)b.innerHTML=docFindResults(q);}
+function dcsResultsHtml(q){
+  const idx=dcsIndex();
+  if(!(q||'').trim())return '';
+  if(!idx.length)return '<div class="card"><h2>📑 DCS 로직·루프</h2><div class="section-note">색인이 없습니다 — 더보기의 [초기 데이터 한 번에 가져오기]에서 <b>dcs_도면색인_v1.json</b> 을 넣으세요.</div></div>';
+  const hit=dcsFind(q);
+  if(!hit.length)return '';
+  const have=d=>!!dcsDocFor(d.no);
+  return `<div class="card"><h2>📑 DCS 로직·루프 시트 <span class="cnt">${hit.length}건</span></h2>
+    ${hit.slice(0,40).map(d=>`<div class="item" style="align-items:flex-start"><div class="t">
+        <div class="n" style="white-space:normal;line-height:1.4"><span class="badge ${d.type==='로직도'?'b-blue':'b-green'}">${esc(d.type)} ${esc(d.sheet)}</span> ${esc(d.title)}</div>
+        <div class="d" style="white-space:normal">${esc([d.group,d.no].filter(Boolean).join(' · '))}${d.read?' · <b style="color:var(--ok,#2f9e44)">내용 요약 있음</b>':''}</div>
+        ${d.summary?`<details style="margin-top:4px"><summary style="cursor:pointer;color:var(--accent)">요약 보기</summary><div style="font-size:12.5px;line-height:1.6;margin-top:4px">${esc(d.summary)}<div class="section-note">AI 판독 요약 — 참고용. 값은 원본 시트에서 확인.</div></div></details>`:''}
+        ${(d.refs||[]).length?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${d.refs.map(r=>`<button class="chipf" onclick="dcsSearch('${esc(r)}')">↔ ${esc(dcsShort(r))}</button>`).join('')}</div>`:''}
+      </div>
+      <button class="btn ${have(d)?'':'ghost'} sm" onclick="openDcsSheet('${esc(d.no)}')">${have(d)?'열기':'PDF 없음'}</button></div>`).join('')}
+    ${hit.length>40?`<div class="muted">… 외 ${hit.length-40}건 — 검색어를 더 좁히세요</div>`:''}
+    <div class="section-note">색인 ${idx.length}시트 · PDF ${idx.filter(have).length}개 연결됨</div></div>`;
+}
+
 function _snipHtml(raw,hit,terms){
   const a=Math.max(0,hit.pos-46),b=Math.min(raw.length,hit.pos+hit.len+60);
   let s=(a>0?'…':'')+raw.slice(a,b)+(b<raw.length?'…':'');
@@ -4817,10 +4869,10 @@ function _snipHtml(raw,hit,terms){
   return s;
 }
 function docFindResults(q){
-  if(!(q||'').trim())return '<div class="empty">검색어를 입력하세요 — 예: LC-202, VCB-501, 압입송풍기</div>';
+  if(!(q||'').trim())return '<div class="empty">검색어를 입력하세요 — 예: LC-202, VCB-501, 압입송풍기<br>DCS(펌프·밸브) 로직·루프도: 121-M-PP-002, HV-23001, 26004, PDIC-26037</div>';
   const terms=q.toLowerCase().trim().split(/\s+/).filter(Boolean);
   const tcs=terms.map(t=>t.replace(/[-_.\s()\/]/g,''));
-  let h='';
+  let h=dcsResultsHtml(q);
   const groups=_tagGroups(q);
   if(groups&&groups.length)h+=`<div class="card"><h2>🕸️ 연계 도면 지도</h2>${_tgSvg(q.trim(),groups)}</div>`;
   h+=_notesFor(q).map(n=>`<div class="card"><h2>📖 ${esc(n.title||n.tag)}</h2>
@@ -4841,7 +4893,7 @@ function docFindResults(q){
     }
     if(pages.length)out.push({d,pages});
   }
-  if(!out.length)return h+(groups&&groups.length?'':'<div class="empty">일치 도면 없음 — OCR 인덱스 가져오기 여부 확인</div>');
+  if(!out.length)return h+((groups&&groups.length)||dcsFind(q).length?'':'<div class="empty">일치 도면 없음 — OCR 인덱스 가져오기 여부 확인</div>');
   out.sort((a,b)=>b.pages.length-a.pages.length);
   h+=`<div class="card"><h2>📄 상세 결과 <span class="cnt">${out.length}개 도면</span></h2>`+
     out.slice(0,30).map(({d,pages})=>`
