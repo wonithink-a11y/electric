@@ -1,7 +1,7 @@
 // service-worker.js
 // 전기설비 업무앱 오프라인 캐싱용 서비스워커
 
-const CACHE_NAME = 'jeonbi-app-v1'; // 파일 내용 크게 바꿀 때마다 v1 -> v2로 올려주세요 (안 올리면 캐시가 안 갱신됨)
+const CACHE_NAME = 'jeonbi-app-v64'; // 파일 내용 바꿀 때마다 이 값을 올린다. 안 올리면 PWA가 캐시된 구버전을 계속 보여줌
 const urlsToCache = [
   './index.html',
   './manifest.json',
