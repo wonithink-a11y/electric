@@ -274,7 +274,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v70'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v71'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2135,8 +2135,13 @@ function _kdBuild(node,depth,force){
       const st=live.filter(k=>_kdHasStruct(k,0)),rest=live.length-st.length;
       it.ch=st.map(k=>_kdBuild(k,depth+1));
       if(rest>0)it.ch.push({id:node.id+'#rest',node,kind:'block',ch:[],w:0,cx:0,y:0,h:0,count:rest,rest:true,drill:node.id});
-    }else it.ch=live.map(k=>_kdBuild(k,depth+1));
+    }else it.ch=live.map(k=>_kdBuild(k,depth+1,force&&depth===0?'leaf':0));
     return it;
+  }
+  if(force==='leaf'&&kind==='brk'&&!kids.length){ // v70: 판넬만 보기 — 회선 사각형 아래에 부하명(태그 / 위치)을 세로로 표기
+    const nm=(node.name||'').replace(/^#?\d+\s+/,''),pm=nm.match(/^(.*?)\s*\((.*)\)\s*$/);
+    it.vt=[_kdShort(pm?pm[1]:nm,30),pm?_kdShort(pm[2],18):''];
+    if(!it.vt[0]&&!it.vt[1])it.vt=null;
   }
   if(kind==='load'){
     if(kids.length){it.kind='node';it.ch=kids.filter(k=>!isSpare(k)).map(k=>_kdBuild(k,depth+1));}
@@ -2150,6 +2155,7 @@ const _KD_H={src:32,brk:30,xfmr:50,bar:22,block:46,load:52,gen:34,node:24};
 const _KD_MW={src:150,brk:68,xfmr:116,bar:80,block:96,load:92,gen:70,node:90};
 function _kdMeasure(it){
   it.h=_KD_H[it.kind]||30;
+  if(it.vt)it.h=34+Math.max(it.vt[0].length,it.vt[1].length)*5.6;
   let s=0;it.ch.forEach(c=>{_kdMeasure(c);s+=c.w;});
   it.w=Math.max(_KD_MW[it.kind]||60,s);
   it.cw=s;
@@ -2199,7 +2205,9 @@ function keyDiagramSvg(rootId,sub){
       const [lab,sub]=_kdBrkLabel(n),no=n.normalState==='NO';
       shapes+=`<rect x="${cx-6}" y="${y+9}" width="12" height="12" fill="${no?'var(--panel)':col}" stroke="${no?'var(--danger)':col}" stroke-width="${no?2:1.4}" ${no?'stroke-dasharray="3 2"':''}/>
         <text x="${cx+10}" y="${y+16}" font-size="9.5" fill="var(--txt)" style="pointer-events:none">${esc(lab)}</text>
-        ${sub?`<text x="${cx+10}" y="${y+26}" font-size="8.5" fill="var(--dim)" style="pointer-events:none">${esc(sub)}</text>`:''}${hit(cx-8,y+4,64,24)}`;
+        ${sub?`<text x="${cx+10}" y="${y+26}" font-size="8.5" fill="var(--dim)" style="pointer-events:none">${esc(sub)}</text>`:''}
+        ${it.vt?`<text transform="translate(${cx-3} ${y+34}) rotate(90)" font-size="9" fill="var(--txt)" style="pointer-events:none">${esc(it.vt[0])}</text>
+        <text transform="translate(${cx+9} ${y+34}) rotate(90)" font-size="8.5" fill="var(--dim)" style="pointer-events:none">${esc(it.vt[1])}</text>`:''}${hit(cx-8,y+4,it.vt?24:64,it.vt?it.h-4:24)}`;
     }else if(it.kind==='xfmr'){
       const nm=n.name||'',m=nm.match(/\d[\d.\/]*\s*(?:kVA|MVA)/i),l2=m?m[0]:'',l1=_kdShort(nm.replace(m?m[0]:'','').replace(/\s*[\(→].*$/,'').trim(),12);
       shapes+=`<circle cx="${cx}" cy="${y+15}" r="9" fill="none" stroke="${col}" stroke-width="1.8"/><circle cx="${cx}" cy="${y+27}" r="9" fill="none" stroke="${col}" stroke-width="1.8"/>
