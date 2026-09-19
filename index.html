@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<!--
-  전력계통과 업무앱 (v69) — 단일 HTML PWA
-  - 설비·계통 실데이터는 이 파일에 포함되지 않습니다. 앱의 [초기 데이터 한 번에 가져오기]로 기기 안(IndexedDB)에만 넣습니다.
-  - 빌드·번들러 없음. 브라우저로 열면 동작.
--->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e1626">
@@ -279,7 +274,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v69'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v70'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1995,7 +1990,8 @@ function vTreeDiagram(){
   const mode=S._treeDiaMode||'key';
   let sel=(S._treeDiaRoot&&nodeById(S._treeDiaRoot))?S._treeDiaRoot:'';
   if(mode==='key'&&(!sel||!roots.some(r=>r.id===sel)))sel=roots[0].id;
-  const d=mode==='key'?keyDiagramSvg(sel):treeDiagramSvg(sel);
+  const subId=mode==='key'&&S._treeDiaSub&&nodeById(S._treeDiaSub)?S._treeDiaSub:'';
+  const d=subId?keyDiagramSvg(subId,true):mode==='key'?keyDiagramSvg(sel):treeDiagramSvg(sel);
   _tdBox={minX:d.minX,minY:d.minY,W:d.W,H:d.H,key:!!d.key,rootCx:d.rootCx||0};
   const plant=r=>/DH/.test(r.name)?'DH 열원설비':(/PB|발전/.test(r.name)?'PB 발전설비':r.name);
   const opts=mode==='key'?roots.map(r=>({id:r.id,label:plant(r)+' — '+r.name.replace(/\s*\(.*$/,'')})):diaRootOptions();
@@ -2003,8 +1999,11 @@ function vTreeDiagram(){
       <button class="btn ${mode==='key'?'':'ghost'} sm grow" onclick="S._treeDiaMode='key';_tdNeedFit=true;render()">▦ KEY 단선도</button>
       <button class="btn ${mode==='tree'?'':'ghost'} sm grow" onclick="S._treeDiaMode='tree';_tdNeedFit=true;render()">▤ 박스 트리</button>
     </div>
+    ${subId?`<div class="row" style="gap:6px;margin-bottom:8px;align-items:center">
+      <button class="btn ghost sm" onclick="S._treeDiaSub='';_tdNeedFit=true;render()">◀ 전체 단선도</button>
+      <div class="grow" style="font-weight:700">▸ ${esc(nodeById(subId).name)} <span class="muted">— 이 판넬만</span></div></div>`:''}
     <div class="row" style="gap:6px;margin-bottom:8px">
-      <select onchange="S._treeDiaRoot=this.value;_tdNeedFit=true;render()" style="flex:1">
+      <select onchange="S._treeDiaRoot=this.value;S._treeDiaSub='';_tdNeedFit=true;render()" style="flex:1">
         ${opts.map(o=>`<option value="${o.id}"${o.id===sel?' selected':''}>${esc(o.label)}</option>`).join('')}
       </select>
     </div>
@@ -2119,14 +2118,14 @@ function _kdBrkLabel(n){
   const r=nm.match(/\d+\s*AF/);
   return [lab,r?r[0].replace(/\s/g,''):(n.normalState==='NO'?'N.O':'')];
 }
-function _kdBuild(node,depth){
+function _kdBuild(node,depth,force){
   const kind=_kdKind(node);
   const it={id:node.id,node,kind,ch:[],w:0,cx:0,y:0,h:0,spare:0};
   if(depth>40)return it;
   const kids=nodeKids(node.id);
   const isSpare=k=>k.type==='breaker'&&/SPARE|예비/i.test(k.name||'')&&!nodeKids(k.id).length&&!k.tieTo;
   if(kind==='bus'){
-    const role=_kdBusRole(node);
+    const role=force&&depth===0?'bar':_kdBusRole(node); // v70: 판넬만 보기는 루트 MCC를 접지 않고 펼침
     if(role==='block'){
       it.kind='block';it.count=kids.filter(k=>!isSpare(k)).length;return it;
     }
@@ -2165,9 +2164,9 @@ function _kdLayoutY(it,y,lvl,LY){
   else it.y=y;
   it.ch.forEach(c=>_kdLayoutY(c,it.y+it.h+_KD_GAP,lvl,LY));
 }
-function keyDiagramSvg(rootId){
+function keyDiagramSvg(rootId,sub){
   const root=nodeById(rootId);if(!root)return {inner:'',minX:0,minY:0,W:10,H:10,miniT:'',key:true,rootCx:0};
-  const top=_kdBuild(root,0);
+  const top=_kdBuild(root,0,sub);
   _kdMeasure(top);_kdAssignX(top,0);
   const LY={};for(let i=0;i<6;i++)_kdLayoutY(top,0,0,LY);
   const items=[];(function walk(i){items.push(i);i.ch.forEach(walk);})(top);
@@ -2417,6 +2416,29 @@ function treeSvg(root,tab){
   const zoom=S._treeZoom||1;
   return `<div style="overflow:auto;margin:8px 0;max-height:62vh"><svg viewBox="0 0 ${totalW} ${totalH}" style="width:${Math.round(totalW*zoom)}px;height:${Math.round(totalH*zoom)}px;max-width:none">${edges}${boxes}</svg></div>`;
 }
+/* v70: 모선·L/C·MCC를 탭하면 그 안의 회선 목록 + 상세 단선도 + '이 판넬만 KEY 단선도' */
+function keySub(id){closeModal();S._treeDiaSub=id;S._treeDiaMode='key';S._treeSubTab='diagram';_tdNeedFit=true;go('tree');}
+function nodeContents(n){
+  const kids=nodeKids(n.id);if(!kids.length)return '';
+  const isSpare=k=>/SPARE|예비/i.test(k.name||'')&&!nodeKids(k.id).length;
+  const rows=kids.map(k=>{
+    const meta=String(k.note||'').split(' · ').filter(s=>s&&!/근거/.test(s)).slice(0,3).join(' · ');
+    return `<div class="tkid" onclick="nodeMenu('${k.id}')" style="${isSpare(k)?'opacity:.55':''}">
+      <span class="tkid-ic">${(NODE_TYPES[k.type]||['·'])[0]}</span>
+      <span class="tkid-nm">${esc(k.name)}${k.normalState==='NO'?' <span class="badge b-gray">N.O</span>':''}${meta?`<span class="tpath-meta">${esc(meta)}</span>`:''}</span>
+      <span class="tkid-arr">${nodeKids(k.id).length?'›':'●'}</span></div>`;}).join('');
+  const sl=_nodeSl(n).slice(0,4),fb=!sl.length;
+  const items=fb?_slByVolt(n.voltage,_plantPfx(n)==='602-2'?'DH':'PB',n.name):sl.map(no=>_dwgItem(no));
+  window._hubItems=items;items.forEach(it=>it.grp=items);window._hubTag=n.name;
+  const dw=items.map((it,i)=>`<div class="item click" onclick="hubGo(${i})"><div class="t">
+      <div class="n" style="white-space:normal;line-height:1.4">${esc((it.no||'').replace(/^602-\d-E-/,''))}</div>
+      <div class="d" style="white-space:normal">${esc(it.title||'')}</div></div>
+      <span class="badge ${it.d?'b-blue':'b-gray'}">${it.d?'열기':'PDF 없음'}</span></div>`).join('');
+  return `<div class="muted" style="margin-top:10px">이 안의 회선 <span class="cnt">${kids.length}</span></div>
+    <div style="max-height:260px;overflow:auto">${rows}</div>
+    ${n.type!=='breaker'?`<button class="btn sm" style="margin-top:8px" onclick="keySub('${n.id}')">▦ 이 판넬만 KEY 단선도로 보기</button>`:''}
+    ${dw?`<div class="muted" style="margin-top:10px">📐 상세 단선도${fb?' (같은 전압 계통 — 이 판넬 SL 표기 없음)':''}</div>${dw}`:''}`;
+}
 function nodeMenu(id){
   const n=nodeById(id);if(!n)return;
   const e=n.equipId?S.equipment.find(x=>x.id===n.equipId):null;
@@ -2425,7 +2447,9 @@ function nodeMenu(id){
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
     <div class="hubb"><button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
       ${logicByTag(n)?`<button class="btn" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
-      ${n.type==='load'||isBrk?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}</div>
+      ${n.type==='load'||isBrk?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
+      ${n.parentId&&nodeById(n.parentId)?`<button class="btn ghost" onclick="nodeMenu('${n.parentId}')">↑ 상위 ${esc(_kdShort(nodeById(n.parentId).name,14))}</button>`:''}</div>
+    ${nodeContents(n)}
     <div class="muted" style="margin-top:6px">차단 경로 (상위 방향)</div>
     <div class="path-box">${blockPathText(id)}</div>
     ${blockPathSvg(id)}
