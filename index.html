@@ -243,6 +243,18 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 .tdrill-head.brk{border-color:var(--danger)}
 .tdrill-nm{font-size:16px;font-weight:700}
 .tdrill-meta{font-size:12px;color:var(--dim);margin-top:3px}
+.zc-box{background:var(--panel2);border:1px solid var(--line);border-left:5px solid var(--dim);border-radius:10px;padding:7px 12px;font-weight:700;cursor:pointer}
+.zc-box.on{border-left-color:var(--ok)}
+.zc-box small{font-weight:400;color:var(--dim);margin-left:8px;font-size:11.5px}
+.zc-link{display:flex;align-items:center;gap:8px;padding:0 0 0 18px;height:28px;border-left:3px solid var(--line);margin-left:14px}
+.zc-link.on{border-left-color:var(--ok)}
+.zc-chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1.5px solid var(--ok);color:var(--txt);cursor:pointer}
+.zc-chip.no{border-style:dashed;border-color:var(--danger)}
+.zc-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.zc-tbl th{color:var(--dim);font-weight:500;text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.zc-tbl td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+.zc-tbl tr.sp td{opacity:.5}
+.zc-tbl tr{cursor:pointer}
 .tkid{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
 .tkid-ic{font-size:15px;flex:none}
 .tkid-nm{font-size:14px;flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -274,7 +286,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v71'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v73'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -321,6 +333,7 @@ async function loadAll(){
   try{S.logic=await dbAll('logic');}catch(e){S.logic=[];}
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
+  try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
 }
 const $=s=>document.querySelector(s);
@@ -408,6 +421,7 @@ function _sniffJson(d){
   if(/^dwg-index/.test(d.schema||'')&&Array.isArray(d.docs))return '도면색인';
   if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
   if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
+  if(Array.isArray(d.zones)&&d.zones.length&&d.zones[0].panels)return '설비동';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
   if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
@@ -452,6 +466,10 @@ async function _applyJson(kind,d){
     await dbPut('meta',{id:'dwgindex',docs:d.docs,generated:d.generated||'',added:todayStr()});
     return `도면 색인 ${d.docs.length}시트`;
   }
+  if(kind==='설비동'){
+    await dbPut('meta',{id:'zones',zones:d.zones,added:todayStr()});S._zones=d.zones;
+    return `설비동 ${d.zones.length}곳`;
+  }
   if(kind==='해석노트'){
     let n=0;
     for(const it of d.notes){
@@ -482,7 +500,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -1866,16 +1884,18 @@ function vTree(){
       <button class="btn ghost sm full" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
     </div>`+treeLotoCard();
   }
-  const sub=S._treeSubTab||'path';
-  const SUBS=[['path','↳ 경로'],['drill','☰ 드릴다운'],['diagram','▤ 단선도']];
-  const body=sub==='drill'?vTreeDrill():(sub==='diagram'?vTreeDiagram():vTreePath());
+  const hasZ=(S._zones||[]).length>0;
+  const sub=S._treeSubTab||(hasZ?'zone':'path');
+  const SUBS=[['zone','🏢설비동'],['path','↳ 경로'],['drill','☰ 드릴다운'],['diagram','▤ 단선도']];
+  const zEmpty=`<div class="empty">설비동 데이터가 아직 없습니다.<br><br>[초기 데이터 가져오기]에서 <b>설비동_v1.json</b>을 넣으면 여기에 설비동 카드가 생깁니다.<br><br><button class="btn sm" onclick="importAll()">📥 JSON 가져오기</button></div>`;
+  const body=sub==='zone'?(hasZ?vZone():zEmpty):sub==='drill'?vTreeDrill():(sub==='diagram'?vTreeDiagram():vTreePath());
   return `<div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
     <div class="row" style="gap:6px;margin-bottom:8px">
       <input id="tree-find" placeholder="이름·판넬·도면 세부내용 검색 (예: ROTARY FEEDER)" style="flex:1" onkeydown="if(event.key==='Enter')treeFind()">
       <button class="btn sm" onclick="treeFind()">검색</button>
     </div>
     <div class="row" style="gap:6px;margin-bottom:12px">
-      ${SUBS.map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')">${esc(l)}</button>`).join('')}
+      ${SUBS.map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')" style="white-space:nowrap;padding-left:4px;padding-right:4px">${esc(l)}</button>`).join('')}
     </div>
     ${body}
     <button class="btn ghost sm full" style="margin-top:14px" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
@@ -2181,7 +2201,7 @@ function keyDiagramSvg(rootId,sub){
   const C=id=>live.has(id)?'var(--ok,#2f9e44)':'var(--dim)';
   let edges='',shapes='',ties='';
   items.forEach(it=>{
-    const cx=it.cx,y=it.y,n=it.node,col=C(n.id),oc=it.rest?`keyDrill('${it.drill}')`:(it.kind==='block'?`keyDrill('${n.id}')`:`nodeMenu('${n.id}')`);
+    const cx=it.cx,y=it.y,n=it.node,col=C(n.id),oc=it.rest?`keySub('${it.drill}')`:(it.kind==='block'?`keySub('${n.id}')`:`nodeMenu('${n.id}')`); // v72: 블록 탭 = 판넬만 KEY 단선도
     const hit=(x,yy,w,h)=>`<rect x="${x}" y="${yy}" width="${w}" height="${h}" fill="transparent" pointer-events="all" style="cursor:pointer" onclick="${oc}"/>`;
     // 하위 연결선
     if(it.kind==='bar'){
@@ -2446,6 +2466,69 @@ function nodeContents(n){
     <div style="max-height:260px;overflow:auto">${rows}</div>
     ${n.type!=='breaker'?`<button class="btn sm" style="margin-top:8px" onclick="keySub('${n.id}')">▦ 이 판넬만 KEY 단선도로 보기</button>`:''}
     ${dw?`<div class="muted" style="margin-top:10px">📐 상세 단선도${fb?' (같은 전압 계통 — 이 판넬 SL 표기 없음)':''}</div>${dw}`:''}`;
+}
+/* ================= v73: 설비동 화면 — 설비동 하나를 한 화면에: 전원 체인 · 판넬 회선표 · 로직 카드 · 도면 =================
+   설비동 정의(어느 판넬이 그 설비동인가)는 데이터 설비동_v1.json(meta 'zones')에 둔다. 체인은 계통 트리 경로에서 뽑는다:
+   6.9kV 모선 → (차단기 칩) → 변압기 → L/C → 판넬. 박스 초록 = 평상시 가압. 차단기 칩을 탭하면 개방 시 정전범위. */
+function zoneOpen(id){S._zoneId=id;S._treeSubTab='zone';render();window.scrollTo(0,0);}
+function _zBrk(n){const [l,s]=_kdBrkLabel(n);return esc(l+(s&&s!=='N.O'?' '+s:''))+(n.normalState==='NO'?' · N.O':' · N.C');}
+function _zRow(k,i){
+  const seg=String(k.note||'').split(' · ').filter(s=>s&&!/근거/.test(s));
+  const rate=(seg.find(s=>/\d+\s*AF/.test(s))||'').replace(/^.*?(\d+\s*AF\S*).*$/,'$1'),kw=seg.find(s=>/kW/i.test(s))||'';
+  const prot=seg.filter(s=>/EOCR|ZCT|50G|OCR|GR/.test(s)).join(' ');
+  const m=(k.name||'').match(/^#?(\d+)\s+(.*)$/),no=m?m[1]:String(i+1),nm=m?m[2]:k.name||'';
+  const sp=/SPARE|예비/i.test(nm)&&!nodeKids(k.id).length;
+  return `<tr class="${sp?'sp':''}" onclick="nodeMenu('${k.id}')"><td>${esc(no)}</td><td>${(()=>{const t=nm.match(/^([\dA-Z]+(?:-[\dA-Z]+){2,4})\s+(.*)$/);return t?`<b>${esc(t[1])}</b><br>${esc(t[2])}`:esc(nm||'SPARE');})()}</td><td>${esc(kw.replace(/kW/i,''))}</td><td>${esc(rate)}</td><td>${esc(prot)}</td></tr>`;
+}
+function vZone(){
+  const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
+  const z=Z.find(x=>x.id===S._zoneId);
+  if(!z){
+    return ['PB','DH'].map(pl=>{const L=Z.filter(x=>x.plant===pl);return L.length?`<div class="muted" style="margin:10px 0 6px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div>`+
+      L.map(x=>{const ps=x.panels.map(nodeById).filter(Boolean),c=ps.reduce((a,p)=>a+nodeKids(p.id).length,0);
+        return `<div class="tkid" onclick="zoneOpen('${x.id}')"><span class="tkid-ic">🏢</span>
+        <span class="tkid-nm">${esc(x.name)}<span class="tpath-meta">판넬 ${ps.length} · 회선 ${c}${x.desc?' · '+esc(x.desc):''}</span></span><span class="tkid-arr">›</span></div>`;}).join(''):'';}).join('');
+  }
+  const live=energizedSet([],{normal:true}),panels=z.panels.map(nodeById).filter(Boolean);
+  const isLC=n=>n&&n.type==='bus'&&/L\/C|LOAD CENTER/i.test(n.name||'')&&!/[kM]VA/i.test(n.name||''); // 'L/C TR-1 1500kVA'는 변압기
+  // 급전 그룹: 판넬 → 위로 올라가며 처음 만나는 L/C
+  const groups=[];
+  panels.forEach(p=>{
+    const path=pathUp(p.id).slice().reverse(),li=path.findIndex(isLC),lc=li>=0?path[li]:path[Math.max(0,path.length-2)];
+    let g=groups.find(x=>x.lc.id===lc.id);
+    if(!g){let s=path.findIndex(n=>n.type==='bus'&&/6\.9kV/.test((n.name||'')+(n.voltage||'')));if(s<0)s=Math.max(0,path.indexOf(lc)-3);
+      g={lc,path,chain:path.slice(s,path.indexOf(lc)+1),up:path.slice(0,s),panels:[]};groups.push(g);}
+    g.panels.push(p);
+  });
+  const brks=[],addB=n=>{if(n&&n.type==='breaker'&&!brks.some(x=>x.id===n.id))brks.push(n);};
+  const chainHtml=groups.map((g,gi)=>{
+    let h='';g.chain.forEach((n,i)=>{
+      if(n.type==='breaker'){addB(n);h+=`<div class="zc-link ${live.has(n.id)?'on':''}"><span class="zc-chip ${n.normalState==='NO'?'no':''}" onclick="nodeMenu('${n.id}')">⚡ ${_zBrk(n)}</span></div>`;}
+      else h+=`<div class="zc-box ${live.has(n.id)?'on':''}" onclick="nodeMenu('${n.id}')">${esc(_kdShort((n.name||'').replace(/\s*\(.*$/,''),30))}<small>${esc(n.voltage||'')}</small></div>`;});
+    h+=`<div class="row" style="gap:8px;align-items:flex-start;margin-top:0;flex-wrap:wrap">`+g.panels.map(p=>{const fb=nodeById(p.parentId);addB(fb);
+      return `<div style="flex:1;min-width:140px"><div class="zc-link ${live.has(p.id)?'on':''}">${fb&&fb.type==='breaker'?`<span class="zc-chip ${fb.normalState==='NO'?'no':''}" onclick="nodeMenu('${fb.id}')">⚡ ${_zBrk(fb)}</span>`:''}</div>
+        <div class="zc-box ${live.has(p.id)?'on':''}" onclick="document.getElementById('zp-${p.id}').open=true;document.getElementById('zp-${p.id}').scrollIntoView({block:'center'})">${esc(_kdShort((p.name||'').replace(/\s*\(.*$/,'').replace(/^(460V\s+)?SRF\s+/,''),22))}<small>회선 ${nodeKids(p.id).length}</small></div></div>`;}).join('')+`</div>`;
+    const no=g.up.filter(n=>n.type==='breaker'&&n.normalState==='NO');
+    return `<div class="card" style="margin:0 0 12px"><div class="muted" style="margin-bottom:8px">급전 ${gi+1} · ${esc(g.lc.name.replace(/\s*\(.*$/,''))}</div>${h}
+      ${no.length?`<div class="section-note">⚠ 이 경로 위쪽에 평상시 개방(N.O) 차단기: ${no.map(n=>esc(_kdBrkLabel(n)[0])).join(', ')} — 타이 등 다른 경로로 가압 중일 수 있음</div>`:''}</div>`;}).join('');
+  const hide=S._zoneSpare!==false;
+  const tbls=panels.map(p=>{
+    const kids=nodeKids(p.id),isSp=k=>/SPARE|예비/i.test(k.name||'')&&!nodeKids(k.id).length,sp=kids.filter(isSp).length;
+    return `<details id="zp-${p.id}" class="card" style="margin:0 0 10px;padding:10px 12px"><summary style="cursor:pointer;font-weight:700">${live.has(p.id)?'🟢':'⚪'} ${esc((p.name||'').replace(/\s*\(.*$/,''))} <span class="cnt">${kids.length}</span> <span class="muted">SPARE ${sp}</span></summary>
+      <div class="row" style="gap:6px;margin:8px 0"><button class="btn ghost sm" onclick="keySub('${p.id}')">▦ 판넬만 KEY 단선도</button><button class="btn ghost sm" onclick="nodeMenu('${p.id}')">🔌 상세</button></div>
+      <div style="max-height:340px;overflow:auto"><table class="zc-tbl"><tr><th>#</th><th>부하</th><th>kW</th><th>정격</th><th>보호</th></tr>${kids.filter(k=>!(hide&&isSp(k))).map(_zRow).join('')}</table></div></details>`;}).join('');
+  const cards=[];brks.forEach(b=>{const c=logicByTag(b);if(c&&!cards.some(x=>x.c===c))cards.push({c,id:b.id});});
+  const seen=new Set(),dw=[];panels.forEach(p=>_nodeSl(p).forEach(no=>{if(!seen.has(no)){seen.add(no);dw.push(_dwgItem(no));}}));
+  window._hubItems=dw;dw.forEach(it=>it.grp=dw);window._hubTag=z.name;
+  return `<div class="row" style="gap:6px;margin-bottom:8px;align-items:center"><button class="btn ghost sm" onclick="S._zoneId='';render()">◀ 설비동 목록</button>
+      <div class="grow" style="font-weight:700">🏢 ${esc(z.name)}</div></div>
+    <div class="muted" style="margin:6px 0">① 전원 체인 <span style="color:var(--ok)">■ 가압</span> <span>■ 정지</span> · 차단기 칩을 탭하면 개방 시 정전범위</div>
+    ${chainHtml}
+    <div class="muted" style="margin:14px 0 6px">② 판넬 회선표 <button class="btn ghost sm" onclick="S._zoneSpare=${hide?'false':'true'};render()">${hide?'SPARE 보이기':'SPARE 숨기기'}</button></div>${tbls}
+    <div class="muted" style="margin:14px 0 6px">③ 로직 카드 <span class="cnt">${cards.length}</span></div>
+    ${cards.map(x=>`<div class="item click" onclick="openLogicCard('${x.id}')"><div class="t"><div class="n" style="white-space:normal">⚡ ${esc(x.c.tag)}</div><div class="d" style="white-space:normal">${esc(x.c.name||'')}</div></div><span class="badge b-blue">열기</span></div>`).join('')||'<div class="empty">이 체인의 로직 카드 없음</div>'}
+    <div class="muted" style="margin:14px 0 6px">④ 도면 <span class="cnt">${dw.length}</span></div>
+    ${dw.map((it,i)=>`<div class="item click" onclick="hubGo(${i})"><div class="t"><div class="n" style="white-space:normal">${esc((it.no||'').replace(/^602-\d-E-/,''))}</div><div class="d" style="white-space:normal">${esc(it.title||'')}</div></div><span class="badge ${it.d?'b-blue':'b-gray'}">${it.d?'열기':'PDF 없음'}</span></div>`).join('')||'<div class="empty">연결된 단선도 표기 없음</div>'}`;
 }
 function nodeMenu(id){
   const n=nodeById(id);if(!n)return;
