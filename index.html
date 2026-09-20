@@ -286,7 +286,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v73'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v74'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2470,7 +2470,7 @@ function nodeContents(n){
 /* ================= v73: 설비동 화면 — 설비동 하나를 한 화면에: 전원 체인 · 판넬 회선표 · 로직 카드 · 도면 =================
    설비동 정의(어느 판넬이 그 설비동인가)는 데이터 설비동_v1.json(meta 'zones')에 둔다. 체인은 계통 트리 경로에서 뽑는다:
    6.9kV 모선 → (차단기 칩) → 변압기 → L/C → 판넬. 박스 초록 = 평상시 가압. 차단기 칩을 탭하면 개방 시 정전범위. */
-function zoneOpen(id){S._zoneId=id;S._treeSubTab='zone';render();window.scrollTo(0,0);}
+function zoneOpen(id){S._zoneId=id;S._zdI=0;S._zdP=0;S._treeSubTab='zone';render();window.scrollTo(0,0);}
 function _zBrk(n){const [l,s]=_kdBrkLabel(n);return esc(l+(s&&s!=='N.O'?' '+s:''))+(n.normalState==='NO'?' · N.O':' · N.C');}
 function _zRow(k,i){
   const seg=String(k.note||'').split(' · ').filter(s=>s&&!/근거/.test(s));
@@ -2520,16 +2520,46 @@ function vZone(){
   const cards=[];brks.forEach(b=>{const c=logicByTag(b);if(c&&!cards.some(x=>x.c===c))cards.push({c,id:b.id});});
   const seen=new Set(),dw=[];panels.forEach(p=>_nodeSl(p).forEach(no=>{if(!seen.has(no)){seen.add(no);dw.push(_dwgItem(no));}}));
   window._hubItems=dw;dw.forEach(it=>it.grp=dw);window._hubTag=z.name;
+  const tab=S._zoneTab||'chain',TABS=[['chain','① 전원'],['table','② 회선표'],['logic','③ 로직'],['dwg','④ 도면']];
+  const cardsHtml=cards.map(x=>`<div class="item click" onclick="openLogicCard('${x.id}')"><div class="t"><div class="n" style="white-space:normal">⚡ ${esc(x.c.tag)}</div><div class="d" style="white-space:normal">${esc(x.c.name||'')}</div></div><span class="badge b-blue">열기</span></div>`).join('')||'<div class="empty">이 체인의 로직 카드 없음</div>';
+  const dwgHtml=dw.length?`<div class="row" style="gap:6px;margin-bottom:6px"><select id="zd-sel" style="flex:1" onchange="S._zdI=+this.value;S._zdP=0;zoneDwgDraw()">${dw.map((it,i)=>`<option value="${i}"${i===(S._zdI||0)?' selected':''}>${esc((it.no||'').replace(/^602-\d-E-/,''))}${it.d?'':' (PDF 없음)'}</option>`).join('')}</select></div>
+      <div class="row" style="gap:6px;margin-bottom:6px;align-items:center"><button class="btn ghost sm" onclick="zoneDwgPg(-1)">◀</button><span id="zd-ind" style="min-width:48px;text-align:center;font-size:13px">-</span><button class="btn ghost sm" onclick="zoneDwgPg(1)">▶</button>
+        <button class="btn ghost sm" onclick="zoneDwgZ(0.8)">−</button><button class="btn ghost sm" onclick="zoneDwgZ(1.25)">＋</button><div class="grow"></div><button class="btn sm" onclick="zoneDwgFull()">⛶ 전체화면</button></div>
+      <div class="muted" id="zd-msg"></div><div style="overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff"><canvas id="zd-cv" style="display:block"></canvas></div>
+      <div class="muted" style="margin-top:6px">${esc(dw[S._zdI||0]&&dw[S._zdI||0].title||'')}</div>`:'<div class="empty">연결된 단선도 표기 없음</div>';
+  const body=tab==='table'?`<div class="muted" style="margin:0 0 6px">판넬 회선표 <button class="btn ghost sm" onclick="S._zoneSpare=${hide?'false':'true'};render()">${hide?'SPARE 보이기':'SPARE 숨기기'}</button></div>${tbls}`
+    :tab==='logic'?cardsHtml:tab==='dwg'?dwgHtml
+    :`<div class="muted" style="margin:0 0 6px">■ <span style="color:var(--ok)">가압</span> ■ 정지 · 차단기 칩을 탭하면 개방 시 정전범위</div>${chainHtml}`;
   return `<div class="row" style="gap:6px;margin-bottom:8px;align-items:center"><button class="btn ghost sm" onclick="S._zoneId='';render()">◀ 설비동 목록</button>
       <div class="grow" style="font-weight:700">🏢 ${esc(z.name)}</div></div>
-    <div class="muted" style="margin:6px 0">① 전원 체인 <span style="color:var(--ok)">■ 가압</span> <span>■ 정지</span> · 차단기 칩을 탭하면 개방 시 정전범위</div>
-    ${chainHtml}
-    <div class="muted" style="margin:14px 0 6px">② 판넬 회선표 <button class="btn ghost sm" onclick="S._zoneSpare=${hide?'false':'true'};render()">${hide?'SPARE 보이기':'SPARE 숨기기'}</button></div>${tbls}
-    <div class="muted" style="margin:14px 0 6px">③ 로직 카드 <span class="cnt">${cards.length}</span></div>
-    ${cards.map(x=>`<div class="item click" onclick="openLogicCard('${x.id}')"><div class="t"><div class="n" style="white-space:normal">⚡ ${esc(x.c.tag)}</div><div class="d" style="white-space:normal">${esc(x.c.name||'')}</div></div><span class="badge b-blue">열기</span></div>`).join('')||'<div class="empty">이 체인의 로직 카드 없음</div>'}
-    <div class="muted" style="margin:14px 0 6px">④ 도면 <span class="cnt">${dw.length}</span></div>
-    ${dw.map((it,i)=>`<div class="item click" onclick="hubGo(${i})"><div class="t"><div class="n" style="white-space:normal">${esc((it.no||'').replace(/^602-\d-E-/,''))}</div><div class="d" style="white-space:normal">${esc(it.title||'')}</div></div><span class="badge ${it.d?'b-blue':'b-gray'}">${it.d?'열기':'PDF 없음'}</span></div>`).join('')||'<div class="empty">연결된 단선도 표기 없음</div>'}`;
+    <div class="row" style="gap:6px;margin-bottom:10px">${TABS.map(([k,l])=>`<button class="btn ${tab===k?'':'ghost'} sm grow" style="white-space:nowrap;padding-left:4px;padding-right:4px" onclick="S._zoneTab='${k}';render()">${l}${k==='logic'?' '+cards.length:k==='dwg'?' '+dw.length:''}</button>`).join('')}</div>
+    ${body}`;
 }
+/* 설비동 ④ 도면: 목록 없이 화면 안에서 PDF 쪽을 바로 그린다(pdf.js). ＋/−로 확대해 가로로 밀어 보고, 전체화면은 기존 뷰어 */
+let _zdPdf=null,_zdKey='',_zdZ=1.6,_zdBusy=false,_zdPend=false;
+async function zoneDwgDraw(){
+  if(_zdBusy){_zdPend=true;return;} // 그리는 중이면 끝난 뒤 한 번 더(같은 캔버스에 동시 render 금지)
+  _zdBusy=true;try{await _zoneDwgDraw();}finally{_zdBusy=false;if(_zdPend){_zdPend=false;zoneDwgDraw();}}
+}
+async function _zoneDwgDraw(){
+  const cv=document.getElementById('zd-cv');if(!cv)return;
+  const it=(window._hubItems||[])[S._zdI||0],msg=document.getElementById('zd-msg'),ind=document.getElementById('zd-ind');
+  if(!it||!it.d){cv.style.display='none';msg.textContent=it?'이 도면 PDF가 문서함에 없습니다 — [도면·문서 관리]에서 가져오세요':'';ind.textContent='-';return;}
+  cv.style.display='block';msg.textContent='불러오는 중…';
+  try{
+    const lib=await loadPdfJs();
+    if(_zdKey!==it.d.id){const d=await dbGet('docs',it.d.id);if(!d||!d.blob)throw new Error('원본 없음');_zdPdf=await lib.getDocument({data:await d.blob.arrayBuffer()}).promise;_zdKey=it.d.id;}
+    const pn=Math.min(Math.max(S._zdP||it.page||1,1),_zdPdf.numPages);S._zdP=pn;
+    const pg=await _zdPdf.getPage(pn),base=pg.getViewport({scale:1}),w=(cv.parentElement.clientWidth-2)*_zdZ,dpr=window.devicePixelRatio||1,vp=pg.getViewport({scale:w/base.width*dpr});
+    cv.width=vp.width;cv.height=vp.height;cv.style.width=w+'px';cv.style.height=(vp.height/dpr)+'px';
+    const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+    await pg.render({canvasContext:ctx,viewport:vp}).promise;
+    ind.textContent=pn+'/'+_zdPdf.numPages;msg.textContent='';
+  }catch(e){msg.textContent='도면 열기 실패: '+e.message;}
+}
+function zoneDwgPg(k){S._zdP=(S._zdP||1)+k;zoneDwgDraw();}
+function zoneDwgZ(f){_zdZ=Math.max(0.6,Math.min(6,_zdZ*f));zoneDwgDraw();}
+function zoneDwgFull(){const it=(window._hubItems||[])[S._zdI||0];if(it&&it.d)hubGo(S._zdI||0);else toast('PDF가 문서함에 없습니다');}
 function nodeMenu(id){
   const n=nodeById(id);if(!n)return;
   const e=n.equipId?S.equipment.find(x=>x.id===n.equipId):null;
@@ -6016,6 +6046,7 @@ function render(){
   $('#hd-sub').textContent=todayStr();
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.view));
   if(S.view==='tree'&&(S._treeSubTab||'path')==='diagram')requestAnimationFrame(setupTreeDiagram);
+  if(S.view==='tree'&&S._treeSubTab==='zone'&&S._zoneId&&S._zoneTab==='dwg')requestAnimationFrame(zoneDwgDraw);
 }
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
 /* 테마(다크/라이트) */
