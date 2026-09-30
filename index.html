@@ -250,6 +250,19 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 .zc-link.on{border-left-color:var(--ok)}
 .zc-chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1.5px solid var(--ok);color:var(--txt);cursor:pointer}
 .zc-chip.no{border-style:dashed;border-color:var(--danger)}
+.lf-box{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--panel)}
+.lf-h{font-weight:700;margin-bottom:2px}.lf-d{color:var(--dim);font-size:12.5px;margin-bottom:8px}
+.lf-g{border-left:3px solid var(--ok);padding:4px 0 4px 10px;margin:6px 0}.lf-g.or{border-left-color:var(--warn)}
+.lf-gh{font-size:12px;font-weight:700;margin-bottom:4px;color:var(--dim)}
+.lf-t{display:flex;gap:8px;align-items:flex-start;padding:5px 0}.lf-ck{flex:none;width:16px;height:16px;border:2px solid var(--ok);border-radius:4px;margin-top:2px}
+.lf-g.or>.lf-t .lf-ck{border-color:var(--warn);border-radius:50%}
+.lf-s{color:var(--dim);font-size:12px}
+.lf-arrow{text-align:center;color:var(--dim);font-size:18px;line-height:1}
+.lf-res{border-radius:12px;padding:10px 12px;text-align:center;font-weight:700;margin:6px 0}
+.lf-res.on{background:rgba(52,211,153,.15);border:1px solid var(--ok)}.lf-res.off{background:rgba(248,113,113,.15);border:1px solid var(--danger)}
+.lf-tr{display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--line)}.lf-tr:first-of-type{border-top:0}
+.lf-ic{flex:none;width:26px;text-align:center;font-size:18px}
+.lf-send{color:var(--danger);font-size:12.5px;font-weight:700;margin-top:2px}
 .zc-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .zc-tbl th{color:var(--dim);font-weight:500;text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
 .zc-tbl td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -286,7 +299,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v80'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v82'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -334,6 +347,7 @@ async function loadAll(){
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
+  try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
 }
 const $=s=>document.querySelector(s);
@@ -422,6 +436,7 @@ function _sniffJson(d){
   if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
   if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
   if(Array.isArray(d.zones)&&d.zones.length&&d.zones[0].panels)return '설비동';
+  if(Array.isArray(d.links)&&d.links.length&&d.links[0].tag&&d.links[0].node)return '로직연결';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
   if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
@@ -466,6 +481,11 @@ async function _applyJson(kind,d){
     await dbPut('meta',{id:'dwgindex',docs:d.docs,generated:d.generated||'',added:todayStr()});
     return `도면 색인 ${d.docs.length}시트`;
   }
+  if(kind==='로직연결'){ // 로직 카드(tag) → 계통 노드 id 연결표. 이름 매칭이 못 붙이는 카드용
+    const m={};d.links.forEach(l=>{(Array.isArray(l.node)?l.node:[l.node]).forEach(n=>{m[n]=l.tag;});});
+    await dbPut('meta',{id:'lclinks',map:m,added:todayStr()});S._lcLinks=m;
+    return `로직 카드 연결 ${d.links.length}건`;
+  }
   if(kind==='설비동'){
     await dbPut('meta',{id:'zones',zones:d.zones,added:todayStr()});S._zones=d.zones;
     return `설비동 ${d.zones.length}곳`;
@@ -500,7 +520,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -1617,6 +1637,8 @@ function adjacentFeeders(live){
 const _normTag=s=>String(s||'').toUpperCase().replace(/[-_.\s]/g,'');
 function logicByTag(node){
   if(!node||!(S.logic||[]).length)return null;
+  const lk=S._lcLinks&&S._lcLinks[node.id];
+  if(lk){const c0=S.logic.find(x=>x.tag===lk);if(c0)return c0;} // v82: 사람이 확정한 연결표 우선
   const keys=[node.panelNo,node.name].filter(Boolean).map(_normTag);
   for(const c of S.logic){
     const t=_normTag(c.tag);if(!t)continue;
@@ -4015,6 +4037,37 @@ function logicSchemSvg(c){
     ${(hidden>0||S._schemFull)?`<button class="btn ghost sm" onclick="S._schemFull=!S._schemFull;openLogicCard(S._logicArg)">
       ${S._schemFull?'▲ 주요 회선만':'▼ 전체 회선 보기 ('+hidden+'행 더)'}</button>`:''}`;
 }
+/* v81: 쉬운 로직도 — 로직 카드의 구조화 데이터(close 조건 트리·trip 목록·alarm)를 비전문가도 읽는 흐름도로 다시 그린다.
+   ① 켜지는 조건(모두/하나 그룹) → 투입(ON) ② 꺼지는 경우(하나라도) → 트립(OFF) ③ 경보만. 원문 표기는 아래 '상세 목록'에 그대로 있다. */
+const _lfPlain=t=>String(t||'').replace(/\bCLOSED\b/g,'닫힘').replace(/\bOPENED?\b/g,'열림').replace(/\bRESET\b/g,'리셋').replace(/\bCLOSE 지령/g,'투입 명령');
+function _lfTerm(t){
+  if(t.terms){const or=t.op==='OR';
+    return `<div class="lf-g ${or?'or':''}"><div class="lf-gh">${or?'▽ 다음 중 하나만 맞으면 OK':'△ 다음이 모두 맞아야 OK'}${t.label?' — '+esc(_lfPlain(t.label)):''}</div>${t.terms.map(_lfTerm).join('')}</div>`;}
+  return `<div class="lf-t"><span class="lf-ck"></span><div>${esc(_lfPlain(t.label))}${t.check?`<div class="lf-s">현장 확인: ${esc(t.check)}</div>`:''}</div></div>`;
+}
+function logicFlowHtml(c){
+  const tag=esc(c.tag),closeOf=g=>g&&g.terms&&g.terms.length?`<div class="lf-g">${g.terms.map(_lfTerm).join('')}</div>`:'';
+  const icon={protect:'🛡️',interlock:'🔒',manual:'✋'},cn={protect:'보호계전기 동작',interlock:'인터록',manual:'수동 조작'};
+  let h='';
+  if(c.close&&c.close.terms&&c.close.terms.length){
+    h+=`<div class="lf-box"><div class="lf-h">① 켜지려면 (투입 조건)</div><div class="lf-d">아래 조건이 <b>전부</b> 맞아야 ${tag}를 켤 수 있습니다. 하나라도 빠지면 켜지지 않습니다.</div>${closeOf(c.close)}</div>
+      <div class="lf-arrow">▼</div><div class="lf-res on">🟢 ${tag} 켜짐(투입)</div>`;
+    if(c.transferClose&&c.transferClose.terms)h+=`<div class="lf-box"><div class="lf-h">전환 투입 (다른 전원에서 무정전으로 넘겨받을 때)</div>${closeOf(c.transferClose)}</div>`;
+  }
+  const tr=c.trip||[];
+  if(tr.length){
+    h+=`<div class="lf-box"><div class="lf-h">② 꺼지는 경우 (트립)</div><div class="lf-d">아래 중 <b>하나라도</b> 일어나면 ${tag}가 자동으로 꺼집니다.</div>
+      ${tr.map(t=>`<div class="lf-tr"><div class="lf-ic">${icon[t.cause]||'⚠️'}</div><div><b>${esc(t.label)}</b>
+        <div class="lf-s">${esc(cn[t.cause]||'')}${t.relay?' · 계전기 '+esc(t.relay):''}${t.delay?' · 지연 '+esc(t.delay):''}</div>
+        ${(t.symptom||[]).length?`<div class="lf-s">이럴 때: ${t.symptom.map(esc).join(', ')}</div>`:''}
+        ${t.lockout?`<div class="lf-s">🔐 락아웃 ${esc(t.lockout)}${t.resetNeed?' — 원인 확인 후 현장에서 수동 복귀해야 다시 켤 수 있음':''}</div>`:''}
+        ${(t.sendTo||[]).length?`<div class="lf-send">→ 함께 동작: ${t.sendTo.map(esc).join(' / ')}</div>`:''}
+        ${t.note?`<div class="lf-s">${esc(t.note)}</div>`:''}</div></div>`).join('')}</div>
+      <div class="lf-arrow">▼</div><div class="lf-res off">🔴 ${tag} 꺼짐(트립)</div>`;
+  }
+  if((c.alarm||[]).length)h+=`<div class="lf-box"><div class="lf-h">③ 경보만 울리는 경우 (꺼지지는 않음)</div>${c.alarm.map(a=>`<div class="lf-t"><span style="flex:none">🔔</span><div>${esc(a.label)}${a.act?`<div class="lf-s">${esc(a.act)}</div>`:''}</div></div>`).join('')}</div>`;
+  return h;
+}
 function openLogicCard(nodeIdOrTag){
   S._logicArg=nodeIdOrTag; // [전체 회선] 토글이 같은 카드를 다시 열 때 쓴다
   const n=nodeById(nodeIdOrTag);
@@ -4026,6 +4079,8 @@ function openLogicCard(nodeIdOrTag){
     <div class="muted" style="margin-top:4px">로직도 ${esc(c.logicDwg||'-')}${c.loopDwg?' · 루프도 '+esc(c.loopDwg):''}${c.schemDwg?' · 스키매틱 '+esc(c.schemDwg):''}
       <span class="badge ${c.conf==='high'?'b-green':'b-gray'}">확신도 ${esc(c.conf||'-')}</span></div>
     ${c.gap?`<div class="section-note">미확보: ${esc(c.gap)}</div>`:''}
+    ${c.kind==='dcs'?'':logicFlowHtml(c)}
+    ${c.kind==='dcs'?'':'<details class="card" style="margin:8px 0;padding:8px 12px"><summary style="cursor:pointer;font-weight:700">📋 상세 목록 (원문 표기 · 전문가용)</summary>'}
     ${c.close?`<div class="muted" style="margin-top:10px">${c.kind==='dcs'?'기동·개폐 조건':'투입 조건'}</div>${c.kind==='dcs'?'':logicSchemSvg(c)}${_logicTermHtml(c.close)}`:''}
     ${c.transferClose?`<div class="muted" style="margin-top:8px">전환 투입</div>${_logicTermHtml(c.transferClose)}`:''}
     ${(c.trip||[]).length?`<div class="muted" style="margin-top:10px">트립 소스 <span class="cnt">${c.trip.length}</span></div>
@@ -4035,6 +4090,7 @@ function openLogicCard(nodeIdOrTag){
         <span class="badge ${t.cause==='protect'?'b-red':'b-gray'}">${esc(t.cause||'')}</span></div>`).join('')}`:''}
     ${(c.alarm||[]).length?`<div class="muted" style="margin-top:8px">경보 (트립 아님)</div>
       ${c.alarm.map(a=>`<div class="item"><div class="t"><div class="n">${esc(a.label)}</div><div class="d">${esc(a.act||'')}</div></div></div>`).join('')}`:''}
+    ${c.kind==='dcs'?'':'</details>'}
     ${(c.circuits||[]).length?`<div class="muted" style="margin-top:10px">회선번호 <span class="cnt">${c.circuits.length}</span></div>
       ${c.circuits.map(x=>`<div class="item"><div class="t"><div class="n">회선 ${esc(x.no)} — ${esc(x.desc)}</div>
         <div class="d">${esc([x.dev,x.tb,x.wire].filter(Boolean).join(' · '))}</div></div>
