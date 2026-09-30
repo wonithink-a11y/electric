@@ -286,7 +286,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v74'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v76'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2478,7 +2478,7 @@ function _zRow(k,i){
   const prot=seg.filter(s=>/EOCR|ZCT|50G|OCR|GR/.test(s)).join(' ');
   const m=(k.name||'').match(/^#?(\d+)\s+(.*)$/),no=m?m[1]:String(i+1),nm=m?m[2]:k.name||'';
   const sp=/SPARE|예비/i.test(nm)&&!nodeKids(k.id).length;
-  return `<tr class="${sp?'sp':''}" onclick="nodeMenu('${k.id}')"><td>${esc(no)}</td><td>${(()=>{const t=nm.match(/^([\dA-Z]+(?:-[\dA-Z]+){2,4})\s+(.*)$/);return t?`<b>${esc(t[1])}</b><br>${esc(t[2])}`:esc(nm||'SPARE');})()}</td><td>${esc(kw.replace(/kW/i,''))}</td><td>${esc(rate)}</td><td>${esc(prot)}</td></tr>`;
+  return `<tr class="${sp?'sp':''}" onclick="openCard('${k.id}')"><td>${esc(no)}</td><td>${(()=>{const t=nm.match(/^([\dA-Z]+(?:-[\dA-Z]+){2,4})\s+(.*)$/);return t?`<b>${esc(t[1])}</b><br>${esc(t[2])}`:esc(nm||'SPARE');})()}</td><td>${esc(kw.replace(/kW/i,''))}</td><td>${esc(rate)}</td><td>${esc(prot)}</td></tr>`;
 }
 function vZone(){
   const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
@@ -2494,7 +2494,7 @@ function vZone(){
   // 급전 그룹: 판넬 → 위로 올라가며 처음 만나는 L/C
   const groups=[];
   panels.forEach(p=>{
-    const path=pathUp(p.id).slice().reverse(),li=path.findIndex(isLC),lc=li>=0?path[li]:path[Math.max(0,path.length-2)];
+    const path=pathUp(p.id).slice().reverse(),li=path.map(isLC).lastIndexOf(true),lc=li>=0?path[li]:path[Math.max(0,path.length-2)];
     let g=groups.find(x=>x.lc.id===lc.id);
     if(!g){let s=path.findIndex(n=>n.type==='bus'&&/6\.9kV/.test((n.name||'')+(n.voltage||'')));if(s<0)s=Math.max(0,path.indexOf(lc)-3);
       g={lc,path,chain:path.slice(s,path.indexOf(lc)+1),up:path.slice(0,s),panels:[]};groups.push(g);}
@@ -2535,6 +2535,66 @@ function vZone(){
     <div class="row" style="gap:6px;margin-bottom:10px">${TABS.map(([k,l])=>`<button class="btn ${tab===k?'':'ghost'} sm grow" style="white-space:nowrap;padding-left:4px;padding-right:4px" onclick="S._zoneTab='${k}';render()">${l}${k==='logic'?' '+cards.length:k==='dwg'?' '+dw.length:''}</button>`).join('')}</div>
     ${body}`;
 }
+/* ================= v76: 설비 카드 — 회선 하나를 탭하면 그 설비의 전원 경로·연결·보호·로직·정전 영향·도면을 한 화면에 모은다.
+   데이터가 없는 칸은 만들지 않는다(로직 카드가 붙는 회선은 소수). 기존 화면(단선도·허브·로직 카드·LOTO)은 여기서 이어진다. ================= */
+function _cardZone(n){
+  const up=pathUp(n.id).map(x=>x.id);
+  for(const z of S._zones||[]){const p=(z.panels||[]).find(id=>up.includes(id));if(p)return {z,p:nodeById(p)};}
+  return null;
+}
+function openCard(id){
+  const n=nodeById(id);if(!n){toast('노드 없음');return;}
+  if(n.type==='bus'||n.type==='source'){nodeMenu(id);return;}
+  const kids=nodeKids(id),load=n.type==='load'?n:kids.find(k=>k.type==='load'),live=energizedSet([],{normal:true});
+  const zp=_cardZone(n),title=(load||n).name,sec=(t,b,open,sub)=>b?`<details class="card" style="margin:8px 0;padding:8px 12px"${open?' open':''}><summary style="cursor:pointer;font-weight:700">${t}${sub?`<div class="muted" style="font-weight:400;font-size:12px;margin-top:2px">${sub}</div>`:''}</summary><div style="margin-top:8px">${b}</div></details>`:'';
+  // 전원 경로: 인입 → 이 회선 (탭하면 그 노드 메뉴)
+  const path=pathUp(id).slice().reverse(),dot=x=>live.has(x.id)?'🟢':'⚪';
+  const row=x=>{const cur=x.id===id,lab=x.type==='breaker'?(x.normalState==='NO'?'N.O':'N.C'):esc(x.voltage||NODE_TYPES[x.type][1]);
+    return `<div class="click" style="padding:2px 0;${cur?'font-weight:700':'font-size:13px'}${x.type==='breaker'?';margin-left:14px':''}" onclick="nodeMenu('${x.id}')">${dot(x)} ${esc(_kdShort((x.name||'').replace(/\s*\(.*$/,''),34))} <span class="muted">${lab}</span></div>`;};
+  let cut=path.findIndex(x=>x.type==='bus'&&/6\.9kV/.test((x.name||'')+(x.voltage||'')));cut=cut<0?0:Math.min(cut,path.length-3);
+  const pathH=(cut>0?`<details style="margin-bottom:4px"><summary class="muted" style="cursor:pointer">▲ 인입 전원 ${cut}단계 (${esc(_kdShort((path[0].name||'').replace(/\s*\(.*$/,''),22))} …)</summary>${path.slice(0,cut).map(row).join('')}</details>`:'')+path.slice(cut).map(row).join('');
+  const pathSub=esc(path.slice(cut).filter(x=>x.type!=='breaker'||x.id===id).map(x=>_kdShort((x.name||'').replace(/\s*\(.*$/,'').replace(/\s+\d[\d\/.]*[kM]VA$/,''),16)).join(' › '));
+  // 연결 설비: 하위 · 타이/이중급전
+  const ties=[];if(n.tieTo&&nodeById(n.tieTo))ties.push(nodeById(n.tieTo));S.tree.forEach(t=>{if(t.tieTo===id)ties.push(t);});
+  const conH=[...kids.map(k=>['하위',k]),...ties.map(k=>['타이',k])].map(([l,k])=>`<div class="item click" onclick="nodeMenu('${k.id}')"><div class="t"><div class="n" style="white-space:normal">${esc(k.name)}</div></div><span class="badge b-gray">${l}</span></div>`).join('');
+  // 보호 정보: note에서 정격·kW·EOCR·ZCT·50G 등(근거·보정 문구 제외)
+  const seg=String(n.note||'').split(' · ').map(x=>x.trim()).filter(x=>x&&x.length<60&&!/^근거|보정|확인 대기|^v\d+/.test(x));
+  const protH=seg.length?`<div>${seg.map(x=>`<span class="badge b-gray" style="margin:2px 4px 2px 0;white-space:normal">${esc(x)}</span>`).join('')}</div>`:'';
+  const noteFull=String(n.note||'')&&/근거|보정|확인 대기/.test(n.note)?`<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">도면 메모 전체</summary><div class="path-box">${esc(n.note)}</div></details>`:'';
+  // 동작 로직: 로직 카드가 있는 회선만
+  const lc=[n,...kids].map(x=>({x,c:logicByTag(x)})).find(o=>o.c),c=lc&&lc.c;
+  const logicH=c?`<div class="item click" onclick="openLogicCard('${lc.x.id}')"><div class="t"><div class="n" style="white-space:normal">⚡ ${esc(c.tag)} — ${esc(c.name||'')}</div>
+    <div class="d" style="white-space:normal">트립 소스 ${(c.trip||[]).length} · 회선번호 ${(c.circuits||[]).length}${c.logicDwg?' · 로직도 '+esc(c.logicDwg):''}</div></div><span class="badge b-blue">열기</span></div>${c.gap?`<div class="section-note">미확보: ${esc(c.gap)}</div>`:''}`:'';
+  // 정전 영향: 이 회선(또는 부하면 그 급전 차단기)을 열면
+  const fb=n.type==='breaker'?n:pathUp(id).find(x=>x.type==='breaker'),o=fb?outageOf(fb.id):null;
+  let impH='';
+  if(fb){
+    const eq=o.dead.filter(d=>d.type!=='breaker'&&d.type!=='source'),src=o.dead.filter(d=>d.type==='source'),nb=o.dead.filter(d=>d.type==='breaker').length;
+    impH=`<div class="muted" style="margin-bottom:4px">${fb.id===id?'이 차단기':esc(_kdShort(fb.name,28))+' (급전 차단기)'} 개방 시 정전 <span class="cnt">${eq.length}</span> <span class="muted">(차단기 ${nb}개 별도)</span></div>
+      <div class="path-box">${eq.slice(0,14).map(d=>esc(_kdShort(d.name,44))).join('<br>')||'정전 없음 — 다른 경로(타이·이중급전)로 계속 가압됩니다'}${eq.length>14?`<br>… 외 ${eq.length-14}`:''}</div>
+      ${src.length?`<div class="section-note">정전 구역 안 내부 전원 ${src.map(x=>esc(_kdShort(x.name,20))).join(', ')} — 기동하면 다시 살아나므로 기동 방지 필요</div>`:''}
+      ${o.casc.length?`<div class="section-note">동시 트립: ${o.casc.map(x=>esc(x.tag)).join(', ')}</div>`:''}
+      ${o.auto.length?`<div class="section-note" style="color:var(--danger)">⚠️ 자동투입: ${o.auto.map(x=>esc(x.tag)).join(', ')}</div>`:''}
+      ${stateWarnHtml()}
+      <button class="btn ghost sm" onclick="closeModal();nodeMenu('${fb.id}')">색칠 단선도·격리 상세</button>`;
+  }
+  // 도면: 근거 단선도 (펼침)
+  const items=_nodeSl(n).map(no=>_dwgItem(no));window._hubItems=items;items.forEach(it=>it.grp=items);window._hubTag=title;
+  const dwgH=items.map((it,i)=>`<div class="item click" onclick="hubGo(${i})"><div class="t"><div class="n" style="white-space:normal">${esc((it.no||'').replace(/^602-\d-E-/,''))}</div><div class="d" style="white-space:normal">${esc(it.title||'')}</div></div><span class="badge ${it.d?'b-blue':'b-gray'}">${it.d?'열기':'PDF 없음'}</span></div>`).join('');
+  openModal(`<h3>${esc(title)}</h3>
+    <div class="muted">${zp?'🏢 '+esc(zp.z.name)+' › '+esc((zp.p.name||'').replace(/\s*\(.*$/,''))+' · ':''}${NODE_TYPES[n.type][1]}${n.voltage?' · '+esc(n.voltage):''}${load&&load!==n?' · '+esc(n.name):''}</div>
+    ${sec('⚡ 전원 경로',pathH,false,pathSub)}
+    ${sec('🔗 연결 설비 <span class="cnt">'+(kids.length+ties.length)+'</span>',conH,true)}
+    ${sec('🛡 보호 정보',protH+noteFull,true)}
+    ${sec('🧠 동작 로직',logicH,true)}
+    ${sec('🔌 정전 영향',impH,true)}
+    ${sec('📐 도면 <span class="cnt">'+items.length+'</span>',dwgH,false)}
+    <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+      ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
+      <button class="btn ghost sm" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
+      <button class="btn ghost sm" onclick="nodeMenu('${id}')">⚙ 기존 상세·편집</button>
+      <div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
 /* 설비동 ④ 도면: 목록 없이 화면 안에서 PDF 쪽을 바로 그린다(pdf.js). ＋/−로 확대해 가로로 밀어 보고, 전체화면은 기존 뷰어 */
 let _zdPdf=null,_zdKey='',_zdZ=1.6,_zdBusy=false,_zdPend=false;
 async function zoneDwgDraw(){
@@ -2566,7 +2626,7 @@ function nodeMenu(id){
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
-    <div class="hubb"><button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
+    <div class="hubb">${n.type==='bus'||n.type==='source'?'':`<button class="btn" onclick="openCard('${id}')">🪪 설비 카드</button>`}<button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
       ${logicByTag(n)?`<button class="btn" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
       ${n.type==='load'||isBrk?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
       ${n.parentId&&nodeById(n.parentId)?`<button class="btn ghost" onclick="nodeMenu('${n.parentId}')">↑ 상위 ${esc(_kdShort(nodeById(n.parentId).name,14))}</button>`:''}</div>
@@ -2937,7 +2997,7 @@ function vMore(){
   const row=(oc,ic,nm,bd)=>`<div class="item click" onclick="${oc}"><div class="t"><div class="n">${ic} ${nm}</div></div>${bd?`<span class="cnt">${bd}</span>`:''}<span style="color:var(--dim);margin-left:8px;font-size:18px">›</span></div>`;
   return `
   <div class="muted" style="margin:2px 2px 10px">앱 ${APP_VER} · 계통 ${cnt('tree')}노드 · 설비 ${cnt('equipment')} · 로직 카드 ${cnt('logic')}장 · 도면 ${cnt('docs')}
-    ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 logic_cards_v3.json을 넣어야 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`+`
+    ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 로직 카드 JSON(logic_cards_v4~v10)을 넣어야 설비 카드의 로직 칸과 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`+`
   <div class="card"><h2>업무</h2>
     ${row("go('insp')",'📋','법정검사',cnt('inspections'))}
     ${row("go('chk')",'✅','주기 체크리스트',cnt('checklists'))}
