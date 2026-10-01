@@ -299,7 +299,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v84'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v85'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -4304,7 +4304,8 @@ async function viewPdf(blob,label,startPage,opts){
       const base=pg.getViewport({scale:1});
       if(fit)scale=Math.min((wrap.clientWidth-8)/base.width,1.8);
       const dpr=window.devicePixelRatio||1;
-      const vp=pg.getViewport({scale:scale*dpr});
+      const k=Math.min(dpr,Math.sqrt(16e6/(base.width*base.height))/scale); // v85: 캔버스 픽셀 상한 1600만 — 폰에서 크게 확대할 때 렌더가 수 초 걸리던 것 완화
+      const vp=pg.getViewport({scale:scale*k});
       off.width=vp.width;off.height=vp.height;
       const octx=off.getContext('2d');
       octx.fillStyle='#fff';octx.fillRect(0,0,off.width,off.height);
@@ -4317,16 +4318,17 @@ async function viewPdf(blob,label,startPage,opts){
       if(opts&&opts.tag&&_normTag(opts.tag).length>=3){ // v69: 글자층이 있는 PDF는 찾는 태그를 노란 박스로 표시
         const tg=_normTag(opts.tag);let first=null,nHit=0;
         const tc=await pg.getTextContent();
-        cx.lineWidth=3*dpr;cx.strokeStyle='#ffd400';cx.fillStyle='rgba(255,212,0,.28)';
+        cx.lineWidth=3*k;cx.strokeStyle='#ffd400';cx.fillStyle='rgba(255,212,0,.28)';
         for(const it of tc.items){
           if(!it.str||_normTag(it.str).indexOf(tg)<0)continue;
           const t=lib.Util.transform(vp.transform,it.transform),w=it.width*vp.scale,h=Math.hypot(t[2],t[3]);
           cx.fillRect(t[4],t[5]-h,w,h);cx.strokeRect(t[4],t[5]-h,w,h);nHit++;if(first===null)first=t[5]-h;
         }
-        if(nHit&&!opts._scrolled){opts._scrolled=1;wrap.scrollTop=Math.max(0,first/dpr-80);}
+        if(nHit&&!opts._scrolled){opts._scrolled=1;wrap.scrollTop=Math.max(0,first/k-80);}
         ind.textContent=page+'/'+pdf.numPages+(nHit?' 🟨'+nHit:'');
       }
     }catch(e){toast('렌더 오류: '+e.message);}
+    if(!pend)cv.style.transform=''; // v85: 핀치 미리보기 배율은 새 렌더가 그려진 뒤에 걷음(손 뗀 직후 원래 크기로 튀던 것 방지)
     busy=false;
     if(pend){pend=false;render();}
   }
@@ -4354,7 +4356,7 @@ async function viewPdf(blob,label,startPage,opts){
   },{passive:false});
   const endPinch=e=>{drag=null;wrap.style.cursor='';pts.delete(e.pointerId);
     if(pts.size<2&&pinchBase){const m=cv.style.transform.match(/scale\(([\d.]+)\)/);const ratio=m?parseFloat(m[1]):1;
-      const f=Math.min(Math.max(pinchStart*ratio,.3),6)/scale;pinchBase=0;cv.style.transform='';zoomBy(f,pm[0],pm[1],true);}};
+      const f=Math.min(Math.max(pinchStart*ratio,.3),6)/scale;pinchBase=0;zoomBy(f,pm[0],pm[1],true);}};
   wrap.addEventListener('pointerup',endPinch);wrap.addEventListener('pointercancel',endPinch);
   render();
 }
