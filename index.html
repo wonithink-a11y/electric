@@ -299,7 +299,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v83'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v84'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -4281,7 +4281,7 @@ async function viewPdf(blob,label,startPage,opts){
       <span id="p-ind" style="font-size:13px;min-width:56px;text-align:center">1/${pdf.numPages}</span>
       <button class="btn ghost sm" id="p-next">▶</button>
       <span class="grow" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label||'')}</span>
-      <button class="btn ghost sm" id="p-out">−</button><button class="btn ghost sm" id="p-in">＋</button>
+      <button class="btn ghost sm" id="p-out">−</button><button class="btn ghost sm" id="p-in">＋</button><button class="btn ghost sm" id="p-fit">맞춤</button>
       <button class="btn sm" id="p-x">닫기</button></div>
     ${opts&&opts.sibs&&opts.sibs.length>1?`<div class="vbar" style="padding-top:6px;padding-bottom:6px"><button class="btn ghost sm" id="s-prev">⏮ 이전 시트</button>
       <span class="grow" id="s-ind" style="text-align:center;font-size:13px">시트 ${opts.idx+1}/${opts.sibs.length}</span><button class="btn ghost sm" id="s-next">다음 시트 ⏭</button></div>`:''}
@@ -4290,7 +4290,11 @@ async function viewPdf(blob,label,startPage,opts){
   const sgo=k=>{const j=opts.idx+k;if(j<0||j>=opts.sibs.length)return;v.remove();try{pdf.destroy();}catch(e){}sibOpen(opts.sibs,j,opts.tag);};
   if(opts&&opts.sibs&&opts.sibs.length>1){v.querySelector('#s-prev').onclick=()=>sgo(-1);v.querySelector('#s-next').onclick=()=>sgo(1);}
   const cv=v.querySelector('#p-cv'),wrap=v.querySelector('#p-wrap'),ind=v.querySelector('#p-ind');
-  let page=(startPage&&startPage>=1)?startPage:1,scale=1,fit=true,busy=false,pend=false;
+  let page=(startPage&&startPage>=1)?startPage:1,scale=1,fit=true,busy=false,pend=false,anc=null;
+  // v84: 확대·축소 기준점(커서·손가락 중점·화면 중앙)을 캔버스 비율로 기억 → 렌더 후 같은 지점이 같은 화면 위치에 오도록 스크롤 보정
+  const setAnc=(cx,cy)=>{anc={fx:(wrap.scrollLeft+cx-cv.offsetLeft)/(cv.offsetWidth||1),fy:(wrap.scrollTop+cy-cv.offsetTop)/(cv.offsetHeight||1),cx,cy};};
+  const zoomBy=(f,cx,cy,now)=>{fit=false;setAnc(cx,cy);scale=Math.min(Math.max(scale*f,.2),6);if(now)render();else{clearTimeout(v._zt);v._zt=setTimeout(render,80);}};
+  const mid=()=>[wrap.clientWidth/2,wrap.clientHeight/2];
   const off=document.createElement('canvas'); // v35: 더블 버퍼 — 새 렌더 완성 전까지 이전 화면 유지(검은 깜빡임 제거)
   async function render(){
     if(busy){pend=true;return;}
@@ -4308,6 +4312,7 @@ async function viewPdf(blob,label,startPage,opts){
       cv.width=off.width;cv.height=off.height;
       cv.style.width=(base.width*scale)+'px';cv.style.height=(base.height*scale)+'px';
       const cx=cv.getContext('2d');cx.drawImage(off,0,0);
+      if(anc){wrap.scrollLeft=anc.fx*cv.offsetWidth+cv.offsetLeft-anc.cx;wrap.scrollTop=anc.fy*cv.offsetHeight+cv.offsetTop-anc.cy;if(!pend)anc=null;}
       ind.textContent=page+'/'+pdf.numPages;
       if(opts&&opts.tag&&_normTag(opts.tag).length>=3){ // v69: 글자층이 있는 PDF는 찾는 태그를 노란 박스로 표시
         const tg=_normTag(opts.tag);let first=null,nHit=0;
@@ -4327,23 +4332,29 @@ async function viewPdf(blob,label,startPage,opts){
   }
   v.querySelector('#p-prev').onclick=()=>{if(page>1){page--;fit=true;render();wrap.scrollTop=0;}};
   v.querySelector('#p-next').onclick=()=>{if(page<pdf.numPages){page++;fit=true;render();wrap.scrollTop=0;}};
-  v.querySelector('#p-in').onclick=()=>{fit=false;scale=Math.min(scale*1.3,6);render();};
-  v.querySelector('#p-out').onclick=()=>{fit=false;scale=Math.max(scale/1.3,.2);render();};
+  v.querySelector('#p-in').onclick=()=>zoomBy(1.3,...mid(),true);
+  v.querySelector('#p-out').onclick=()=>zoomBy(1/1.3,...mid(),true);
+  v.querySelector('#p-fit').onclick=()=>{fit=true;anc={fx:0,fy:0,cx:0,cy:0};render();};
   v.querySelector('#p-x').onclick=()=>{v.remove();try{pdf.destroy();}catch(e){}};
   // 확대: 마우스 휠(그냥 굴리면 확대/축소) + 모바일 두 손가락 핀치
   try{wrap.style.touchAction='pan-x pan-y';}catch(e){}
-  wrap.addEventListener('wheel',e=>{e.preventDefault();fit=false;scale=Math.min(Math.max(scale*(e.deltaY<0?1.12:0.89),.2),6);clearTimeout(v._zt);v._zt=setTimeout(render,80);},{passive:false});
-  const pts=new Map();let pinchBase=0,pinchStart=1;
-  wrap.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')pts.set(e.pointerId,{x:e.clientX,y:e.clientY});});
+  wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();zoomBy(e.deltaY<0?1.12:0.89,e.clientX-r.left,e.clientY-r.top);},{passive:false});
+  const pts=new Map();let pinchBase=0,pinchStart=1,pm=null,drag=null;
+  const pmid=()=>{const a=[...pts.values()],r=wrap.getBoundingClientRect();return [(a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top];};
+  wrap.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='touch')pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    else if(e.button===0){drag={x:e.clientX,y:e.clientY,l:wrap.scrollLeft,t:wrap.scrollTop};wrap.setPointerCapture(e.pointerId);wrap.style.cursor='grabbing';}});
   wrap.addEventListener('pointermove',e=>{
+    if(drag){wrap.scrollLeft=drag.l-(e.clientX-drag.x);wrap.scrollTop=drag.t-(e.clientY-drag.y);return;}
     if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pts.size===2){e.preventDefault();const a=[...pts.values()];const dist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
-      if(!pinchBase){pinchBase=dist;pinchStart=scale;}
-      const ratio=Math.min(Math.max(dist/pinchBase,.2),8);cv.style.transformOrigin='center top';cv.style.transform='scale('+ratio+')';}
+      pm=pmid();
+      if(!pinchBase){pinchBase=dist;pinchStart=scale;cv.style.transformOrigin=(wrap.scrollLeft+pm[0]-cv.offsetLeft)+'px '+(wrap.scrollTop+pm[1]-cv.offsetTop)+'px';}
+      const ratio=Math.min(Math.max(dist/pinchBase,.2),8);cv.style.transform='scale('+ratio+')';}
   },{passive:false});
-  const endPinch=e=>{pts.delete(e.pointerId);
+  const endPinch=e=>{drag=null;wrap.style.cursor='';pts.delete(e.pointerId);
     if(pts.size<2&&pinchBase){const m=cv.style.transform.match(/scale\(([\d.]+)\)/);const ratio=m?parseFloat(m[1]):1;
-      fit=false;scale=Math.min(Math.max(pinchStart*ratio,.3),6);pinchBase=0;cv.style.transform='';render();}};
+      const f=Math.min(Math.max(pinchStart*ratio,.3),6)/scale;pinchBase=0;cv.style.transform='';zoomBy(f,pm[0],pm[1],true);}};
   wrap.addEventListener('pointerup',endPinch);wrap.addEventListener('pointercancel',endPinch);
   render();
 }
