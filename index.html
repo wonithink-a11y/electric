@@ -131,6 +131,15 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .cal-badge{background:var(--grad);color:#fff;border-radius:8px;font-size:9px;padding:0 5px;line-height:1.5;font-weight:700;flex:none}
 .cal-legend{margin-top:10px;font-size:11px;color:var(--dim);display:flex;gap:12px}
 .cal-legend .dot{margin-right:4px}
+.hs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}
+.hs-p{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 2px;text-align:center;color:var(--txt)}
+.hs-p b{display:block;font-size:19px;line-height:1.3}.hs-p b.hot{color:#ef4444}
+.hs-p span{font-size:11px;color:var(--dim)}
+.wk-c{position:relative;height:46px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer}
+.wk-c small{position:absolute;top:1px;left:4px;font-size:9px;color:var(--dim);font-weight:400}
+.wk-c.today{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.wk-c.sel{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.wk-dots{display:flex;gap:3px;height:6px}
 .subtab{margin-bottom:10px}
 .botpad{height:28px}
 .donebox{margin-top:8px;border-top:1px solid var(--line)}
@@ -755,15 +764,91 @@ function closeModal(){$('#modal-root').innerHTML=''}
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
-  const tab=S.homeTab||'cal';
-  const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';render()">${l}</button>`;
+  const tab=!S.homeTab||S.homeTab==='cal'?'all':S.homeTab;
+  const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';S._selDay=null;render()">${l}</button>`;
+  const body=S._selDay?homeDayHtml(S._selDay):tab==='all'?homeAllHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab();
   return `
   ${emptyStateCard()}
+  ${homeSumHtml()}
+  ${S._calFull?calHtml():weekCalHtml()}
   <div class="chips subtab">
-    ${chip('cal','달력')}${chip('issue','현안')}${chip('todo','할일')}${chip('week','점검검사')}${chip('hist','완료')}
+    ${chip('all','전체')}${chip('todo','할일')}${chip('issue','현안')}${chip('week','점검·검사')}${chip('hist','완료')}
   </div>
-  ${tab==='cal'?calHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab()}
+  ${body}
   <div class="botpad"></div>`;
+}
+function homeSumHtml(){
+  const [ws,we,ts]=_weekRange();
+  const todo=S.todos.filter(x=>!x.done&&x.date<=ts).length;
+  const issue=S.issues.filter(i=>!i.done).length;
+  const wk=S.inspections.filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we).length+S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c)).length;
+  const dd=S.inspections.map(i=>dday(i.nextDue)).filter(n=>n!==null&&n>=0);
+  const nx=dd.length?Math.min(...dd):null;
+  const p=(n,l,tab,cls)=>`<button class="hs-p" onclick="S.homeTab='${tab}';S._selDay=null;render()"><b class="${cls||''}">${n}</b><span>${l}</span></button>`;
+  return `<div class="hs">${p(todo,'오늘 할일','todo')}${p(issue,'진행 현안','issue')}${p(wk,'이번주 점검','week')}${p(nx===null?'-':nx===0?'D-DAY':'D-'+nx,'법정검사','week',nx!==null&&nx<=7?'hot':'')}</div>`;
+}
+const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function weekCalHtml(){
+  const ts=todayStr(),sel=S._selDay;
+  const t=new Date(ts+'T00:00:00');t.setDate(t.getDate()-t.getDay()+7*(S._calWk||0));
+  const mid=new Date(t);mid.setDate(t.getDate()+6);
+  let cells='';
+  for(let i=0;i<14;i++){
+    const d=new Date(t);d.setDate(t.getDate()+i);const ds=_dstr(d);
+    const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds);
+    cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')">
+      ${i===0||d.getDate()===1?`<small>${d.getMonth()+1}/</small>`:''}<span>${d.getDate()}</span>
+      <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}</span></div>`;
+  }
+  return `<div class="card">
+    <div class="cal-head"><button class="btn ghost sm" onclick="S._calWk=(S._calWk||0)-1;render()">◀</button>
+      <div class="cal-title">${mid.getFullYear()}년 ${mid.getMonth()+1}월</div>
+      <button class="btn ghost sm" onclick="S._calWk=(S._calWk||0)+1;render()">▶</button>
+      <button class="btn ghost sm" onclick="S._calWk=0;S._selDay=null;render()">오늘</button>
+      <button class="btn ghost sm" onclick="S._calFull=true;render()">월 ▾</button></div>
+    <div class="cal-grid cal-dow">${['일','월','화','수','목','금','토'].map((w,i)=>`<div class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('')}</div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span></div>
+  </div>`;
+}
+function selDay(ds){
+  if(S._calFull){S._calFull=false;S._calWk=0;}
+  S._selDay=S._selDay===ds?null:ds;
+  if(S._selDay){
+    const w0=new Date(todayStr()+'T00:00:00');w0.setDate(w0.getDate()-w0.getDay());
+    const d=new Date(ds+'T00:00:00');d.setDate(d.getDate()-d.getDay());
+    const off=Math.round((d-w0)/6048e5),w=S._calWk||0;
+    if(off<w||off>w+1)S._calWk=off;
+  }
+  render();
+}
+function homeDayHtml(ds){
+  const td=S.todos.filter(t=>t.date===ds).sort((a,b)=>(a.done?1:0)-(b.done?1:0));
+  const insp=S.inspections.filter(i=>i.nextDue===ds).map(i=>({...i,dd:dday(i.nextDue)}));
+  return `<div class="card"><h2>🗓️ ${esc(ds)}${ds===todayStr()?' · 오늘':''}</h2>
+    ${insp.map(_inspRow).join('')}
+    ${td.map(t=>`<div class="item"><div class="chk ${t.done?'done':''}" onclick="toggleTodo('${t.id}',0)">${t.done?'✓':''}</div>
+      <div class="t click" onclick="editTodo('${t.id}','${ds}')"><div class="n" style="${t.done?'text-decoration:line-through;color:var(--dim)':''}">${esc(t.title)}</div>${t.note?`<div class="d">${esc(t.note)}</div>`:''}</div></div>`).join('')}
+    ${insp.length||td.length?'':'<div class="empty">이 날 일정 없음</div>'}
+    <div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="S._selDay=null;render()">선택 해제</button><div class="grow"></div><button class="btn sm" onclick="openDay('${ds}')">＋ 할 일 추가</button></div></div>`;
+}
+function homeAllHtml(){
+  const [ws,we,ts]=_weekRange();
+  const wk=S.todos.filter(x=>!x.done&&x.date<=we).sort((a,b)=>a.date.localeCompare(b.date));
+  const iss=S.issues.filter(i=>!i.done);
+  const insp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
+  const inWk=i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we;
+  const wkInsp=insp.filter(inWk),wkChk=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c));
+  const soon=insp.filter(i=>i.dd!==null&&i.dd<=30&&!inWk(i));
+  const sec=(h,n,b)=>n?`<div class="card"><h2>${h} <span class="cnt">${n}건</span></h2>${b}</div>`:'';
+  const out=sec('📌 오늘·이번주 할일',wk.length,wk.slice(0,20).map(x=>_todoRow(x,ts)).join(''))
+    +sec('🔧 진행 중 현안',iss.length,iss.map(i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div>
+      <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div></div>`).join(''))
+    +sec('📋 이번주 점검·검사',wkInsp.length+wkChk.length,wkInsp.map(_inspRow).join('')+wkChk.map(_chkRow).join(''))
+    +sec('🗓️ 다가오는 법정검사 (D-30)',soon.length,soon.slice(0,5).map(i=>`<div class="item click" onclick="go('insp')">
+      <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)} · ${esc(i.cycle||'')}</div></div>${ddayBadge(i.dd)}</div>`).join(''));
+  return (out||'<div class="card"><div class="empty">오늘·이번주 일정 없음 👍</div></div>')
+    +`<div class="row" style="gap:8px"><button class="btn ghost sm grow" onclick="openDay('${ts}')">＋ 할 일</button><button class="btn ghost sm grow" onclick="editIssue()">＋ 현안</button></div>`;
 }
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
@@ -951,7 +1036,7 @@ function calHtml(){
     const more=items.length-shown.length;
     const tagsHtml=shown.map(x=>`<div class="cal-tag ${x.cls}" title="${esc(x.text)}">${esc(x.text)}</div>`).join('')
       +(more>0?`<div class="cal-tag cal-more">+${more}</div>`:'');
-    cells+=`<div class="cal-cell${ds===tstr?' today':''}" onclick="openDay('${ds}')">
+    cells+=`<div class="cal-cell${ds===tstr?' today':''}" onclick="selDay('${ds}')">
       <div class="cal-d"><span>${d}</span>${open?`<span class="cal-badge">${open}</span>`:''}</div>
       <div class="cal-tags">${tagsHtml}</div></div>`;
   }
@@ -959,7 +1044,8 @@ function calHtml(){
     <div class="cal-head"><button class="btn ghost sm" onclick="calNav(-1)">◀</button>
       <div class="cal-title">${Y}년 ${M}월</div>
       <button class="btn ghost sm" onclick="calNav(1)">▶</button>
-      <button class="btn ghost sm" onclick="S._calYM=null;render()">오늘</button></div>
+      <button class="btn ghost sm" onclick="S._calYM=null;render()">오늘</button>
+      <button class="btn ghost sm" onclick="S._calFull=false;S._calWk=0;render()">접기 ▴</button></div>
     <div class="cal-grid cal-dow">${dow.map((w,i)=>`<div class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('')}</div>
     <div class="cal-grid">${cells}</div>
     <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span></div>
