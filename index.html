@@ -168,6 +168,7 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .chip.on{background:var(--grad);color:#fff;border-color:transparent}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;flex-wrap:wrap}
 .chips::-webkit-scrollbar{display:none}
+.chips.one{flex-wrap:nowrap}.chips.one .chip{flex:none}
 /* 체크박스형 항목 */
 .chk{width:23px;height:23px;border:2px solid var(--chk-off);border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:transparent;transition:all .12s}
 .chk.done{background:var(--ok);border-color:var(--ok);color:#052e16}
@@ -1150,7 +1151,7 @@ function hasDoc(e){return hasMatch(e);}
 function eqRow(e){
   return `<div class="item click" onclick="openEquip('${e.id}')">
     <div class="t"><div class="n">${esc(e.name)}</div>
-    <div class="d">${esc(e.tagNo||'-')} · ${esc(e.group||'')} ${e.ratedKw?'· '+esc(e.ratedKw)+'kW':''}</div></div>
+    <div class="d">${[e.tagNo,e.group,e.ratedKw?e.ratedKw+'kW':''].filter(Boolean).map(esc).join(' · ')||'-'}</div></div>
     ${hasDoc(e)?'<span class="badge b-green">📄 도면</span>':''}
     <span class="badge ${e.plant==='PB'?'b-blue':e.plant==='DH'?'b-purple':'b-green'}">${esc(e.plant)}</span>
   </div>`;
@@ -1158,7 +1159,9 @@ function eqRow(e){
 function vEquip(){
   const f=S.equipFilter;
   const mode=S.equipMode||'list';
-  const cats=[...new Set(S.equipment.filter(e=>!f.plant||e.plant===f.plant).map(e=>e.category))];
+  const cnt={};S.equipment.filter(e=>!f.plant||e.plant===f.plant).forEach(e=>{cnt[e.category]=(cnt[e.category]||0)+1;});
+  const cats=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  const pc=p=>p?S.equipment.filter(e=>e.plant===p).length:S.equipment.length;
   return `
   <div class="chips">
     <button class="chip ${mode==='list'?'on':''}" onclick="S.equipMode='list';render()">📋 목록</button>
@@ -1168,16 +1171,13 @@ function vEquip(){
     <div class="muted">플랜트 → 전압선 → 그룹 → 설비. 탭하면 통합 카드(도면·보호계전·이력)로 이동.</div>
     ${equipTreeHtml()}</div>`:`
   <div class="searchwrap"><input placeholder="설비명 · Tag No · 그룹 검색" value="${esc(f.q)}" oninput="filterEquip(this.value)"></div>
-  <div class="chips">
-    ${['','PB','DH','태양광'].map(p=>`<button class="chip ${f.plant===p?'on':''}" onclick="S.equipFilter.plant='${p}';S.equipFilter.cat='';render()">${p||'전체'}</button>`).join('')}
+  <div class="chips one">
+    ${['','PB','DH','태양광'].map(p=>`<button class="chip ${f.plant===p?'on':''}" onclick="S.equipFilter.plant='${p}';S.equipFilter.cat='';render()">${p||'전체'} ${pc(p)}</button>`).join('')}
+    <button class="chip ${f.docOnly?'on':''}" onclick="S.equipFilter.docOnly=!S.equipFilter.docOnly;render()">📄 도면 ${S.equipment.filter(hasDoc).length}</button>
   </div>
-  <div class="chips">
+  <div class="chips one">
     <button class="chip ${!f.cat?'on':''}" onclick="S.equipFilter.cat='';render()">전체 분류</button>
-    ${cats.map(c=>`<button class="chip ${f.cat===c?'on':''}" onclick="S.equipFilter.cat='${esc(c)}';render()">${esc(c)}</button>`).join('')}
-  </div>
-  <div class="chips">
-    <button class="chip ${f.docOnly?'on':''}" onclick="S.equipFilter.docOnly=!S.equipFilter.docOnly;render()">📄 도면있음만</button>
-    <span class="muted" style="align-self:center;padding-left:2px">도면 연결 ${S.equipment.filter(hasDoc).length}건 / ${S.equipment.length}</span>
+    ${cats.map(c=>`<button class="chip ${f.cat===c?'on':''}" onclick="S.equipFilter.cat='${esc(c)}';render()">${esc(c)} ${cnt[c]}</button>`).join('')}
   </div>
   <div class="card" id="eqcard">${equipListHtml()}</div>`}`;
 }
@@ -1226,11 +1226,15 @@ function equipListHtml(){
   if(f.cat)list=list.filter(e=>e.category===f.cat);
   if(f.docOnly)list=list.filter(hasDoc);
   if(f.q){const q=f.q.toLowerCase();list=list.filter(e=>(e.name+' '+e.tagNo+' '+(e.group||'')+' '+(e.location||'')).toLowerCase().includes(q))}
-  const shown=list.slice(0,80);
-  return `<h2>설비 목록 <span class="cnt">${list.length}건${list.length>80?' 중 80건 표시':''}${f.docOnly?' · 도면있음':''}</span></h2>
+  const key=JSON.stringify(f);if(S._eqKey!==key){S._eqKey=key;S._eqMax=80;}
+  const shown=list.slice(0,S._eqMax);
+  const on=f.plant||f.cat||f.docOnly||f.q;
+  return `<h2>설비 목록 <span class="cnt">${list.length}건</span>${on?' <button class="btn ghost sm" onclick="resetEquipFilter()">필터 해제</button>':''}</h2>
     ${shown.map(eqRow).join('')||'<div class="empty">'+(f.docOnly?'도면이 연결된 설비가 없습니다 — 설비 카드 → 관련 도면 → ＋연결':'설비 없음 — 더보기에서 초기 데이터를 가져오거나 아래에서 직접 추가')+'</div>'}
+    ${list.length>shown.length?`<button class="btn ghost sm full" onclick="S._eqMax+=80;filterEquip(S.equipFilter.q)">더 보기 (${shown.length}/${list.length})</button>`:''}
     <button class="btn ghost sm full" onclick="editEquip()">+ 설비 직접 추가</button>`;
 }
+function resetEquipFilter(){S.equipFilter={q:'',plant:'',cat:''};render();}
 function filterEquip(v){S.equipFilter.q=v;const el=document.getElementById('eqcard');if(el)el.innerHTML=equipListHtml();}
 function renderKeepFocus(){
   const pos=document.activeElement?.selectionStart;
