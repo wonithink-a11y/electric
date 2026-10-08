@@ -144,6 +144,14 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .wk-c.today{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
 .wk-c.sel{background:color-mix(in srgb,var(--accent) 22%,transparent)}
 .wk-dots{display:flex;gap:3px;height:6px}
+.d-iss{background:#ef4444}.tag-iss{background:color-mix(in srgb,#ef4444 20%,transparent);color:#ef4444}
+.dp{border:1px solid var(--line);border-radius:12px;padding:8px;margin:4px 0 8px}
+.dp-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.dp-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center}
+.dp-c{height:38px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px;cursor:pointer}
+.dp-c.today{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.dp-c.sel{background:var(--accent);color:#fff;font-weight:700}
+.dp-s{margin-top:6px;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .subtab{margin-bottom:10px}
 .botpad{height:28px}
 .donebox{margin-top:8px;border-top:1px solid var(--line)}
@@ -800,10 +808,10 @@ function weekCalHtml(){
   let cells='';
   for(let i=0;i<14;i++){
     const d=new Date(t);d.setDate(t.getDate()+i);const ds=_dstr(d);
-    const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds);
+    const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds),iss=S.issues.some(x=>!x.done&&x.due===ds);
     cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')">
       ${i===0||d.getDate()===1?`<small>${d.getMonth()+1}/</small>`:''}<span>${d.getDate()}</span>
-      <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}</span></div>`;
+      <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}${iss?'<span class="dot d-iss"></span>':''}</span></div>`;
   }
   return `<div class="card">
     <div class="cal-head"><button class="btn ghost sm" onclick="S._calWk=(S._calWk||0)-1;render()">◀</button>
@@ -813,7 +821,7 @@ function weekCalHtml(){
       <button class="btn ghost sm" onclick="S._calFull=true;render()">월 ▾</button></div>
     <div class="cal-grid cal-dow">${['일','월','화','수','목','금','토'].map((w,i)=>`<div class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('')}</div>
     <div class="cal-grid">${cells}</div>
-    <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span></div>
+    <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span><span><span class="dot d-iss"></span>현안 목표일</span></div>
   </div>`;
 }
 function selDay(ds){
@@ -830,11 +838,13 @@ function selDay(ds){
 function homeDayHtml(ds){
   const td=S.todos.filter(t=>t.date===ds).sort((a,b)=>(a.done?1:0)-(b.done?1:0));
   const insp=S.inspections.filter(i=>i.nextDue===ds).map(i=>({...i,dd:dday(i.nextDue)}));
+  const iss=S.issues.filter(i=>!i.done&&i.due===ds);
   return `<div class="card"><h2>🗓️ ${esc(ds)}${ds===todayStr()?' · 오늘':''}</h2>
     ${insp.map(_inspRow).join('')}
+    ${iss.map(i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div><div class="t click" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">현안 목표일${i.note?' · '+esc(i.note):''}</div></div><span class="badge b-red">현안</span></div>`).join('')}
     ${td.map(t=>`<div class="item"><div class="chk ${t.done?'done':''}" onclick="toggleTodo('${t.id}',0)">${t.done?'✓':''}</div>
       <div class="t click" onclick="editTodo('${t.id}','${ds}')"><div class="n" style="${t.done?'text-decoration:line-through;color:var(--dim)':''}">${esc(t.title)}</div>${t.note?`<div class="d">${esc(t.note)}</div>`:''}</div></div>`).join('')}
-    ${insp.length||td.length?'':'<div class="empty">이 날 일정 없음</div>'}
+    ${insp.length||td.length||iss.length?'':'<div class="empty">이 날 일정 없음</div>'}
     <div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="S._selDay=null;render()">선택 해제</button><div class="grow"></div><button class="btn sm" onclick="openDay('${ds}')">＋ 할 일 추가</button></div></div>`;
 }
 function homeAllHtml(){
@@ -847,25 +857,23 @@ function homeAllHtml(){
   const soon=insp.filter(i=>i.dd!==null&&i.dd<=30&&!inWk(i));
   const sec=(h,n,b)=>n?`<div class="card"><h2>${h} <span class="cnt">${n}건</span></h2>${b}</div>`:'';
   const out=sec('📌 오늘·이번주 할일',wk.length,wk.slice(0,20).map(x=>_todoRow(x,ts)).join(''))
-    +sec('🔧 진행 중 현안',iss.length,iss.map(i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div>
-      <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div></div>`).join(''))
+    +sec('🔧 진행 중 현안',iss.length,iss.sort(_issCmp).map(_issRow).join(''))
     +sec('📋 이번주 점검·검사',wkInsp.length+wkChk.length,wkInsp.map(_inspRow).join('')+wkChk.map(_chkRow).join(''))
     +sec('🗓️ 다가오는 법정검사 (D-30)',soon.length,soon.slice(0,5).map(i=>`<div class="item click" onclick="go('insp')">
       <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)} · ${esc(i.cycle||'')}</div></div>${ddayBadge(i.dd)}</div>`).join(''));
   return (out||'<div class="card"><div class="empty">오늘·이번주 일정 없음 👍</div></div>')
     +`<div class="row" style="gap:8px"><button class="btn ghost sm grow" onclick="openDay('${ts}')">＋ 할 일</button><button class="btn ghost sm grow" onclick="editIssue()">＋ 현안</button></div>`;
 }
+const _issCmp=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999');
+const _issRow=i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div>
+  <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${i.due?'목표 '+esc(mdShort(i.due))+' · ':''}${esc(i.date)} ${esc(i.note||'')}</div></div>${i.due?ddayBadge(dday(i.due)):''}</div>`;
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
   const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
   return `<details class="card issuebox" open>
     <summary><span>🔧 진행 중 현안</span><span class="cnt">${openIssues.length}건</span></summary>
     <div class="muted" style="margin:8px 0">기간이 정해지지 않은 유지보수(예: 터빈룸 팬 정비)는 여기에 — 완료 처리 전까지 남습니다.</div>
-    ${openIssues.map(i=>`
-      <div class="item">
-        <div class="chk" onclick="doneIssue('${i.id}')"></div>
-        <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${esc(i.date)} ${esc(i.note||'')}</div></div>
-      </div>`).join('')||'<div class="empty">진행 중 현안 없음 👍</div>'}
+    ${openIssues.sort(_issCmp).map(_issRow).join('')||'<div class="empty">진행 중 현안 없음 👍</div>'}
     <button class="btn ghost sm full" onclick="editIssue()">+ 현안 추가</button>
     ${doneIssues.length?`<details class="donebox"><summary>✅ 완료된 현안 ${doneIssues.length}건 (펼치기)</summary>
       ${doneIssues.map(i=>`<div class="item">
@@ -881,24 +889,57 @@ function homeInspTab(){
   const [ws,we,ts]=_weekRange();
   const wkInsp=S.inspections.map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we).sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
   const wkChk=S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c));
-  const wkN=wkInsp.length+wkChk.length;
   const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)})).sort((a,b)=>(a.dd??9e9)-(b.dd??9e9));
   const soon=insp.filter(i=>i.dd!==null&&i.dd<=30);
+  /* v90: 주기 업무·법정검사를 칩 하나씩 전환 — 기본은 주간·월간 */
+  const GK=c=>c.cycle==='quarterly'?'q':c.cycle==='halfyear'?'h':(c.cycle==='yearly'||c.cycle==='biennial')?'y':'wm';
+  const LAB={wm:'주간·월간',q:'분기',h:'반기',y:'연·격년'};
+  const tab=S._inspTab||'wm';
+  const grp=k=>S.checklists.filter(c=>GK(c)===k);
+  const chips=Object.keys(LAB).map(k=>`<button class="chip ${tab===k?'on':''}" onclick="S._inspTab='${k}';render()">${LAB[k]} ${grp(k).filter(c=>!isChkDone(c)).length}</button>`).join('')
+    +`<button class="chip ${tab==='law'?'on':''}" onclick="S._inspTab='law';render()">법정검사 ${soon.length}</button>`;
+  let body;
+  if(tab==='law'){
+    body=`<div class="card"><h2>🗓️ 법정검사 <span class="cnt">D-30 이내 ${soon.length}건 / 전체 ${insp.length}건</span></h2>
+      ${insp.map(i=>`<div class="item click" onclick="go('insp')">
+        <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle||'')}</div></div>${ddayBadge(i.dd)}</div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
+      <button class="btn ghost sm full" onclick="go('insp')">법정검사 전체 관리 →</button></div>`;
+  }else{
+    const ord=['daily','weekly','monthly','quarterly','halfyear','yearly','biennial'];
+    const items=grp(tab).sort((a,b)=>ord.indexOf(a.cycle)-ord.indexOf(b.cycle)||(a.name||'').localeCompare(b.name||'','ko'));
+    const U=items.filter(c=>!isChkDone(c)),D=items.filter(c=>isChkDone(c));
+    const cyc=[...new Set(items.map(c=>c.cycle))].map(cy=>{const e=chkEnd(cy),n=dday(e);return `${CYCLE_KO[cy]||''} ${mdShort(e)}까지(D-${n})`;}).join(' · ');
+    const rowU=c=>{const n=dday(chkEnd(c.cycle));return `<div class="item"><div class="chk" onclick="toggleChk('${c.id}')"></div>
+      <div class="t"><div class="n">${esc(c.name)}</div>${c.detail?`<div class="d">${esc(c.detail).slice(0,40)}</div>`:''}</div>
+      <span class="badge ${n<=3?'b-red':n<=14?'b-yellow':'b-gray'}">${CYCLE_KO[c.cycle]||''} D-${n}</span></div>`;};
+    const rowD=c=>{const l=chkLog(c);return `<div class="item"><div class="chk done" onclick="undoChk('${c.id}')">✓</div>
+      <div class="t"><div class="n" style="text-decoration:line-through;color:var(--dim)">${esc(c.name)}</div><div class="d">${CYCLE_KO[c.cycle]||''}${l&&l.note?' · '+esc(l.note.slice(0,18)):''}</div></div>
+      ${l?`<button class="btn ghost sm" onclick="openCheckResult('${l.id}')">📝</button>`:''}<span class="badge b-blue">${l?esc(mdShort(l.date)):'완료'}</span></div>`;};
+    body=`<div class="card"><h2>📌 ${LAB[tab]} <span class="cnt">미완료 ${U.length}/${items.length}</span></h2>
+      ${cyc?`<div class="muted" style="margin:2px 0 6px">${cyc}</div>`:''}
+      ${U.map(rowU).join('')||(items.length?'<div class="empty">모두 완료 👍</div>':'<div class="empty">이 주기의 업무 없음</div>')}
+      ${D.length?`<details class="donebox"><summary>✅ 완료 ${D.length}건 (이번 기간)</summary>${D.map(rowD).join('')}</details>`:''}
+      <button class="btn ghost sm full" onclick="go('chk')">주기 업무 전체 관리 →</button></div>`;
+  }
   return `
   <div class="searchwrap"><input placeholder="설비 검색 (이름·Tag No·판넬)" oninput="homeSearch(this.value)" id="home-q"></div>
   <div id="home-sr"></div>
-  <div class="card"><h2>📌 이번주 점검·검사 <span class="cnt">${wkN}건</span></h2>
-    ${wkInsp.map(_inspRow).join('')}
-    ${wkChk.map(_chkRow).join('')}
-    ${wkN?'':'<div class="empty">이번주 점검·검사 없음 👍</div>'}</div>
-  ${chkCardHtml()}
-  <div class="card"><h2>🗓️ 다가오는 법정검사 <span class="cnt">D-30 이내 ${soon.length}건</span></h2>
-    ${insp.slice(0,5).map(i=>`
-      <div class="item click" onclick="go('insp')">
-        <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue||'일정 미정')} · ${esc(i.cycle)}</div></div>
-        ${ddayBadge(i.dd)}
-      </div>`).join('')||'<div class="empty">검사 데이터 없음 — 더보기에서 초기 데이터를 가져오세요</div>'}
-  </div>`;
+  ${wkInsp.length?`<div class="card"><h2>📌 이번주 법정검사 <span class="cnt">${wkInsp.length}건</span></h2>${wkInsp.map(_inspRow).join('')}</div>`:''}
+  <div class="chips one">${chips}</div>
+  ${body}`;
+}
+/* 주기별 현재 기간의 마지막 날(YYYY-MM-DD) — 체크리스트 기한 표시용 */
+function chkEnd(cy){
+  const n=new Date(),y=n.getFullYear(),m=n.getMonth();
+  let d;
+  if(cy==='daily')d=n;
+  else if(cy==='weekly')d=new Date(n.getFullYear(),n.getMonth(),n.getDate()+((7-n.getDay())%7));
+  else if(cy==='monthly')d=new Date(y,m+1,0);
+  else if(cy==='quarterly')d=new Date(y,Math.floor(m/3)*3+3,0);
+  else if(cy==='halfyear')d=new Date(y,m<6?6:12,0);
+  else if(cy==='biennial')d=new Date(Math.floor(y/2)*2+2,0,0);
+  else d=new Date(y+1,0,0);
+  return _dstr(d);
 }
 function homeTodoTab(){
   const [ws,we,ts]=_weekRange();const m=ts.slice(0,7);
@@ -996,9 +1037,12 @@ async function savePromoteIssue(id){
 }
 function editIssue(id){
   const i=id?S.issues.find(x=>x.id===id):null;
+  dpOpen(i?.due||null,false,true);
   openModal(`<h3>${i?'현안 수정':'현안 추가'}</h3>
     <label>제목</label><input id="is-t" value="${esc(i?.title||'')}">
-    <label>메모</label><textarea id="is-n" rows="3">${esc(i?.note||'')}</textarea>
+    <label>목표일 <span class="muted" style="font-weight:400">(선택 — 안 고르면 기간 없는 현안)</span></label>
+    <div class="dp" id="dp">${dpHtml()}</div>
+    <label>메모</label><textarea id="is-n" rows="2">${esc(i?.note||'')}</textarea>
     <div class="row" style="margin-top:14px">
       ${i?'<button class="btn danger sm" onclick="delIssue(\''+i.id+'\')">삭제</button>':''}
       <div class="grow"></div>
@@ -1010,6 +1054,7 @@ async function saveIssue(id){
   const t=$('#is-t').value.trim();if(!t){toast('제목을 입력하세요');return}
   const obj=id?S.issues.find(x=>x.id===id):{id:uid(),date:todayStr(),done:false};
   obj.title=t;obj.note=$('#is-n').value.trim();
+  if(S._dp&&S._dp.a)obj.due=S._dp.a;else delete obj.due;
   await dbPut('issues',obj);fbPush('issues',obj);
   if(!id)S.issues.push(obj);
   closeModal();render();
@@ -1035,7 +1080,7 @@ function calHtml(){
     const td=S.todos.filter(t=>t.date===ds);
     const open=td.filter(t=>!t.done).length;
     const insp=S.inspections.filter(i=>i.nextDue===ds);
-    const items=[...insp.map(i=>({cls:'tag-insp',text:i.name})),...td.map(t=>({cls:'tag-todo'+(t.done?' done':''),text:t.title}))];
+    const items=[...insp.map(i=>({cls:'tag-insp',text:i.name})),...S.issues.filter(i=>!i.done&&i.due===ds).map(i=>({cls:'tag-iss',text:i.title})),...td.map(t=>({cls:'tag-todo'+(t.done?' done':''),text:t.title}))];
     const maxShow=2;
     const shown=items.slice(0,maxShow);
     const more=items.length-shown.length;
@@ -1053,7 +1098,7 @@ function calHtml(){
       <button class="btn ghost sm" onclick="S._calFull=false;S._calWk=0;render()">접기 ▴</button></div>
     <div class="cal-grid cal-dow">${dow.map((w,i)=>`<div class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('')}</div>
     <div class="cal-grid">${cells}</div>
-    <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span></div>
+    <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span><span><span class="dot d-iss"></span>현안 목표일</span></div>
   </div>`;
 }
 function calNav(delta){
@@ -1100,15 +1145,40 @@ async function quickAddTodo(date){
   const obj={id:'TD'+uid(),date,title:t,done:false,note:''};
   await dbPut('todos',obj);S.todos.push(obj);fbPush('todos',obj);render();openDay(date);
 }
+/* v90: 작은 월 달력 날짜 선택 — 수정 창 안에서 날짜 입력칸 대신 사용. S._dp={ym,a,b,range,opt}
+   range=true: 시작일→종료일 두 번 탭(여러 날), opt=true: 같은 날짜를 다시 탭하면 '날짜 없음' */
+function dpOpen(a,range,opt){S._dp={ym:(a||todayStr()).slice(0,7),a:a||null,b:null,range:!!range,opt:!!opt};}
+function dpDraw(){const el=$('#dp');if(el)el.innerHTML=dpHtml();}
+function dpNav(d){const p=S._dp,[y,m]=p.ym.split('-').map(Number),n=new Date(y,m-1+d,1);p.ym=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');dpDraw();}
+function dpPick(ds){
+  const p=S._dp;
+  if(p.range){if(!p.a||p.b||ds<p.a){p.a=ds;p.b=null;}else if(ds!==p.a)p.b=ds;}
+  else p.a=(p.opt&&p.a===ds)?null:ds;
+  dpDraw();
+}
+function dpHtml(){
+  const p=S._dp,[Y,M]=p.ym.split('-').map(Number),ts=todayStr(),DOW=['일','월','화','수','목','금','토'];
+  const first=new Date(Y,M-1,1).getDay(),dim=new Date(Y,M,0).getDate();
+  let cells='<i></i>'.repeat(first);
+  for(let d=1;d<=dim;d++){
+    const ds=Y+'-'+String(M).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const sel=p.a&&(p.b?ds>=p.a&&ds<=p.b:ds===p.a);
+    const dots=(S.todos.some(x=>x.date===ds&&!x.done)?'<span class="dot d-todo"></span>':'')+(S.inspections.some(x=>x.nextDue===ds)?'<span class="dot d-insp"></span>':'')+(S.issues.some(x=>!x.done&&x.due===ds)?'<span class="dot d-iss"></span>':'');
+    cells+=`<div class="dp-c${ds===ts?' today':''}${sel?' sel':''}" onclick="dpPick('${ds}')">${d}<span class="wk-dots">${dots}</span></div>`;
+  }
+  const lab=a=>{const t=new Date(a+'T00:00:00');return (t.getMonth()+1)+'/'+t.getDate()+'('+DOW[t.getDay()]+')';};
+  const sum=p.a?(p.b?`${lab(p.a)} ~ ${lab(p.b)} · ${Math.round((new Date(p.b)-new Date(p.a))/864e5)+1}일`:lab(p.a)):'날짜 없음';
+  return `<div class="dp-h"><button class="btn ghost sm" type="button" onclick="dpNav(-1)">◀</button><b>${Y}년 ${M}월</b><button class="btn ghost sm" type="button" onclick="dpNav(1)">▶</button></div>
+    <div class="dp-g">${DOW.map((w,i)=>`<span class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</span>`).join('')}${cells}</div>
+    <div class="dp-s">선택: <b>${sum}</b>${p.range&&!p.b&&p.a?' <span class="muted">· 여러 날이면 종료일을 탭</span>':''}${p.opt&&p.a?` <button class="btn ghost sm" type="button" onclick="S._dp.a=null;dpDraw()">지우기</button>`:''}</div>`;
+}
 function editTodo(id,date){
   const t=id?S.todos.find(x=>x.id===id):null;
-  const d0=esc(t?.date||date||todayStr());
+  dpOpen(t?.date||date||todayStr(),!t,false);
   openModal(`<h3>${t?'할 일 수정':'할 일 추가'}</h3>
-    ${t?`<label>날짜</label><input id="td-d" type="date" value="${d0}">`
-      :`<label>시작일</label><input id="td-d" type="date" value="${d0}" onchange="var de=$('#td-de');if(de&&de.value<this.value)de.value=this.value;">
-    <label>종료일 <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 입력)</span></label>
-    <input id="td-de" type="date" value="${d0}" min="${d0}">`}
     <label>할 일 *</label><input id="td-t" value="${esc(t?.title||'')}">
+    <label>날짜${t?'':' <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 시작일→종료일 순서로 탭)</span>'}</label>
+    <div class="dp" id="dp">${dpHtml()}</div>
     <label>메모</label><textarea id="td-n" rows="2">${esc(t?.note||'')}</textarea>
     <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}<div class="grow"></div>
       <button class="btn ghost sm" onclick="openDay('${date||todayStr()}')">취소</button>
@@ -1117,7 +1187,7 @@ function editTodo(id,date){
 async function saveTodo(id){
   const title=$('#td-t').value.trim();if(!title){toast('할 일을 입력하세요');return;}
   const note=$('#td-n').value.trim();
-  const startDate=$('#td-d').value||todayStr();
+  const startDate=(S._dp&&S._dp.a)||todayStr();
   if(id){
     const obj=S.todos.find(x=>x.id===id);
     obj.date=startDate;obj.title=title;obj.note=note;
@@ -1125,8 +1195,7 @@ async function saveTodo(id){
     render();openDay(obj.date);
     return;
   }
-  const deEl=$('#td-de');
-  const endDate=(deEl&&deEl.value)||startDate;
+  const endDate=(S._dp&&S._dp.b)||startDate;
   let cur=new Date(startDate+'T00:00:00');const end=new Date(endDate+'T00:00:00');
   const dates=[];
   if(isNaN(cur)||isNaN(end)||end<cur){dates.push(startDate);}
