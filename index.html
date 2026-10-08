@@ -96,6 +96,10 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .brt{padding:14px 10px;min-height:56px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--txt);text-align:left;font-size:14px;font-weight:600}
 .brt small{display:block;font-weight:400;color:var(--dim);font-size:12px;margin-top:2px}
 .brt:active{background:var(--panel)}
+.brt.dim{opacity:.5}
+.brg.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.brg.g3 .brt{padding:12px 8px;font-size:13px}
+.brgt{font-size:12px;font-weight:700;color:var(--dim);margin:12px 2px 0}
+.toast{pointer-events:none}.toast.top{bottom:auto;top:62px;padding:6px 14px;font-size:12px}
 .hubb{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 .hubb .btn{flex:1 1 44%;min-height:44px}
 .doclist{max-height:52vh;overflow:auto}
@@ -364,9 +368,9 @@ const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function toast(msg){
+function toast(msg,top){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
-  const t=document.createElement('div');t.className='toast';t.textContent=msg;
+  const t=document.createElement('div');t.className='toast'+(top?' top':'');t.textContent=msg;
   document.body.appendChild(t);setTimeout(()=>t.remove(),2200);
 }
 function dday(dateStr){
@@ -2002,15 +2006,19 @@ function vTree(){
   const sub=S._treeSubTab||(hasZ?'zone':'path');
   const SUBS=[['zone','🏢설비동'],['path','↳ 경로'],['drill','☰ 드릴다운'],['diagram','▤ 단선도']];
   const zEmpty=`<div class="empty">설비동 데이터가 아직 없습니다.<br><br>[초기 데이터 가져오기]에서 <b>설비동_v1.json</b>을 넣으면 여기에 설비동 카드가 생깁니다.<br><br><button class="btn sm" onclick="importAll()">📥 JSON 가져오기</button></div>`;
+  const adv=sub==='drill'||sub==='diagram'||S._treeAdv;
   const body=sub==='zone'?(hasZ?vZone():zEmpty):sub==='drill'?vTreeDrill():(sub==='diagram'?vTreeDiagram():vTreePath());
   return `<div class="card"><h2>🔌 전원계통 트리 <span class="cnt">${S.tree.length}노드</span></h2>
     <div class="row" style="gap:6px;margin-bottom:8px">
-      <input id="tree-find" placeholder="이름·판넬·도면 세부내용 검색 (예: ROTARY FEEDER)" style="flex:1" onkeydown="if(event.key==='Enter')treeFind()">
-      <button class="btn sm" onclick="treeFind()">검색</button>
+      <input id="tree-find" placeholder="설비·판넬 검색" style="flex:1;min-width:0" oninput="treeLive(this.value)" onkeydown="if(event.key==='Enter')treeFind()">
+      <button class="btn sm" onclick="treeFind()" title="도면 세부내용까지 검색">상세검색</button>
     </div>
-    <div class="row" style="gap:6px;margin-bottom:12px">
-      ${SUBS.map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')" style="white-space:nowrap;padding-left:4px;padding-right:4px">${esc(l)}</button>`).join('')}
+    <div id="tree-sr"></div>
+    <div class="row" style="gap:6px;margin-bottom:${adv?'6px':'12px'}">
+      ${SUBS.filter(([k])=>k==='zone'||k==='path').map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')" style="white-space:nowrap;padding-left:4px;padding-right:4px">${esc(l)}</button>`).join('')}
+      <button class="btn ${sub==='drill'||sub==='diagram'?'':'ghost'} sm" onclick="treeAdv()" style="white-space:nowrap;padding-left:8px;padding-right:8px">고급 ${adv?'▴':'▾'}</button>
     </div>
+    ${adv?`<div class="row" style="gap:6px;margin-bottom:12px">${SUBS.filter(([k])=>k==='drill'||k==='diagram').map(([k,l])=>`<button class="btn ${sub===k?'':'ghost'} sm grow" onclick="treeSubTab('${k}')" style="white-space:nowrap">${esc(l)}</button>`).join('')}</div>`:''}
     ${body}
     <button class="btn ghost sm full" style="margin-top:14px" onclick="editNode('','')">+ 최상위(인입 전원) 추가</button>
     <div class="tree-legend">
@@ -2020,6 +2028,25 @@ function vTree(){
   </div>`+treeLotoCard();
 }
 function treeSubTab(t){S._treeSubTab=t;if(t==='diagram')_tdNeedFit=true;render();}
+function treeAdv(){
+  const s=S._treeSubTab;
+  if(s==='drill'||s==='diagram'){S._treeSubTab='path';S._treeAdv=false;}else S._treeAdv=!S._treeAdv;
+  render();
+}
+/* 입력 즉시 이름·판넬 매칭 목록(최대 10) — 탭하면 그 노드의 전원 경로·차단범위로 바로 이동 */
+function treeLive(q){
+  const el=$('#tree-sr');if(!el)return;
+  q=q.trim().toLowerCase();
+  if(q.length<2){el.innerHTML='';return;}
+  const r=S.tree.filter(n=>((n.name||'')+' '+(n.panelNo||'')).toLowerCase().includes(q)).slice(0,10);
+  el.innerHTML=r.length?r.map(n=>{
+    const m=[n.voltage,n.panelNo].filter(Boolean).join(' · ');
+    return `<div class="tkid" onclick="treePick('${n.id}')"><span class="tkid-ic">${(NODE_TYPES[n.type]||['·'])[0]}</span>
+      <span class="tkid-nm">${esc(n.name)}${m?`<span class="tpath-meta">${esc(m)}</span>`:''}</span><span class="tkid-arr">›</span></div>`;}).join('')
+    +'<div class="muted" style="margin:4px 2px 8px">탭 = 전원 경로·차단범위 · 상세검색 = 도면 세부내용까지</div>'
+    :'<div class="muted" style="margin:4px 2px 8px">이름·판넬에 일치 없음 — 상세검색으로 도면 세부내용을 찾아보세요</div>';
+}
+function treePick(id){S._treePathId=id;S._treeSubTab='path';render();}
 /* 계통 검색: 이름·판넬·메모 + 도면 세부내용(details)까지 훑어 매칭 노드로 이동·상세 표시 */
 function treeFind(){
   const q=($('#tree-find')?.value||'').trim().toLowerCase();
@@ -2057,7 +2084,7 @@ function vTreePath(){
       </div>${last?'':'<div class="tpath-arrow">↓</div>'}`;
   }).join('');
   return `<label>설비 선택</label>
-    <select onchange="S._treePathId=this.value;render()">${leaves.map(n=>`<option value="${n.id}"${n.id===id?' selected':''}>${esc(n.name)}${n.panelNo?' · '+esc(n.panelNo):''}</option>`).join('')}</select>
+    <select onchange="S._treePathId=this.value;render()">${(leaves.some(n=>n.id===id)?leaves:[nodeById(id),...leaves]).map(n=>`<option value="${n.id}"${n.id===id?' selected':''}>${esc(n.name)}${n.panelNo?' · '+esc(n.panelNo):''}</option>`).join('')}</select>
     <div class="muted" style="margin:14px 2px 8px">↓ 전원 경로 (인입 → 설비)</div>
     ${chain}
     <button class="btn sm full" style="margin-top:12px" onclick="startLoto('${id}')">🔒 이 경로 LOTO 시작 (차단→검전→접지→표지)</button>
@@ -5211,14 +5238,17 @@ function vDocFind(){
   const indexed=S.docs.filter(d=>d.ext==='pdf'&&d.pages&&d.pages.length).length;
   const pdfTot=S.docs.filter(d=>d.ext==='pdf').length;
   return `
-  <div class="card"><h2>📐 도면 찾기</h2>
+  <div class="card">
     <div class="searchwrap"><input id="dfq" placeholder="태그·설비명 (예: LC-202, vcb501, 121-M-PP-002, 송풍기)" value="${esc(q)}"
       oninput="S.docQ=this.value;S._brCat=null;clearTimeout(window._dft);window._dft=setTimeout(()=>{const b=$('#dfres');if(b)b.innerHTML=docFindResults(S.docQ);},250)"></div>
-    <div class="muted">텍스트 색인 ${indexed}/${pdfTot}건 · 하이픈 없이 가능(vcb501) · 여러 단어 AND · 결과 탭 → 해당 페이지 열람</div>
-    <div class="row" style="margin-top:6px">
-      <button class="btn ghost sm" onclick="importDwgNotes()">📖 해석 노트 가져오기</button>
-      ${pdfTot>indexed?`<button class="btn ghost sm" onclick="reindexDocs()">미색인 ${pdfTot-indexed}건 재색인</button>`:''}
-    </div>
+    <div class="muted">하이픈 없이 가능(vcb501) · 여러 단어는 AND</div>
+    <details style="margin-top:6px"><summary class="muted" style="cursor:pointer">ⓘ 검색 팁·도구</summary>
+      <div class="muted" style="margin:6px 0">텍스트 색인 ${indexed}/${pdfTot}건 · 결과 탭 → 해당 페이지 열람. 태그(예: 121-M-PP-002, VCB-501, LC-104)나 설비명을 넣으면 그 기기의 로직·스키매틱·도면을 한 화면에 모아 보여줍니다.</div>
+      <div class="row">
+        <button class="btn ghost sm" onclick="importDwgNotes()">📖 해석 노트 가져오기</button>
+        ${pdfTot>indexed?`<button class="btn ghost sm" onclick="reindexDocs()">미색인 ${pdfTot-indexed}건 재색인</button>`:''}
+      </div>
+    </details>
   </div>
   <div id="dfres">${docFindResults(q)}</div>
   <div class="botpad"></div>`;
@@ -5433,9 +5463,9 @@ function docBrowseHtml(){
   if((rec.hubs||[]).length||(rec.docs||[]).length)h+=`<div class="card"><h2>🕘 최근</h2>
     ${(rec.hubs||[]).length?`<div class="chips">${rec.hubs.slice(0,8).map(x=>`<button class="chipf" onclick="openHub('${esc(x.key)}')">🧭 ${esc(x.label)}</button>`).join('')}</div>`:''}
     ${(rec.docs||[]).slice(0,5).map(x=>`<div class="item click" onclick="viewDoc('${esc(x.id)}')"><div class="t"><div class="n" style="white-space:normal;line-height:1.4">${esc(x.label)}</div></div></div>`).join('')}</div>`;
-  h+=`<div class="card"><h2>📂 도면 둘러보기</h2><div class="brg">${_BR.map((b,i)=>{const n=_brDocs(b[1],b[2]).length;
-    return `<button class="brt" onclick="brOpen(${i})">${b[0]}<small>${n?n+'장':'가져온 도면 없음'}</small></button>`;}).join('')}</div>
-    <div class="muted" style="margin-top:8px">위 검색창에 태그(예: 121-M-PP-002, VCB-501, LC-104)나 설비명을 넣으면 그 기기의 로직·스키매틱·도면을 한 화면에 모아 보여줍니다.</div></div>`;
+  h+=`<div class="card"><h2>📂 도면 둘러보기</h2>${[['PB',[0,1,2]],['DH',[3,4,5]],['DCS',[6,7]]].map(([t,ix])=>`<div class="brgt">${t}</div>
+    <div class="brg g3" style="margin-top:6px">${ix.map(i=>{const b=_BR[i],n=_brDocs(b[1],b[2]).length;
+      return `<button class="brt${n?'':' dim'}" onclick="brOpen(${i})">${b[0].replace(/^(PB|DH|DCS) /,'')}<small>${n?n+'장':'없음'}</small></button>`;}).join('')}</div>`).join('')}</div>`;
   return h;
 }
 
@@ -6268,7 +6298,7 @@ function vaultImport(){
 }
 
 const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
-const TITLES={home:'전력계통과 업무',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
+const TITLES={home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
 function go(v){
   const st=S._navStack=S._navStack||[];
   if(v!==S.view){
@@ -6311,7 +6341,7 @@ async function localAutoDocs(L){
       const r=await fetch(encodeURI(p.u));if(!r.ok)continue;
       const blob=await r.blob(),ext=p.n.split('.').pop().toLowerCase();
       await dbPut('docs',{id:'DOC'+uid(),...classifyDoc(p.n,p.f),folder:p.f,ext,name:p.n,size:blob.size,added:todayStr(),blob});n++;
-      if(n%20===0)toast('로컬 도면 가져오는 중… '+n+'/'+list.length);
+      if(n%20===0)toast('로컬 도면 가져오는 중… '+n+'/'+list.length,1);
     }catch(e){}
   }
   if(n){await loadAll();render();toast('로컬 도면 '+n+'개 문서함에 추가');}
