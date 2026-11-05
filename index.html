@@ -369,7 +369,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v99'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v100'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1114,6 +1114,7 @@ function editIssue(id){
     <label>메모</label><textarea id="is-n" rows="2">${esc(i?.note||'')}</textarea>
     <div class="row" style="margin-top:14px">
       ${i?'<button class="btn danger sm" onclick="delIssue(\''+i.id+'\')">삭제</button>':''}
+      <button class="btn ghost sm" onclick="calFrom('is')">📅 캘린더</button>
       <div class="grow"></div>
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveIssue('${i?.id||''}')">저장</button>
@@ -1249,9 +1250,18 @@ function editTodo(id,date){
     <label>날짜${t?'':' <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 시작일→종료일 순서로 탭)</span>'}</label>
     <div class="dp" id="dp">${dpHtml()}</div>
     <label>메모</label><textarea id="td-n" rows="2">${esc(t?.note||'')}</textarea>
-    <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}<div class="grow"></div>
+    <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}<button class="btn ghost sm" onclick="calFrom('td')">📅 캘린더</button><div class="grow"></div>
       <button class="btn ghost sm" onclick="openDay('${date||todayStr()}')">취소</button>
       <button class="btn sm" onclick="saveTodo('${t?.id||''}')">저장</button></div>`);
+}
+/* 📅 구글 캘린더에 추가(v100) — 로그인·서버 없이 구글 캘린더 '일정 만들기' 화면을 연다(종일, 여러 날이면 시작~종료).
+   구글 계정 캘린더에 들어가면 에이닷·삼성 캘린더·캘린더 위젯(한 달 보기)에도 함께 보인다. 입력 중인 칸 값을 그대로 씀(저장 전에도 됨) */
+function calFrom(pfx){ // pfx: 'td' 할 일 · 'is' 현안 — 제목 #pfx-t, 메모 #pfx-n, 날짜 = 달력 선택(S._dp)
+  const t=$('#'+pfx+'-t').value.trim(),n=$('#'+pfx+'-n').value.trim(),a=S._dp&&S._dp.a;
+  if(!t||!a){toast(t?'날짜를 고르세요':'제목을 넣으세요');return;}
+  const e=new Date((S._dp.b||a)+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정의 끝날은 다음 날(구글 규칙)
+  const ymd=s=>s.replace(/-/g,'');
+  window.open('https://calendar.google.com/calendar/render?'+new URLSearchParams({action:'TEMPLATE',text:t,dates:ymd(a)+'/'+ymd(_dstr(e)),details:n}),'_blank');
 }
 async function saveTodo(id){
   const title=$('#td-t').value.trim();if(!title){toast('할 일을 입력하세요');return;}
@@ -7079,7 +7089,9 @@ function cardTodo(ref,tag){
 /* 주소로 열기: ?hub=VCB-501(태그·노드 ID·이름) / ?q=검색어 — QR 스티커·PDF검색기 연동. 같은 이름이 여럿이면 설비 찾기 목록으로 */
 let _urlTries=0;
 function openFromUrl(){
-  const p=new URLSearchParams(location.search.slice(1)+'&'+location.hash.slice(1)),hub=p.get('hub'),hq=p.get('q');
+  const p=new URLSearchParams(location.search.slice(1)+'&'+location.hash.slice(1)),hub=p.get('hub'),hq=p.get('q'),act=p.get('do');
+  if(act){history.replaceState(history.state,'',location.pathname); // 앱 아이콘 길게 누르기 바로가기(manifest shortcuts, v100)
+    if(act==='todo')editTodo('',todayStr());else if(act==='fdoc')go('work');return;}
   if(!hub&&!hq)return;
   const ex=document.getElementById('exit-confirm');if(ex)ex.remove(); // 해시 이동이 뒤로가기로 새어 '종료할까요?'가 떴으면 지운다
   if(!S.tree.length&&_urlTries++<100)return setTimeout(openFromUrl,200); // ponytail: 시드 주입(비동기) 끝날 때까지 0.2초 간격 최대 20초
