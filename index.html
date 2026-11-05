@@ -272,6 +272,17 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 .zc-link.on{border-left-color:var(--ok)}
 .zc-chip{font-size:12px;padding:3px 9px;border-radius:999px;border:1.5px solid var(--ok);color:var(--txt);cursor:pointer}
 .zc-chip.no{border-style:dashed;border-color:var(--danger)}
+.pf-zone{margin:14px 0 6px;padding:6px 10px;border-radius:8px;background:var(--panel2);font-weight:700;cursor:pointer;display:flex;gap:6px;align-items:center}
+.pf-zone.cur{outline:2px solid var(--accent)}
+.pf-st{color:var(--dim);font-size:12px;margin:2px 0 4px;text-align:center}
+.pf-row{display:flex;gap:6px}
+.pf-box{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--dim);border-radius:10px;padding:7px 6px;text-align:center;cursor:pointer;font-weight:700;font-size:13px;line-height:1.25;word-break:keep-all}
+.pf-box.on{border-top-color:var(--ok)}.pf-box.np{border-top-style:dashed}
+.pf-box small{display:block;font-weight:400;color:var(--dim);font-size:11px;margin-top:2px}
+.pf-arr{display:flex;gap:6px;height:20px}.pf-arr>div{flex:1;text-align:center;color:var(--dim);font-size:13px;line-height:20px}
+.pf-arr.mix>div{color:var(--accent)}
+.pf-cv{overflow:auto;max-height:78vh;background:#d9dcdf;border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch}
+.pf-cv svg{display:block;height:auto}.pf-sh{cursor:pointer}.pf-sh:hover{filter:brightness(1.12) drop-shadow(0 0 3px #1f6fff)}
 .lf-box{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--panel)}
 .lf-h{font-weight:700;margin-bottom:2px}.lf-d{color:var(--dim);font-size:12.5px;margin-bottom:8px}
 .lf-g{border-left:3px solid var(--ok);padding:4px 0 4px 10px;margin:6px 0}.lf-g.or{border-left-color:var(--warn)}
@@ -302,6 +313,44 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 .issuebox>summary::-webkit-details-marker{display:none}
 .issuebox>summary::after{content:'▾';color:var(--dim);font-size:13px;margin-left:8px}
 .issuebox[open]>summary::after{content:'▴'}
+/* 현장 문서 A4(v96) — 미리보기(모달)와 인쇄(#fd-print)가 같은 모양. 테마와 무관하게 흰 종이 */
+.fd-page{background:#fff;padding:14px;border-radius:6px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:13px;line-height:1.55}
+.fd-page,.fd-page *{color:#111}
+.fd-page h1{font-size:20px;text-align:center;letter-spacing:3px;margin:0 0 12px}
+.fd-page h4{font-size:14px;margin:12px 0 4px;padding-left:6px;border-left:4px solid #1f4e8c}
+.fd-page table{width:100%;border-collapse:collapse}
+.fd-page th,.fd-page td{border:1px solid #555;padding:5px 8px;text-align:left;vertical-align:top;font-size:inherit}
+.fd-page th{background:#eef1f5;width:16%;white-space:nowrap}
+.fd-page .tx{white-space:pre-wrap;border:1px solid #bbb;padding:6px 8px;margin:0}
+.fd-page ol.tx{white-space:normal;padding-left:28px}
+.fd-ph{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fd-ph figure{margin:0;border:1px solid #999;break-inside:avoid}
+.fd-ph img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#f2f2f2;display:block}
+.fd-ph figcaption{padding:3px 6px;font-size:12px;border-top:1px solid #999}
+.fd-page .fd-foot{text-align:right;font-size:11px;color:#666;margin-top:10px}
+/* 사진 편집기(v98) — 모달(40) 위, 토스트(60) 아래 */
+#pe{position:fixed;inset:0;z-index:55;background:#111;display:flex;flex-direction:column;color:#fff}
+.pe-hd{display:flex;align-items:center;gap:8px;padding:10px 12px}.pe-hd b{flex:1;text-align:center}
+.pe-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#pe-cv{touch-action:none;display:block}
+.pe-bar{padding:8px 10px calc(10px + env(safe-area-inset-bottom));background:#1c1c1c;max-width:640px;width:100%;margin:0 auto}
+.pe-tools{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px}
+.pe-tools .btn{padding:7px 0;font-size:13px}
+#pe .btn.ghost{background:#2a2a2a;color:#eee;border-color:#444}
+.pe-colors{display:flex;justify-content:center;gap:14px;margin-bottom:8px}
+.pe-c{width:30px;height:30px;border-radius:50%;border:2px solid #555;cursor:pointer;padding:0}
+.pe-c.on{outline:3px solid #fff;outline-offset:2px}
+.pe-tip{text-align:center;font-size:12px;color:#aaa;margin-top:6px}
+.photostrip .pe-no{position:absolute;left:3px;top:3px;background:rgba(0,0,0,.6);color:#fff;border-radius:9px;font-size:11px;padding:0 6px}
+#fd-print{display:none}
+@media print{
+  @page{size:A4;margin:12mm}
+  html,body{background:#fff!important;margin:0!important;padding:0!important}
+  body>*:not(#fd-print){display:none!important}
+  #fd-print{display:block!important}
+  #fd-print .fd-page{padding:0;border-radius:0;font-size:10.5pt}
+  #fd-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -312,16 +361,15 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 </header>
 <main id="app"></main>
 <nav id="nav">
-  <button data-v="home"><span class="ic">🏠</span>홈</button>
-  <button data-v="tree"><span class="ic">🔌</span>계통</button>
-  <button data-v="equip"><span class="ic">⚡</span>설비</button>
-  <button data-v="docfind"><span class="ic">📐</span>도면</button>
+  <button data-v="home"><span class="ic">🏠</span>오늘</button>
+  <button data-v="find"><span class="ic">🔍</span>설비 찾기</button>
+  <button data-v="work"><span class="ic">🔒</span>작업</button>
   <button data-v="more"><span class="ic">⚙️</span>더보기</button>
 </nav>
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v85'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v94'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -369,9 +417,14 @@ async function loadAll(){
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
+  try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
+  try{const fm=await dbGet('meta','fieldMode');S._fieldMode=fm?fm.v:true;}catch(e){S._fieldMode=true;}
 }
+/* v97 현장 모드(기본 켬): 더보기 › 분석 메뉴를 숨기고 설비 카드를 현장 질문 순서로. 사내망 PC 화면(html.pc)에서는 늘 꺼짐 */
+const fieldOn=()=>S._fieldMode!==false&&!document.documentElement.classList.contains('pc');
+async function setFieldMode(on){S._fieldMode=on;await dbPut('meta',{id:'fieldMode',v:on});render();toast(on?'현장 모드 — 분석 메뉴 숨김':'분석 메뉴 보기');}
 const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
@@ -457,7 +510,9 @@ function _sniffJson(d){
   if(/^dwg-index/.test(d.schema||'')&&Array.isArray(d.docs))return '도면색인';
   if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
   if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
+  if(Array.isArray(d.invItems)&&d.invItems.length)return '재물조사';
   if(Array.isArray(d.zones)&&d.zones.length&&d.zones[0].panels)return '설비동';
+  if(Array.isArray(d.flows)&&d.flows.length&&d.flows[0].steps)return '공정흐름';
   if(Array.isArray(d.links)&&d.links.length&&d.links[0].tag&&d.links[0].node)return '로직연결';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
@@ -514,6 +569,18 @@ async function _applyJson(kind,d){
     await dbPut('meta',{id:'zones',zones:d.zones,added:todayStr()});S._zones=d.zones;
     return `설비동 ${d.zones.length}곳`;
   }
+  if(kind==='재물조사'){ // v95: 본사·지사·부서 시트 항목 → spares 스토어(src:'inv'). 이미 있으면 확인·실사·메모는 유지
+    const cur=await dbAll('spares');let n=0;
+    for(const it of d.invItems){
+      const id='IV'+it.sheet+it.matNo;const ex=cur.find(x=>x.id===id);
+      await dbPut('spares',Object.assign({},it,ex?{found:ex.found,real:ex.real,note:ex.note,location:ex.location}:{},{id,src:'inv',updated:todayStr()}));n++;
+    }
+    return `재물조사 ${n}건`;
+  }
+  if(kind==='공정흐름'){
+    await dbPut('meta',{id:'flows',flows:d.flows,added:todayStr()});S._flows=d.flows;
+    return `공정 흐름 ${d.flows.length}개`;
+  }
   if(kind==='해석노트'){
     let n=0;
     for(const it of d.notes){
@@ -544,7 +611,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6,'재물조사':7};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -782,12 +849,14 @@ function vHome(){
   const body=S._selDay?homeDayHtml(S._selDay):tab==='all'?homeAllHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab();
   return `
   ${emptyStateCard()}
+  <div class="card" style="padding:10px 12px">${devSearchBox('home-sr')}</div>
   ${homeSumHtml()}
   ${S._calFull?calHtml():weekCalHtml()}
   <div class="chips subtab">
-    ${chip('all','전체')}${chip('todo','할일')}${chip('issue','현안')}${chip('week','점검·검사')}${chip('hist','완료')}
+    ${chip('all','전체')}${chip('todo','할일')}${chip('issue','현안')}${chip('week','점검·검사')}
   </div>
   ${body}
+  ${tab==='hist'||S._selDay?'':`<button class="btn ghost sm full" style="margin-top:8px" onclick="S.homeTab='hist';render()">✓ 완료한 일 보기 ›</button>`}
   <div class="botpad"></div>`;
 }
 function homeSumHtml(){
@@ -1316,8 +1385,9 @@ function renderKeepFocus(){
   if(inp){inp.focus();try{inp.setSelectionRange(pos,pos)}catch(e){}}
 }
 const DRAW_TYPES=['단선도','로직도','루프도','스키매틱'];
-function openEquip(id){
+function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비 카드로. full=1이면 옛 전체 화면(사진·측정·개별 도면·수정)
   const e=S.equipment.find(x=>x.id===id);if(!e)return;
+  if(!full){const tn=_eqNode(e);if(tn){openCard(tn.id);return;}}
   const faults=S.faults.filter(f=>f.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
   const notes=S.notes.filter(n=>n.equipId===id).sort((a,b)=>b.date.localeCompare(a.date));
   const inspHistRows=S.inspections.filter(x=>x.equipId===id).flatMap(x=>(x.history||[]).map(h=>({date:h.date,kind:'insp',inspId:x.id,label:x.name+(h.result?' · '+h.result:''),note:h.note||''})));
@@ -1571,7 +1641,7 @@ function noteListHtml(){
       ${tags.map(t=>`<button class="chip ${sel.includes(t)?'on':''}" onclick="toggleNoteTag('${esc(t).replace(/'/g,'')}')">${esc(t)}</button>`).join('')}
       ${tags.length>1?`<button class="chip" onclick="openMergeTags()">🔀 태그 합치기</button>`:''}
     </div>
-    ${shown.map(n=>`<div class="item click" onclick="editNote('${n.id}','${n.equipId||''}')">
+    ${shown.map(n=>`<div class="item click" onclick="${n.kind==='fdoc'?`openFdoc('${n.id}')`:`editNote('${n.id}','${n.equipId||''}')`}">
       <div class="t"><div class="n">${esc(n.date)} ${esc(n.content)}</div>
       <div class="d">${esc(n.tag||'일반')}${n.equipName?' · '+esc(n.equipName):''}</div></div></div>`).join('')||'<div class="empty">메모 없음 — 설비 카드나 [+ 새 메모]에서 기록하세요</div>'}
     <button class="btn ghost sm full" onclick="go('more')" style="margin-top:10px">← 더보기</button>`;
@@ -2680,7 +2750,125 @@ function nodeContents(n){
 /* ================= v73: 설비동 화면 — 설비동 하나를 한 화면에: 전원 체인 · 판넬 회선표 · 로직 카드 · 도면 =================
    설비동 정의(어느 판넬이 그 설비동인가)는 데이터 설비동_v1.json(meta 'zones')에 둔다. 체인은 계통 트리 경로에서 뽑는다:
    6.9kV 모선 → (차단기 칩) → 변압기 → L/C → 판넬. 박스 초록 = 평상시 가압. 차단기 칩을 탭하면 개방 시 정전범위. */
-function zoneOpen(id){S._zoneId=id;S._zoneTab='table';S._zq='';S._zdI=0;S._zdP=0;S._treeSubTab='zone';render();window.scrollTo(0,0);}
+function zoneOpen(id){S._zoneId=id;S._zoneTab=_zoneFlow(id)?'flow':'table';S._zq='';S._zdI=0;S._zdP=0;S._treeSubTab='zone';render();window.scrollTo(0,0);
+  const b=S._zoneTab==='flow'&&document.getElementById('pfz-'+id);if(b&&b!==document.querySelector('.pf-zone'))b.scrollIntoView({block:'start'});}
+/* ================= v91: 공정 흐름 — 설비 동작 순서(크레인→…→연소로)를 단계별 박스로. 정의는 데이터 공정흐름_v1.json(meta 'flows').
+   단계(step)마다 나란한 설비(items: A·B 계열, #1~3)를 한 줄에. 이웃 단계의 설비 수가 같으면 줄마다 ↓, 다르면 합류·분기 표시.
+   node=급전 회선(계통 노드) → 박스 위 초록=평상시 가압, eq=설비 마스터 id → kW·태그·정비등급. 설비가 아닌 단계(호퍼·연소로)는 점선. ================= */
+function _zoneFlows(zid){return (S._flows||[]).filter(f=>(f.zones||[]).includes(zid));}
+function _zoneFlow(zid){const L=_zoneFlows(zid);return L.find(f=>f.id===S._flowSel)||L[0]||null;}
+function _pfEl(x){return !!(x.node||(x.eq||[]).length||(x.parts||[]).some(p=>p.node||p.eq));}
+function _pfOn(x,live){const ps=(x.parts||[]).filter(p=>p.node);return x.node?live.has(x.node):ps.some(p=>live.has(p.node));}
+/* v92: 흐름 탭 — 위에 흐름 고르기(설비동에 흐름이 여럿이면)·그림/목록 전환·확대, 기본은 DCS 모양 그림(flowSvg) */
+function flowTab(z){
+  const L=_zoneFlows(z.id),f=_zoneFlow(z.id),pic=S._pfMode!=='list'&&f.view;
+  return `<div class="row" style="gap:6px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
+    ${L.length>1?L.map(x=>`<button class="btn ${x===f?'':'ghost'} sm" onclick="S._flowSel='${esc(x.id)}';render()">${esc(x.name)}</button>`).join(''):`<b>${esc(f.name)}</b>`}
+    <div class="grow"></div>${f.view?`<button class="btn ghost sm" onclick="S._pfMode='${pic?'list':'pic'}';render()">${pic?'☰ 단계 목록':'▦ 그림'}</button>`:''}
+    ${pic?`<button class="btn ghost sm" onclick="pfZoom(0.8)">−</button><button class="btn ghost sm" onclick="pfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="pfZoom(0)">맞춤</button>`:''}</div>`+
+    (pic?flowSvg(f):flowHtml(f,z.id));
+}
+function pfZoom(k){
+  const sv=document.getElementById('pf-svg');if(!sv)return;const W=+sv.dataset.w,box=sv.parentElement.clientWidth-4;
+  S._pfZ=k?Math.max(0.3,Math.min(2.5,(S._pfZ||box/W)*k)):box/W;sv.style.width=Math.round(W*S._pfZ)+'px';
+}
+/* DCS 모양 기호 — (x,y,w,h) 상자 안에 그린다. 회색 금속 몸체·파란 벨트·초록 날개는 DCS 화면 색을 따름 */
+const PF_SYM={
+  conv:(x,y,w,h,s)=>{const r=Math.min(h/2,9),b=(yy,hh)=>`<rect x="${x}" y="${yy}" width="${w}" height="${hh}" rx="${hh/2}" fill="#1f3fd8" stroke="#0a1c7a" stroke-width="1.5"/><circle cx="${x+hh/2}" cy="${yy+hh/2}" r="${hh/2-3}" fill="#fff"/><circle cx="${x+w-hh/2}" cy="${yy+hh/2}" r="${hh/2-3}" fill="#fff"/>`;
+    return s.dbl?b(y,h/2-1)+b(y+h/2+1,h/2-1):b(y,h);},
+  incl:(x,y,w,h,s)=>{const t=s.th||14;return `<polygon points="${x},${y+h-t} ${x+w},${y} ${x+w},${y+t} ${x},${y+h}" fill="#1f3fd8" stroke="#0a1c7a" stroke-width="1.5"/><polygon points="${x-4},${y+h+4} ${x+w+4},${y+t+4} ${x+w+4},${y+t+9} ${x-4},${y+h+9}" fill="#b9bec4"/>`;},
+  hopper:(x,y,w,h)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#e9ebee" stroke="#333" stroke-width="2"/><polygon points="${x+8},${y+h-30} ${x+w-8},${y+h-30} ${x+w/2+14},${y+h-4} ${x+w/2-14},${y+h-4}" fill="url(#pfm)" stroke="#555"/>`,
+  drum:(x,y,w,h)=>`<circle cx="${x+w/2}" cy="${y+h/2}" r="${w/2}" fill="#1f3fd8" stroke="#0a1c7a" stroke-width="2"/><circle cx="${x+w/2}" cy="${y+h/2}" r="${w/5}" fill="#fff"/>`,
+  bin:(x,y,w,h)=>`<polygon points="${x},${y} ${x+w},${y} ${x+w},${y+h*.62} ${x+w/2+w*.14},${y+h} ${x+w/2-w*.14},${y+h} ${x},${y+h*.62}" fill="url(#pfm)" stroke="#444" stroke-width="2"/><text x="${x+w/2}" y="${y+h*.4}" text-anchor="middle" font-size="12" fill="#222">SURGE BIN</text>`,
+  screw:(x,y,w,h)=>{let z='';for(let i=0;i<w;i+=12)z+=`${x+i},${y+(i/12%2?2:h-2)} `;return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#dfe8d6" stroke="#2c6b2c" stroke-width="1.5"/><polyline points="${z}" fill="none" stroke="#1d9a1d" stroke-width="2"/>`;},
+  fan:(x,y,w,h)=>{const cx=x+w/2,cy=y+h/2,r=Math.min(w,h)/2;let bl='';for(let a=0;a<360;a+=90){const t=a*Math.PI/180;bl+=`<path d="M${cx},${cy} Q${cx+r*.9*Math.cos(t)},${cy+r*.9*Math.sin(t)} ${cx+r*.8*Math.cos(t+1)},${cy+r*.8*Math.sin(t+1)} Z" fill="#22b14c"/>`;}
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#eef0f2" stroke="#555" stroke-width="2"/>${bl}`;},
+  feeder:(x,y,w,h)=>`<polygon points="${x+w*.25},${y} ${x+w*.75},${y} ${x+w},${y+h} ${x},${y+h}" fill="#f4e21a" stroke="#7a6d00" stroke-width="1.5"/>`,
+  bf:(x,y,w,h)=>{let c='';const n=3,cw=w/n;for(let i=0;i<n;i++)c+=`<polygon points="${x+i*cw},${y+h*.6} ${x+(i+1)*cw},${y+h*.6} ${x+i*cw+cw*.6},${y+h} ${x+i*cw+cw*.4},${y+h}" fill="url(#pfm)" stroke="#444"/>`;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h*.6}" fill="url(#pfm)" stroke="#444" stroke-width="2"/>${c}<text x="${x+w/2}" y="${y+h*.32}" text-anchor="middle" font-size="12" fill="#222">BAG FILTER</text>`;},
+  vessel:(x,y,w,h)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h/2.6}" fill="url(#pfm)" stroke="#444" stroke-width="2"/>`,
+  stack:(x,y,w,h)=>`<polygon points="${x+w*.2},${y} ${x+w*.8},${y} ${x+w},${y+h} ${x},${y+h}" fill="url(#pfm)" stroke="#444" stroke-width="2"/>`,
+  furnace:(x,y,w,h)=>`<polygon points="${x},${y} ${x+w},${y} ${x+w},${y+h*.85} ${x+w*.75},${y+h} ${x+w*.25},${y+h} ${x},${y+h*.85}" fill="#7d8188" stroke="#333" stroke-width="3"/>`,
+  cyclone:(x,y,w,h)=>`<polygon points="${x},${y} ${x+w},${y} ${x+w},${y+h*.45} ${x+w*.62},${y+h} ${x+w*.38},${y+h} ${x},${y+h*.45}" fill="#8a8e95" stroke="#333" stroke-width="3"/>`,
+  boiler:(x,y,w,h)=>{let c='';for(let i=1;i<6;i++){const yy=y+h*i/7;c+=`<polyline points="${x+10},${yy} ${x+w*.3},${yy-8} ${x+w*.5},${yy} ${x+w*.7},${yy-8} ${x+w-10},${yy}" fill="none" stroke="#ddd" stroke-width="2"/>`;}
+    return `<polygon points="${x},${y} ${x+w},${y} ${x+w},${y+h*.8} ${x+w/2},${y+h} ${x},${y+h*.8}" fill="#7d8188" stroke="#333" stroke-width="3"/>${c}`;},
+  crane:(x,y,w,h)=>{const gx=x+w*.6;return `<rect x="${x}" y="${y}" width="${w}" height="8" fill="#9aa0a6" stroke="#333"/><rect x="${gx-18}" y="${y+8}" width="36" height="14" fill="#5f6368"/><line x1="${gx}" y1="${y+22}" x2="${gx}" y2="${y+h-22}" stroke="#333" stroke-width="2" stroke-dasharray="4 3"/>
+    <path d="M${gx-20},${y+h} Q${gx-22},${y+h-22} ${gx},${y+h-22} Q${gx+22},${y+h-22} ${gx+20},${y+h}" fill="none" stroke="#333" stroke-width="4"/>`;},
+  pit:(x,y,w,h)=>`<polyline points="${x},${y} ${x},${y+h} ${x+w},${y+h} ${x+w},${y}" fill="none" stroke="#333" stroke-width="3"/><polygon points="${x+3},${y+h*.35} ${x+w-3},${y+h*.85} ${x+w-3},${y+h-2} ${x+3},${y+h-2}" fill="#8b8f95"/>`,
+  magsep:(x,y,w,h)=>`<rect x="${x+6}" y="${y+h*.3}" width="${w-12}" height="${h*.4}" fill="#9aa0a6" stroke="#333"/><circle cx="${x+h/2}" cy="${y+h/2}" r="${h/2-2}" fill="#eee" stroke="#333" stroke-width="2"/><circle cx="${x+w-h/2}" cy="${y+h/2}" r="${h/2-2}" fill="#eee" stroke="#333" stroke-width="2"/><rect x="${x+w/2-10}" y="${y+h*.32}" width="20" height="${h*.36}" fill="#555"/>`,
+  damper:(x,y,w,h)=>`<polygon points="${x},${y} ${x+w*.35},${y} ${x+w/2},${y+h*.4} ${x+w*.65},${y} ${x+w},${y} ${x+w*.62},${y+h*.55} ${x+w*.62},${y+h} ${x+w*.38},${y+h} ${x+w*.38},${y+h*.55}" fill="#c3c7cc" stroke="#555"/>`,
+  scrubber:(x,y,w,h)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="url(#pfm)" stroke="#444" stroke-width="2"/><rect x="${x+6}" y="${y+h*.3}" width="${w-12}" height="${h*.18}" fill="none" stroke="#666" stroke-dasharray="3 3"/>`,
+  tank:(x,y,w,h)=>`<polygon points="${x},${y} ${x+w},${y} ${x+w},${y+h*.68} ${x+w*.58},${y+h} ${x+w*.42},${y+h} ${x},${y+h*.68}" fill="url(#pfm)" stroke="#444" stroke-width="2"/>`,
+  fbhe:(x,y,w,h)=>{let c='';for(let i=1;i<4;i++){const xx=x+w*i/4;c+=`<polyline points="${xx-18},${y+h*.25} ${xx},${y+h*.4} ${xx-18},${y+h*.55} ${xx},${y+h*.7}" fill="none" stroke="#ddd" stroke-width="2"/>`;}
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#7d8188" stroke="#333" stroke-width="3"/>${c}`;},
+  pump:(x,y,w,h)=>`<circle cx="${x+w/2}" cy="${y+h/2}" r="${w/2}" fill="#eef0f2" stroke="#555" stroke-width="2"/><polygon points="${x+w*.3},${y+h*.22} ${x+w*.82},${y+h/2} ${x+w*.3},${y+h*.78}" fill="#22b14c"/>`,
+  inj:(x,y,w,h)=>`<rect x="${x}" y="${y+h*.35}" width="${w*.7}" height="${h*.3}" fill="#d0409a"/><polygon points="${x+w*.7},${y+h*.2} ${x+w},${y} ${x+w},${y+h} ${x+w*.7},${y+h*.8}" fill="#d0409a"/>`
+};
+const PF_LC={solid:['#7a5a3a',4],fuel:['#a06a2c',5],air:['#e8901c',4],gas:['#5f6670',9],chem:['#d0409a',3],water:['#2f6fd0',3]};
+function flowSvg(f){
+  const V=f.view,live=energizedSet([],{normal:true}),idx={};
+  f.steps.forEach((s,si)=>s.items.forEach((x,ii)=>{idx[x.id]={x,si,ii};}));
+  const box=Math.min(innerWidth,1400)-48,z=S._pfZ||Math.max(box/V.w,innerWidth<700?0.55:0.3);
+  const mk=Object.entries(PF_LC).map(([k,[c]])=>`<marker id="pfa-${k}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join('');
+  let g=(V.bands||[]).map(b=>`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="10" fill="none" stroke="#8d949c" stroke-dasharray="8 5"/><text x="${b.x+12}" y="${b.y+24}" font-size="17" font-weight="700" fill="#14306e">🏢 ${esc(b.t)}</text>`).join('');
+  g+=(V.lines||[]).map(l=>{const [c,sw]=PF_LC[l.c]||PF_LC.fuel,p=[];for(let i=0;i<l.p.length;i+=2)p.push(l.p[i]+','+l.p[i+1]);
+    return `<polyline points="${p.join(' ')}" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linejoin="round"${l.d?' stroke-dasharray="7 5"':''}${l.a?` marker-end="url(#pfa-${l.c})"`:''}/>`;}).join('');
+  g+=(V.shapes||[]).map(s=>{
+    const o=s.it&&idx[s.it],x=o&&o.x,sym=(PF_SYM[s.k]||PF_SYM.vessel)(s.x,s.y,s.w,s.h,s),t=s.t||(x&&x.name)||'';
+    const lp=s.lb||'b',tx=lp==='r'?s.x+s.w+6:lp==='l'?s.x-6:s.x+s.w/2,ty=lp==='t'?s.y-7:lp==='b'?s.y+s.h+16:s.y+s.h/2+5,ta=lp==='r'?'start':lp==='l'?'end':'middle';
+    const lab=t?`<text x="${tx}" y="${ty}" text-anchor="${ta}" font-size="13" font-weight="700" fill="${lp==='c'?'#fff':'#1a1a1a'}" paint-order="stroke" stroke="${lp==='c'?'#333':'#dfe2e5'}" stroke-width="3">${esc(t)}</text>`:'';
+    const hn=x&&(x.node||(x.parts||[]).some(p=>p.node)); // 회선이 계통 트리에 없으면(L/C 직결 등) 흰 점 — 가압 여부를 모름
+    const dot=x&&_pfEl(x)?`<circle cx="${s.x+s.w-2}" cy="${s.y+2}" r="7" fill="${!hn?'#fff':_pfOn(x,live)?'#18c247':'#9aa0a6'}" stroke="${hn?'#fff':'#777'}" stroke-width="2"/>`:'';
+    return o?`<g class="pf-sh" onclick="flowItem('${esc(f.id)}',${o.si},${o.ii})"><title>${esc(x.name)}</title>${sym}${dot}${lab}</g>`:`<g>${sym}${lab}</g>`;}).join('');
+  g+=(V.texts||[]).map(t=>`<text x="${t.x}" y="${t.y}" font-size="${t.s||12}" ${t.b?'font-weight="700" ':''}fill="${esc(t.c||'#333')}">${esc(t.t)}</text>`).join('');
+  return `<div class="pf-cv"><svg id="pf-svg" data-w="${V.w}" viewBox="0 0 ${V.w} ${V.h}" style="width:${Math.round(V.w*z)}px"><defs><linearGradient id="pfm" x1="0" x2="1"><stop offset="0" stop-color="#9ca1a8"/><stop offset=".45" stop-color="#eceef0"/><stop offset="1" stop-color="#8d939a"/></linearGradient>${mk}</defs>${g}</svg></div>
+    <div class="muted" style="margin-top:6px">● <span style="color:var(--ok)">초록</span> = 급전 회선 평상시 가압(운전 여부 아님) · ○ 흰 점 = 계통 트리에 회선 없음 · 설비를 누르면 모터 사양·전원 · 손가락으로 밀어 이동${f.src?`<br>근거: ${esc(f.src)}`:''}</div>`;
+}
+function _pfEqs(x){ // 이 박스의 모터들(부속 우선, 같은 id 한 번만)
+  const ids=[...(x.parts||[]).map(p=>p.eq),...(x.eq||[])].filter(Boolean);
+  return [...new Set(ids)].map(id=>(S.equipment||[]).find(e=>e.id===id)).filter(Boolean);
+}
+function _pfSub(x){
+  if(x.sub&&!x.node&&!(x.eq||[]).length)return x.sub;
+  const kw=_pfEqs(x).map(e=>parseFloat(e.ratedKw)).filter(v=>v>0),sum=Math.round(kw.reduce((a,b)=>a+b,0)*10)/10;
+  return (kw.length>1?kw.length+'대 · ':'')+(sum?sum+'kW':'')+(x.sub&&/전원/.test(x.sub)?(sum?' · ':'')+x.sub:'');
+}
+function flowHtml(f,zid){
+  const live=energizedSet([],{normal:true}),zn=id=>((S._zones||[]).find(z=>z.id===id)||{}).name||(f.zoneNames||{})[id]||id; // zoneNames: 설비동 정의에 없는 묶음(FGT동 등)
+  let h=`<div class="muted" style="margin:0 0 6px">박스 위 <span style="color:var(--ok)">초록</span> = 급전 회선 평상시 가압 · 점선 = 전기설비 아님 · 박스를 누르면 모터 사양·전원</div>`,prevZ='',prev=null,no=0;
+  f.steps.forEach((s,si)=>{
+    if(s.zone!==prevZ){const zz=(S._zones||[]).some(z=>z.id===s.zone)&&s.zone!==zid;
+      h+=`<div class="pf-zone${s.zone===zid?' cur':''}" id="pfz-${esc(s.zone)}"${zz?` onclick="zoneOpen('${esc(s.zone)}')"`:''}>🏢 ${esc(zn(s.zone))}${zz?' <span class="muted" style="font-weight:400">› 이 동 열기</span>':''}</div>`;prevZ=s.zone;}
+    else if(prev&&!s.side){const a=prev.items.length,b=s.items.length;
+      h+=a===b?`<div class="pf-arr">${s.items.map(()=>'<div>↓</div>').join('')}</div>`:`<div class="pf-arr mix"><div>▼ ${b<a?a+'→'+b+' 합류':b+'갈래로 나눔'}</div></div>`;}
+    h+=`<div class="pf-st">${s.side?'↳ 곁가지':++no+'.'} ${esc(s.name)}${s.note?' — '+esc(s.note):''}</div><div class="pf-row">`+s.items.map((x,ii)=>
+      `<div class="pf-box${_pfOn(x,live)?' on':''}${_pfEl(x)?'':' np'}" onclick="flowItem('${esc(f.id)}',${si},${ii})">${esc(x.name)}<small>${esc(_pfSub(x))||'&nbsp;'}</small></div>`).join('')+`</div>`;
+    if(!s.side)prev=s;
+  });
+  return h+(f.src?`<div class="muted" style="margin-top:12px">순서 근거: ${esc(f.src)}</div>`:'');
+}
+function flowItem(fid,si,ii){
+  const f=(S._flows||[]).find(x=>x.id===fid),s=f&&f.steps[si],x=s&&s.items[ii];if(!x)return;
+  const live=energizedSet([],{normal:true}),n=x.node&&nodeById(x.node);
+  const seg=nd=>String(nd&&nd.note||'').split(' · ').map(t=>t.trim()).filter(t=>t&&t.length<60&&!/^근거|보정|확인 대기|^v\d+/.test(t));
+  const eqRow=(e,label,node)=>{const ys=Object.keys(e&&e.grades||{}).sort(),y=ys[ys.length-1];
+    return `<div class="item click" onclick="${e?`openEquip('${e.id}')`:`openCard('${node}')`}"><div class="t"><div class="n" style="white-space:normal">${esc(label||e.name)}</div>
+      <div class="d" style="white-space:normal">${e?[e.tagNo,e.ratedKw&&e.ratedKw+'kW',e.voltage&&e.voltage+'kV',e.group].filter(Boolean).map(esc).join(' · ')+(y?` · ${y} 등급 ${esc(e.grades[y])}`:''):esc(seg(nodeById(node)).join(' · '))}</div></div>
+      ${node?`<button class="btn ghost sm" style="padding:3px 6px;min-width:0" title="전원·정전 영향" onclick="event.stopPropagation();openCard('${node}')">🔌</button>`:''}</div>`;};
+  const rows=(x.parts||[]).length?x.parts.map(p=>{const e=p.eq&&(S.equipment||[]).find(q=>q.id===p.eq);return e||p.node?eqRow(e,p.name,p.node):'';}).join('')
+    :_pfEqs(x).map(e=>eqRow(e,'',(x.eq||[]).length===1?x.node:'')).join('');
+  const own=(x.parts||[]).length&&(x.eq||[]).map(id=>(S.equipment||[]).find(e=>e.id===id)).filter(e=>e&&!x.parts.some(p=>p.eq===e.id));
+  openModal(`<h3>${esc(x.name)}</h3>
+    <div class="muted">${esc(f.name)} · ${si+1}단계 ${esc(s.name)}${x.sub?' · '+esc(x.sub):''}</div>
+    ${s.note?`<div class="section-note">${esc(s.note)}</div>`:''}
+    ${n?`<div class="card" style="margin:8px 0;padding:8px 12px"><div style="font-weight:700">${live.has(n.id)?'🟢':'⚪'} 급전 회선 · ${esc((n.name||'').replace(/\s*\(.*$/,'').replace(/^#\d+\s*/,''))}</div>
+      <div class="muted" style="font-size:12px;margin:2px 0 4px">${esc(((pathUp(n.id).find(p=>p.type==='bus')||{}).name||'').replace(/\s*\(.*$/,''))}${n.panelNo?' · '+esc(n.panelNo):''}</div>
+      <div>${seg(n).map(t=>`<span class="badge b-gray" style="margin:2px 4px 2px 0;white-space:normal">${esc(t)}</span>`).join('')}</div></div>`:''}
+    ${own&&own.length?own.map(e=>eqRow(e,e.name+' (본체)',x.node)).join(''):''}
+    ${rows?`<div class="muted" style="margin:10px 0 4px">${(x.parts||[]).length?'부속 설비':'모터'} — 누르면 설비 상세(정비 이력), 🔌는 전원·정전 영향</div>${rows}`:`<div class="empty">${x.node||(x.eq||[]).length?'모터 정보 없음':'전기설비가 아닌 단계입니다'}</div>`}
+    ${rows?'<div class="muted" style="margin-top:8px;font-size:12px">정격전류·회전수·제조사 등 명판 사양은 모터를 눌러 설비 상세의 [정보 수정]에서 넣을 수 있습니다.</div>':''}
+    <div class="row" style="margin-top:12px;gap:6px">${n?`<button class="btn" onclick="openCard('${n.id}')">🔌 전원·정전 영향</button>`:''}<div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
 function _zBrk(n){const [l,s]=_kdBrkLabel(n);return esc(l+(s&&s!=='N.O'?' '+s:''))+(n.normalState==='NO'?' · N.O':' · N.C');}
 function _zRow(k,i){
   const seg=String(k.note||'').split(' · ').filter(x=>x&&!/근거/.test(x));
@@ -2744,14 +2932,14 @@ function vZone(){
   const cards=[];brks.forEach(b=>{const c=logicByTag(b);if(c&&!cards.some(x=>x.c===c))cards.push({c,id:b.id});});
   const seen=new Set(),dw=[];panels.forEach(p=>_nodeSl(p).forEach(no=>{if(!seen.has(no)){seen.add(no);dw.push(_dwgItem(no));}}));
   window._hubItems=dw;dw.forEach(it=>it.grp=dw);window._hubTag=z.name;
-  const tab=S._zoneTab||'table',TABS=[['table','회선'],['chain','전원'],['logic','로직'],['dwg','도면']];
+  const fl=_zoneFlow(z.id),tab=S._zoneTab==='flow'&&!fl?'table':S._zoneTab||'table',TABS=[...(fl?[['flow','흐름']]:[]),['table','회선'],['chain','전원'],['logic','로직'],['dwg','도면']];
   const cardsHtml=cards.map(x=>`<div class="item click" onclick="openLogicCard('${x.id}')"><div class="t"><div class="n" style="white-space:normal">⚡ ${esc(x.c.tag)}</div><div class="d" style="white-space:normal">${esc(x.c.name||'')}</div></div><span class="badge b-blue">열기</span></div>`).join('')||'<div class="empty">이 체인의 로직 카드 없음</div>';
   const dwgHtml=dw.length?`<div class="row" style="gap:6px;margin-bottom:6px"><select id="zd-sel" style="flex:1" onchange="S._zdI=+this.value;S._zdP=0;zoneDwgDraw()">${dw.map((it,i)=>`<option value="${i}"${i===(S._zdI||0)?' selected':''}>${esc((it.no||'').replace(/^602-\d-E-/,''))}${it.d?'':' (PDF 없음)'}</option>`).join('')}</select></div>
       <div class="row" style="gap:6px;margin-bottom:6px;align-items:center"><button class="btn ghost sm" onclick="zoneDwgPg(-1)">◀</button><span id="zd-ind" style="min-width:48px;text-align:center;font-size:13px">-</span><button class="btn ghost sm" onclick="zoneDwgPg(1)">▶</button>
         <button class="btn ghost sm" onclick="zoneDwgZ(0.8)">−</button><button class="btn ghost sm" onclick="zoneDwgZ(1.25)">＋</button><div class="grow"></div><button class="btn sm" onclick="zoneDwgFull()">⛶ 전체화면</button></div>
       <div class="muted" id="zd-msg"></div><div style="overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px;background:#fff"><canvas id="zd-cv" style="display:block"></canvas></div>
       <div class="muted" style="margin-top:6px">${esc(dw[S._zdI||0]&&dw[S._zdI||0].title||'')}</div>`:'<div class="empty">연결된 단선도 표기 없음</div>';
-  const body=tab==='table'?`<div class="row" style="gap:6px;margin:0 0 8px"><input class="grow" placeholder="회선 검색: 번호·태그·설명·kW" value="${esc(S._zq||'')}" oninput="zoneFilter(this.value)"><button class="btn ghost sm" onclick="S._zoneSpare=${hide?'false':'true'};render()">${hide?'SPARE 보이기':'SPARE 숨기기'}</button></div>${tbls}<div class="muted" style="margin-top:4px">줄을 탭하면 설비 카드(전원 경로·연결·로직·정전 영향), ⚡는 로직 카드, 📐는 단선도 PDF가 바로 열립니다.</div>`
+  const body=tab==='flow'?flowTab(z):tab==='table'?`<div class="row" style="gap:6px;margin:0 0 8px"><input class="grow" placeholder="회선 검색: 번호·태그·설명·kW" value="${esc(S._zq||'')}" oninput="zoneFilter(this.value)"><button class="btn ghost sm" onclick="S._zoneSpare=${hide?'false':'true'};render()">${hide?'SPARE 보이기':'SPARE 숨기기'}</button></div>${tbls}<div class="muted" style="margin-top:4px">줄을 탭하면 설비 카드(전원 경로·연결·로직·정전 영향), ⚡는 로직 카드, 📐는 단선도 PDF가 바로 열립니다.</div>`
     :tab==='logic'?cardsHtml:tab==='dwg'?dwgHtml
     :`<div class="muted" style="margin:0 0 6px">■ <span style="color:var(--ok)">가압</span> ■ 정지 · 차단기 칩을 탭하면 개방 시 정전범위</div>${chainHtml}`;
   return `<div class="row" style="gap:6px;margin-bottom:8px;align-items:center"><button class="btn ghost sm" onclick="S._zoneId='';render()">◀ 설비동 목록</button>
@@ -2802,21 +2990,63 @@ function openCard(id){
       ${stateWarnHtml()}
       <button class="btn ghost sm" onclick="closeModal();nodeMenu('${fb.id}')">색칠 단선도·격리 상세</button>`;
   }
+  // v94: 설비 마스터 연결분 — 사양·정비등급·이력, 이 설비에 걸린 할 일·현안·법정검사
+  const eid=[n,load].filter(Boolean).map(x=>x.equipId).find(Boolean),e=eid?S.equipment.find(x=>x.id===eid):null;
+  const c0=logicByTag(n),ref=c0?c0.tag:id,tk=_normTag(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''));
+  _recPush('hubs',{key:ref,label:title},'key');
+  const hit=t=>t.ref===ref||t.ref===id||(tk.length>=4&&_normTag((t.title||'')+' '+(t.note||'')).includes(tk));
+  const nowH=[...(e?S.inspections.filter(x=>x.equipId===e.id&&x.nextDue):[]).map(i=>`<div class="item click" onclick="closeModal();go('insp')"><div class="t"><div class="n" style="white-space:normal">📋 ${esc(i.name)}</div><div class="d">${esc(i.nextDue)}</div></div>${ddayBadge(dday(i.nextDue))}</div>`),
+    ...S.issues.filter(i=>!i.done&&hit(i)).map(i=>`<div class="item click" onclick="editIssue('${i.id}')"><div class="t"><div class="n" style="white-space:normal">🔧 ${esc(i.title)}</div>${i.due?`<div class="d">목표 ${esc(i.due)}</div>`:''}</div></div>`),
+    ...S.todos.filter(t=>!t.done&&hit(t)).map(t=>`<div class="item click" onclick="editTodo('${t.id}','${t.date}')"><div class="t"><div class="n" style="white-space:normal">📌 ${esc(t.title)}</div><div class="d">${esc(t.date)}</div></div></div>`)];
+  const kv=(k,v)=>v?`<span class="k">${k}</span><span>${esc(v)}</span>`:'',yrs=e?Object.keys(e.grades||{}).sort():[];
+  const specH=e?`<div class="kv" style="margin-top:6px">${kv('Tag',e.tagNo)}${kv('설비명',e.name)}${kv('전압/정격',[e.voltage&&e.voltage+'kV',e.ratedKw&&e.ratedKw+'kW'].filter(Boolean).join(' / '))}${kv('위치',e.location)}${kv('용도',e.usage)}${kv('예비품',e.spare)}${kv('PIMS',e.pims)}${kv('비고',e.remark)}</div>
+    ${yrs.length?`<div class="muted">정비등급</div><div class="grades">${yrs.map(y=>`<span>${y}: ${esc(e.grades[y])}</span>`).join('')}</div>`:''}`:'';
+  const hist=e?[...S.faults.filter(f=>f.equipId===e.id).map(f=>({d:f.date,t:'🔧 '+(f.content||''),s:'원인 '+(f.cause||'-')+' / 조치 '+(f.action||'-')})),
+    ...S.notes.filter(x=>x.equipId===e.id).map(x=>({d:x.date,t:'📝 '+(x.content||''),s:x.tag||''})),
+    ...S.inspections.filter(x=>x.equipId===e.id).flatMap(x=>(x.history||[]).map(h=>({d:h.date,t:'📋 '+x.name+(h.result?' · '+h.result:''),s:h.note||''})))].sort((a,b)=>(b.d||'').localeCompare(a.d||'')):[];
+  const histH=e?hist.slice(0,15).map(h=>`<div class="item"><div class="t"><div class="n" style="white-space:normal">${esc(h.t)}</div><div class="d">${esc(h.d||'')}${h.s?' · '+esc(h.s):''}</div></div></div>`).join('')
+    +`<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn ghost sm" onclick="editFault('','${e.id}')">＋ 고장 기록</button><button class="btn ghost sm" onclick="editNote('','${e.id}')">＋ 메모</button><button class="btn ghost sm" onclick="openEquip('${e.id}',1)">설비 상세 (사진·측정·수정)</button></div>`:'';
   // 도면: 근거 단선도 (펼침)
   const items=_nodeSl(n).map(no=>_dwgItem(no));window._hubItems=items;items.forEach(it=>it.grp=items);window._hubTag=title;
   const dwgH=items.map((it,i)=>`<div class="item click" onclick="hubGo(${i})"><div class="t"><div class="n" style="white-space:normal">${esc((it.no||'').replace(/^602-\d-E-/,''))}</div><div class="d" style="white-space:normal">${esc(it.title||'')}</div></div><span class="badge ${it.d?'b-blue':'b-gray'}">${it.d?'열기':'PDF 없음'}</span></div>`).join('');
-  openModal(`<h3>${esc(title)}</h3>
-    <div class="muted">${zp?'🏢 '+esc(zp.z.name)+' › '+esc((zp.p.name||'').replace(/\s*\(.*$/,''))+' · ':''}${NODE_TYPES[n.type][1]}${n.voltage?' · '+esc(n.voltage):''}${load&&load!==n?' · '+esc(n.name):''}</div>
-    ${sec('⚡ 전원 경로',pathH,false,pathSub)}
-    ${sec('🔗 연결 설비 <span class="cnt">'+(kids.length+ties.length)+'</span>',conH,true)}
-    ${sec('🛡 보호 정보',protH+noteFull,true)}
-    ${sec('🧠 동작 로직',logicH,true)}
-    ${sec('🔌 정전 영향',impH,true)}
-    ${sec('📐 도면 <span class="cnt">'+items.length+'</span>',dwgH,false)}
-    <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+  const short=_kdShort(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,'');
+  if(fieldOn()){ // v97 현장 모드: 끌 차단기 → 정전 영향 → 전원 경로 → 이력·현장 문서 → 도면 → 사양. 로직·연결 설비·분석 버튼은 분석 메뉴에서
+    const eqN=o?o.dead.filter(d=>d.type!=='breaker'&&d.type!=='source').length:0;
+    const fds=tk.length>=4?S.notes.filter(x=>x.kind==='fdoc'&&_normTag((x.v&&x.v.place)||'').includes(tk)):[];
+    const fdH=fds.map(d=>`<div class="item click" onclick="openFdoc('${d.id}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(d.tag)} · ${esc(d.content)}</div><div class="d">${esc(d.date)}</div></div></div>`).join('');
+    openModal(`<h3>${esc(title)}</h3>
+    <div class="muted">${zp?'🏢 '+esc(zp.z.name)+' · ':''}${NODE_TYPES[n.type][1]}${n.voltage?' · '+esc(n.voltage):''}${e&&e.tagNo?' · '+esc(e.tagNo):''} · ${live.has(id)?'🟢 가압':'⚪ 무전압'}</div>
+    ${fb?`<div class="path-box" style="margin-top:8px">🔒 끌 차단기 <b>${esc(_kdShort((fb.name||'').replace(/\s*\(.*$/,''),30))}</b> <span class="muted">${fb.normalState==='NO'?'N.O':'N.C'}</span><br>
+      ⚡ 끄면 정전 <b>${eqN}</b>곳${o.auto.length?` · <span style="color:var(--danger)">⚠️ 자동투입 ${o.auto.length}</span>`:''}</div>`:''}
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
       ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
-      <button class="btn ghost sm" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
-      <button class="btn ghost sm" onclick="nodeMenu('${id}')">⚙ 기존 상세·편집</button>
+      <button class="btn ghost sm" onclick="fdFor('${esc(short)}')">＋ 현장 문서</button>
+      <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(short)}')">＋ 할 일</button></div>
+    ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
+    ${sec('🔌 정전 영향',impH,false)}
+    ${sec('⚡ 전원 경로',pathH,false,pathSub)}
+    ${sec('📝 이력·현장 문서 <span class="cnt">'+(hist.length+fds.length)+'</span>',fdH+histH||'<div class="muted">기록 없음</div>',true)}
+    ${sec('📐 도면 <span class="cnt">'+items.length+'</span>',dwgH,items.length<=3)}
+    ${sec('🛡 보호·사양',protH+noteFull+specH,false)}
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+    return;
+  }
+  openModal(`<h3>${esc(title)}</h3>
+    <div class="muted">${zp?'🏢 '+esc(zp.z.name)+' › '+esc((zp.p.name||'').replace(/\s*\(.*$/,''))+' · ':''}${NODE_TYPES[n.type][1]}${n.voltage?' · '+esc(n.voltage):''}${load&&load!==n?' · '+esc(n.name):''}${e&&e.tagNo?' · '+esc(e.tagNo):''} · ${live.has(id)?'🟢 가압':'⚪ 무전압'}</div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+      ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
+      <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(_kdShort(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''))}')">＋ 할 일</button>
+      <button class="btn ghost sm" onclick="closeModal();openHub('${id}')">📐 도면·로직</button></div>
+    ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
+    ${sec('🔌 정전 영향',impH,true)}
+    ${sec('⚡ 전원 경로',pathH,false,pathSub)}
+    ${sec('🛡 보호·사양',protH+noteFull+specH,true)}
+    ${sec('🧠 동작 로직',logicH,true)}
+    ${sec('📐 도면 <span class="cnt">'+items.length+'</span>',dwgH,false)}
+    ${sec('📝 이력 <span class="cnt">'+hist.length+'</span>',histH,false)}
+    ${sec('🔗 연결 설비 <span class="cnt">'+(kids.length+ties.length)+'</span>',conH,false)}
+    <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost sm" onclick="nodeMenu('${id}')">🔬 분석 상세 (색칠 단선도·격리·편집)</button>
       <div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
 }
 /* 설비동 ④ 도면: 목록 없이 화면 안에서 PDF 쪽을 바로 그린다(pdf.js). ＋/−로 확대해 가로로 밀어 보고, 전체화면은 기존 뷰어 */
@@ -3237,14 +3467,22 @@ function vMore(){
     ${row("moreHwpxSheet()",'📄','hwpx 양식 생성','')}
   </div>
   <div class="card"><h2>안전·법령</h2>
-    ${row("moreSafeSheet()",'🛡️','안전 서류함','')}
+    ${row("go('work')",'🔒','작업 서류·LOTO (작업 탭)','')}
     ${row("go('law')",'📖','법령 내비게이터',cnt('laws'))}
     ${row("moreFaultSheet()",'🔍','고장모드 라이브러리',FAULTMODE_LIB.length)}
   </div>
-  <div class="card"><h2>보안·학습</h2>
-    ${row("moreLogicSheet()",'⚡','로직 카드 (투입조건·트립·회선)',cnt('logic'))}
-    ${row("go('vault')",'🔐','보안 금고',vb)}
+  ${fieldOn()?`<div class="card">${row('setFieldMode(false)','🔬','분석 메뉴 보기 <span class="muted" style="font-weight:400;font-size:12px">계통 트리·단선도·도면·로직 — 현장 모드 끄기</span>','')}</div>`:`
+  <div class="card"><h2>🔬 분석 <span class="muted" style="font-weight:400;font-size:12px">예전 계통·설비·도면 탭</span></h2>
+    ${document.documentElement.classList.contains('pc')?'':row('setFieldMode(true)','📱','현장 모드로 (분석 메뉴 숨기기)','')}
+    ${row("S._treeSubTab='path';go('tree')",'🔌','계통 트리 · 전원 경로 · 설비동',cnt('tree'))}
+    ${row("S._treeSubTab='diagram';S._treeAdv=true;_tdNeedFit=true;go('tree')",'▤','KEY 단선도','')}
+    ${row("go('equip')",'📋','설비 마스터 목록 · 계통도',cnt('equipment'))}
+    ${row("go('docfind')",'📐','도면 찾기 · 둘러보기',cnt('docs'))}
+    ${row("moreLogicSheet()",'⚡','로직 카드 목록 (투입조건·트립·회선)',cnt('logic'))}
     ${row("S._quiz=null;S._qi=0;S._qok=0;S._qrv=0;go('study')",'🎴','계통 학습','')}
+  </div>`}
+  <div class="card"><h2>보안</h2>
+    ${row("go('vault')",'🔐','보안 금고',vb)}
   </div>
   <div class="card"><h2>데이터·설정</h2>
     ${row("moreDataSheet()",'💾','백업·복원·동기화','')}
@@ -3283,15 +3521,6 @@ function moreHwpxSheet(){
     <button class="btn ghost sm full" onclick="hwpxTokenGuide()">① 토큰 안내 보기</button>
     <button class="btn ghost sm full" onclick="registerHwpxTpl()">② hwpx 양식 등록/교체</button>
     <button class="btn full" onclick="closeModal();genHwpxMonthly()">③ 월간 점검정비 보고서 생성 (.hwpx)</button>
-    <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
-}
-function moreSafeSheet(){
-  openModal(`<h3>🛡️ 안전 서류함</h3>
-    <div class="muted">현장 서류 초안 생성 → 복사. 계통 트리 입력분에서 차단범위 자동 삽입.</div>
-    <button class="btn full" onclick="closeModal();docSafetyDay()">🗓️ 안전점검의 날 점검표</button>
-    <button class="btn full" onclick="closeModal();docLoto()">⚡ 정전작업 절차서(작업계획서)</button>
-    <button class="btn full" onclick="closeModal();openPermit()">🪪 작업허가서 (JSA 위험성평가)</button>
-    ${permitHistoryHtml()}
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
 function moreFaultSheet(){
@@ -4667,15 +4896,18 @@ function _photoBack(refType,refId){
   else if(refType==='checklog')openCheckResult(refId);
   else if(refType==='inspection')openInsp(refId);
   else if(refType==='note'){const n=S.notes.find(x=>x.id===refId);editNote(refId,n?n.equipId:'');}
+  else if(refType==='fdoc')openFdoc(refId);
 }
-function addPhoto(refType,refId){
+function addPhoto(refType,refId,multi){ // multi: 카메라 고정 없이 사진첩에서 여러 장
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
-  try{inp.capture='environment';}catch(e){}
-  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;
-    _downscale(f,1600,0.8,async(dataUrl)=>{
+  if(multi)inp.multiple=true;else try{inp.capture='environment';}catch(e){}
+  inp.onchange=async()=>{const fs=[...(inp.files||[])];if(!fs.length)return;
+    for(const f of fs){
+      const dataUrl=await new Promise(r=>_downscale(f,1600,0.8,r));
       const rec={id:'PH'+uid(),refType,refId,dataUrl,caption:'',added:todayStr()};
-      await dbPut('photos',rec);S.photos.push(rec);toast('사진 저장(기기 로컬)');_photoBack(refType,refId);
-    });};
+      await dbPut('photos',rec);S.photos.push(rec);
+    }
+    toast('사진 '+fs.length+'장 저장(기기 로컬)');_photoBack(refType,refId);};
   inp.click();
 }
 async function delPhoto(id){
@@ -4688,8 +4920,263 @@ function photoStrip(refType,refId){
   const ph=S.photos.filter(p=>p.refType===refType&&p.refId===refId);
   return `<div class="photostrip">
     ${ph.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')">
-      <button class="thx" onclick="delPhoto('${p.id}')">✕</button></div>`).join('')}
+      <button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}
     <button class="addph" onclick="addPhoto('${refType}','${refId}')">＋<br>사진</button></div>`;
+}
+
+/* ── 현장 문서(v96): 사진·내용 입력 → A4 미리보기 → PDF(브라우저 인쇄 'PDF로 저장')·공유.
+   notes 스토어에 kind:'fdoc'로 저장(DB_VER 그대로·백업 포함·Firebase 제외), 사진은 photos(refType 'fdoc', caption=사진 설명).
+   필드 [키, 이름, 형식(d 날짜·t 한 줄·a 여러 줄·s 단계), 안내] — 양식을 바꾸려면 여기만 고친다 ── */
+const FDOC_TYPES={
+  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d'],['place','설비·장소','t','예: 2층 전기실 MCC-1'],['writer','점검자','t'],['kind','점검 구분','t','예: 월간 점검, 순회 점검, 특별 점검'],
+    ['items','점검 내용·결과','a','한 줄에 한 항목 (예: 절연저항 500MΩ 양호)'],['issue','이상·특이사항','a'],['action','조치 내용·향후 계획','a']]},
+  man:{name:'조치매뉴얼',short:'조치매뉴얼',ic:'📘',f:[['date','작성일','d'],['place','대상 설비','t','예: ACB-101'],['writer','작성자','t'],['purpose','목적·적용 상황','a','예: MCC 차단기 트립 시 복구'],
+    ['prep','준비물(공구·보호구)','a'],['safety','안전조치','a','예: LOTO, 검전, 접지'],['steps','작업 순서','s','한 줄에 한 단계 — 번호는 자동'],['caution','주의사항','a']]},
+  photo:{name:'사진대장',short:'사진대장',ic:'📷',f:[['date','일자','d'],['place','작업명·장소','t'],['writer','작성자','t'],['memo','개요','a']]}
+};
+const fdPh=id=>S.photos.filter(p=>p.refType==='fdoc'&&p.refId===id).sort((a,b)=>(a.ord??1e9)-(b.ord??1e9));
+function fdocCard(){
+  const n=S.notes.filter(x=>x.kind==='fdoc').length;
+  return `<div class="card"><h2>📄 현장 문서 <span class="cnt">${n}건</span></h2>
+    <div class="muted">사진·내용만 넣으면 A4 문서로 → PDF 저장·공유. 이 기기에만 보관(서버 없음).</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
+    ${n?`<input id="fd-q" placeholder="문서함 검색 (설비·내용)" value="${esc(S._fdq||'')}" oninput="S._fdq=this.value;$('#fd-list').innerHTML=fdListHtml()">`:''}
+    <div id="fd-list">${fdListHtml()}</div></div>`;
+}
+function fdListHtml(){
+  const q=(S._fdq||'').trim().toLowerCase();
+  let all=S.notes.filter(x=>x.kind==='fdoc').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id.localeCompare(a.id));
+  if(q)all=all.filter(d=>(d.tag+' '+Object.values(d.v||{}).join(' ')+' '+fdPh(d.id).map(p=>p.caption).join(' ')).toLowerCase().includes(q));
+  const shown=all.slice(0,q?50:5);
+  return shown.map(d=>`<div class="item click" onclick="openFdoc('${d.id}')"><div class="t"><div class="n">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
+    <div class="d">${esc(d.date)} · ${esc(d.tag)}${fdPh(d.id).length?' · 사진 '+fdPh(d.id).length:''}</div></div></div>`).join('')
+    +(all.length>shown.length?`<div class="muted">최근 ${shown.length}건 — 검색하면 전체에서 찾습니다 (더보기 › 업무 메모에도 있음)</div>`:'')
+    +(q&&!all.length?'<div class="empty">찾는 문서 없음</div>':'');
+}
+function fdFor(place){ // 설비 카드 '＋ 현장 문서' — 종류를 고르면 설비·장소 칸이 채워진 채로 열림
+  openModal(`<h3>📄 ${esc(place)} — 현장 문서</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}','${esc(place)}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
+    <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
+}
+function openFdoc(id,type,place){
+  const d=id?S.notes.find(x=>x.id===id):null;if(id&&!d)return;
+  type=d?d.type:type;const T=FDOC_TYPES[type],v=d?d.v:{date:todayStr(),place:place||''};
+  S._fdoc={id:d?d.id:'',type};
+  openModal(`<h3>${T.ic} ${T.name}${d?'':' 작성'}</h3>
+    ${T.f.map(([k,l,t,ph])=>`<label>${l}</label>${t==='a'||t==='s'
+      ?`<textarea id="fd-${k}" rows="${t==='s'?5:3}" placeholder="${esc(ph||'')}">${esc(v[k]||'')}</textarea>`
+      :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`).join('')}
+    <label>사진 <span class="muted" style="font-weight:400">— 사진을 누르면 동그라미·화살표·글자 표시, 밑 칸에 설명</span></label>
+    <div class="photostrip">${fdPh(d?d.id:'-').map((p,i,a)=>`<div style="width:120px"><div class="thumb" style="width:120px;height:90px"><img src="${p.dataUrl}" onclick="fdEdit('${p.id}')">
+      <button class="thx" onclick="fdPhoto('${p.id}')">✕</button><span class="pe-no">${i+1}</span></div>
+      <input id="fdc-${p.id}" value="${esc(p.caption)}" placeholder="설명" style="margin-top:4px;padding:4px 6px;font-size:12px">
+      <div class="row" style="gap:4px;margin-top:4px"><button class="btn ghost sm" style="padding:3px 0;flex:1" ${i?'':'disabled'} onclick="fdMove('${p.id}',-1)">◀</button>
+        <button class="btn ghost sm" style="padding:3px 0;flex:1" onclick="fdEdit('${p.id}')">✏️</button>
+        <button class="btn ghost sm" style="padding:3px 0;flex:1" ${i<a.length-1?'':'disabled'} onclick="fdMove('${p.id}',1)">▶</button></div></div>`).join('')}
+      <button class="addph" style="width:120px;height:90px" onclick="fdPhoto()">＋<br>사진(여러 장)</button></div>
+    <div class="row" style="margin-top:12px;gap:6px">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<div class="grow"></div>
+      <button class="btn ghost sm" onclick="fdSave().then(()=>openFdoc(S._fdoc.id))">임시저장</button>
+      <button class="btn sm" onclick="fdPreview()">미리보기·PDF</button></div>`);
+}
+async function fdSave(quiet){
+  const {id,type}=S._fdoc,T=FDOC_TYPES[type],v={};
+  T.f.forEach(([k])=>{const el=document.getElementById('fd-'+k);if(el)v[k]=el.value.trim();});
+  let d=id&&S.notes.find(x=>x.id===id);
+  if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
+  // date·tag·content는 업무 메모 목록(noteListHtml)이 그대로 쓰는 필드
+  Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:(v.place||'(제목 없음)')+(v.kind?' · '+v.kind:'')});
+  await dbPut('notes',d);
+  for(const p of fdPh(d.id)){const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;await dbPut('photos',p);}}
+  if(S.view==='work')render();
+  if(!quiet)toast('저장됨 — 작업 탭 현장 문서함');
+  return d;
+}
+async function fdPhoto(phId){ // 사진 추가·삭제 전에 입력 중인 내용을 먼저 저장(사진 처리 후 창을 다시 그리므로)
+  const d=await fdSave(true);
+  if(phId)delPhoto(phId);else addPhoto('fdoc',d.id,true);
+}
+async function fdDel(){
+  const id=S._fdoc.id;if(!id||!(await confirmModal('이 문서와 사진을 삭제할까요?')))return;
+  for(const p of fdPh(id))await dbDel('photos',p.id);
+  S.photos=S.photos.filter(p=>!(p.refType==='fdoc'&&p.refId===id));
+  await dbDel('notes',id);S.notes=S.notes.filter(x=>x.id!==id);closeModal();render();toast('삭제됨');
+}
+const fdSteps=s=>s.split('\n').map(x=>x.trim().replace(/^\d+[.)]\s*/,'')).filter(Boolean); // 작업 순서: 적어 넣은 번호는 떼고 다시 매김
+function fdHtml(d){
+  const T=FDOC_TYPES[d.type],v=d.v||{},ph=fdPh(d.id);
+  const head=T.f.filter(f=>f[2]==='d'||f[2]==='t'),body=T.f.filter(f=>(f[2]==='a'||f[2]==='s')&&v[f[0]]);
+  const rows=[];for(let i=0;i<head.length;i+=2)rows.push(head.slice(i,i+2));
+  return `<div class="fd-page"><h1>${T.name}</h1>
+    <table>${rows.map(r=>`<tr>${r.map(([k,l,t])=>`<th>${l}</th><td${r.length<2?' colspan="3"':''}${t==='d'?' style="white-space:nowrap"':''}>${esc(v[k]||'')}</td>`).join('')}</tr>`).join('')}</table>
+    ${body.map(([k,l,t])=>`<h4>${l}</h4>${t==='s'
+      ?`<ol class="tx">${fdSteps(v[k]).map(s=>`<li>${esc(s)}</li>`).join('')}</ol>`
+      :`<div class="tx">${esc(v[k])}</div>`}`).join('')}
+    ${ph.length?`<h4>${d.type==='photo'?'사진':'현장 사진'}</h4><div class="fd-ph">${ph.map((p,i)=>`<figure><img src="${p.dataUrl}"><figcaption>${i+1}. ${esc(p.caption||'')}</figcaption></figure>`).join('')}</div>`:''}
+    <div class="fd-foot">작성 ${esc(v.date||d.date)}${v.writer?' · '+esc(v.writer):''}</div></div>`;
+}
+async function fdPreview(){
+  const d=await fdSave(true);
+  openModal(`<h3>👁️ 미리보기 <span class="cnt">A4</span></h3>${fdHtml(d)}
+    <div class="muted" style="margin-top:8px">PDF 저장 = 인쇄 창에서 프린터를 'PDF로 저장'으로. 공유 = 내용(글)+사진을 카톡·메일로.</div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="openFdoc('${d.id}')">← 수정</button><div class="grow"></div>
+      <button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdPrint()">🖨️ PDF 저장</button></div>`);
+}
+function fdPrint(){
+  const d=S.notes.find(x=>x.id===S._fdoc.id);if(!d)return;
+  const el=document.createElement('div');el.id='fd-print';el.innerHTML=fdHtml(d);document.body.appendChild(el);
+  const t=document.title;document.title=d.tag+'_'+d.content.replace(/[\\/:*?"<>|]/g,'')+'_'+d.date; // PDF 파일 이름
+  addEventListener('afterprint',()=>{el.remove();document.title=t;},{once:true});
+  setTimeout(()=>window.print(),300); // 사진 그릴 시간
+}
+function fdText(d){
+  const T=FDOC_TYPES[d.type],v=d.v||{};
+  return `[${T.name}]\n`+T.f.filter(([k])=>v[k]).map(([k,l,t])=>t==='s'?`\n■ ${l}\n${fdSteps(v[k]).map((s,i)=>`${i+1}. ${s}`).join('\n')}`:t==='a'?`\n■ ${l}\n${v[k]}`:`${l}: ${v[k]}`).join('\n')
+    +fdPh(d.id).map((p,i)=>i?`\n${i+1}. ${p.caption||''}`:`\n\n■ 사진\n1. ${p.caption||''}`).join('');
+}
+async function fdShare(){
+  const d=S.notes.find(x=>x.id===S._fdoc.id);if(!d)return;
+  const text=fdText(d),data={title:d.tag+' — '+d.content,text};
+  try{const files=await Promise.all(fdPh(d.id).map(async(p,i)=>new File([await (await fetch(p.dataUrl)).blob()],`사진${i+1}.jpg`,{type:'image/jpeg'})));
+    if(files.length&&navigator.canShare&&navigator.canShare({files}))data.files=files;}catch(e){}
+  if(navigator.share){try{await navigator.share(data);}catch(e){}return;} // 사용자가 취소해도 조용히
+  try{await navigator.clipboard.writeText(text);toast('공유 기능이 없는 브라우저 — 내용을 복사했습니다');}catch(e){toast('공유·복사를 지원하지 않는 브라우저입니다');}
+}
+async function fdEdit(phId){await fdSave(true);photoEdit(phId);} // 입력 중인 내용을 먼저 저장(편집 후 문서 창을 다시 그림)
+async function fdMove(phId,d){ // 사진 순서 바꾸기 — photos.ord(없으면 넣은 순서)
+  const doc=await fdSave(true),ph=fdPh(doc.id),i=ph.findIndex(p=>p.id===phId),j=i+d;
+  if(i<0||j<0||j>=ph.length)return;
+  [ph[i],ph[j]]=[ph[j],ph[i]];
+  for(const [k,p] of ph.entries())if(p.ord!==k){p.ord=k;await dbPut('photos',p);}
+  openFdoc(doc.id);
+}
+
+/* ── 사진 편집기(v98): 펜·형광펜·네모·동그라미·선·화살표·텍스트·번호(①②③)·자르기·회전, 5색, 되돌리기·전체 지우기.
+   그린 것은 ops 목록으로 두고 매번 다시 그림(되돌리기 = 목록에서 빼기). 자르기·회전은 그때까지를 새 바탕으로 굳힘(hist — 되돌리기로 이전 바탕).
+   저장하면 photos.dataUrl을 바꾸고 맨 처음 원본은 p.orig에 한 번만 보관 → [원본] 버튼. 선 굵기·글자 크기는 사진 크기에 비례 ── */
+const PE_TOOLS=[['pen','펜'],['hl','형광펜'],['rect','네모'],['circle','동그라미'],['line','선'],['arrow','화살표'],['text','텍스트'],['num','번호'],['crop','자르기'],['rot','↻ 회전']];
+const PE_COLORS=['#e53935','#fdd835','#43a047','#1e88e5','#111111'];
+let _pe=null;
+function photoEdit(id){
+  const p=S.photos.find(x=>x.id===id);if(!p)return;
+  const img=new Image();
+  img.onload=()=>{_pe={p,img,ops:[],hist:[],tool:'circle',color:PE_COLORS[0],fs:1,cur:null,txt:null,crop:null};peOpen();};
+  img.src=p.dataUrl;
+}
+function peOpen(){
+  document.getElementById('pe')?.remove();
+  const el=document.createElement('div');el.id='pe';
+  el.innerHTML=`<div class="pe-hd"><button class="btn ghost sm" onclick="peClose()">취소</button><b>사진 편집</b>
+      ${_pe.p.orig?'<button class="btn ghost sm" onclick="peOrig()">원본</button>':''}<button class="btn sm" onclick="peSave()">저장</button></div>
+    <div class="pe-wrap"><canvas id="pe-cv"></canvas></div><div class="pe-bar" id="pe-bar"></div>`;
+  document.body.appendChild(el);
+  const cv=document.getElementById('pe-cv');
+  cv.onpointerdown=peDown;cv.onpointermove=peMove;cv.onpointerup=cv.onpointercancel=peUp;
+  peBar();peFit();
+}
+addEventListener('resize',()=>{if(_pe)peFit();});
+function peFit(){
+  const cv=document.getElementById('pe-cv');if(!cv)return;
+  const im=_pe.img,w=cv.parentElement;cv.width=im.naturalWidth;cv.height=im.naturalHeight;
+  const k=Math.min((w.clientWidth-8)/cv.width,(w.clientHeight-8)/cv.height);
+  cv.style.width=cv.width*k+'px';cv.style.height=cv.height*k+'px';peDraw();
+}
+function peBar(){
+  const b=document.getElementById('pe-bar');if(!b)return;const P=_pe;
+  const tip={text:'글자 넣을 곳을 누르세요',num:'누를 때마다 ① ② ③ …',crop:'남길 부분을 손가락으로 끌어 고르세요'}[P.tool]||'손가락으로 사진 위에 그리세요';
+  b.innerHTML=`<div class="pe-tools">${PE_TOOLS.map(([k,l])=>`<button class="btn sm${P.tool===k?'':' ghost'}" onclick="peTool('${k}')">${l}</button>`).join('')}</div>
+    <div class="pe-colors">${PE_COLORS.map(c=>`<button class="pe-c${P.color===c?' on':''}" style="background:${c}" onclick="peColor('${c}')"></button>`).join('')}</div>
+    ${P.txt?`<div class="row"><input id="pe-tx" value="${esc(P.txt.txt)}" placeholder="표시할 글자" oninput="_pe.txt.txt=this.value;peDraw()" style="flex:1;margin:0">
+        <button class="btn ghost sm" onclick="peFs(-1)">A-</button><button class="btn ghost sm" onclick="peFs(1)">A+</button></div>
+      <div class="row" style="margin-top:6px"><button class="btn ghost sm grow" onclick="_pe.txt=null;peBar();peDraw()">취소</button><button class="btn sm grow" onclick="peTxtOk()">적용</button></div>`
+    :P.crop?`<div class="row"><button class="btn ghost sm grow" onclick="_pe.crop=null;peBar();peDraw()">취소</button><button class="btn sm grow" onclick="peCropOk()">자르기 적용</button></div>`
+    :`<div class="row"><button class="btn ghost sm grow" onclick="peUndo()">되돌리기</button><button class="btn ghost sm grow" onclick="_pe.ops=[];peDraw()">전체 지우기</button></div>
+      <div class="pe-tip">${tip}</div>`}`;
+}
+function peTool(k){
+  if(k==='rot')return peRotate();
+  Object.assign(_pe,{tool:k,txt:null,crop:null});peBar();peDraw();
+}
+function peColor(c){_pe.color=c;if(_pe.txt)_pe.txt.c=c;peBar();peDraw();}
+function peFs(d){_pe.fs=Math.max(-2,Math.min(6,_pe.fs+d));if(_pe.txt)_pe.txt.s=_pe.fs;peDraw();}
+function peTxtOk(){const t=_pe.txt;if(t&&t.txt.trim())_pe.ops.push(t);_pe.txt=null;peBar();peDraw();}
+function pePt(e){const cv=e.currentTarget,r=cv.getBoundingClientRect();return [(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];}
+const peW=()=>Math.max(3,Math.round(Math.max(_pe.img.naturalWidth,_pe.img.naturalHeight)/220));
+const peBox=o=>[Math.min(o.x1,o.x2),Math.min(o.y1,o.y2),Math.abs(o.x2-o.x1),Math.abs(o.y2-o.y1)];
+function peDown(e){
+  const P=_pe,[x,y]=pePt(e);
+  if(P.tool==='text'){ // 누른 곳에 글자 자리 — 이미 쓰는 중이면 자리만 옮김
+    if(P.txt)Object.assign(P.txt,{x,y});else{P.txt={t:'text',c:P.color,s:P.fs,x,y,txt:''};peBar();setTimeout(()=>document.getElementById('pe-tx')?.focus(),0);}
+    return peDraw();
+  }
+  if(P.tool==='num'){P.ops.push({t:'num',c:P.color,x,y,n:P.ops.filter(o=>o.t==='num').length+1});return peDraw();}
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} // 손가락이 사진 밖으로 나가도 계속 그리게
+  P.cur=P.tool==='pen'||P.tool==='hl'?{t:P.tool,c:P.color,pts:[[x,y]]}:{t:P.tool,c:P.color,x1:x,y1:y,x2:x,y2:y};
+}
+function peMove(e){
+  const o=_pe&&_pe.cur;if(!o)return;const [x,y]=pePt(e);
+  if(o.pts)o.pts.push([x,y]);else{o.x2=x;o.y2=y;}
+  peDraw();
+}
+function peUp(){
+  const P=_pe,o=P&&P.cur;if(!o)return;P.cur=null;
+  const big=o.pts||Math.hypot(o.x2-o.x1,o.y2-o.y1)>peW()*3; // 그냥 톡 누른 건 무시
+  if(o.t==='crop'){if(big)P.crop=o;peBar();}else if(big)P.ops.push(o);
+  peDraw();
+}
+function peOp(g,o){
+  const w=peW();g.save();g.strokeStyle=g.fillStyle=o.c;g.lineWidth=w;g.lineCap=g.lineJoin='round';
+  if(o.pts){
+    if(o.t==='hl'){g.globalAlpha=.35;g.lineWidth=w*5;g.lineCap='butt';}
+    g.beginPath();o.pts.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));if(o.pts.length===1)g.lineTo(o.pts[0][0]+.1,o.pts[0][1]);g.stroke();
+  }else if(o.t==='rect'){const [x,y,bw,bh]=peBox(o);g.strokeRect(x,y,bw,bh);}
+  else if(o.t==='circle'){const [x,y,bw,bh]=peBox(o);g.beginPath();g.ellipse(x+bw/2,y+bh/2,bw/2+.1,bh/2+.1,0,0,Math.PI*2);g.stroke();}
+  else if(o.t==='line'||o.t==='arrow'){
+    g.beginPath();g.moveTo(o.x1,o.y1);g.lineTo(o.x2,o.y2);g.stroke();
+    if(o.t==='arrow'){const a=Math.atan2(o.y2-o.y1,o.x2-o.x1),L=w*5;g.beginPath();g.moveTo(o.x2,o.y2);
+      g.lineTo(o.x2-L*Math.cos(a-.45),o.y2-L*Math.sin(a-.45));g.lineTo(o.x2-L*Math.cos(a+.45),o.y2-L*Math.sin(a+.45));g.closePath();g.fill();}
+  }else if(o.t==='text'){ // 흰 테두리 글자 — 어느 바탕에서도 보이게
+    const fs=Math.round(w*10*Math.pow(1.25,o.s-1));g.font=`bold ${fs}px 'Malgun Gothic',sans-serif`;g.textBaseline='middle';
+    g.lineWidth=fs/5;g.strokeStyle='#fff';g.strokeText(o.txt||'글자',o.x,o.y);g.globalAlpha=o.txt?1:.4;g.fillText(o.txt||'글자',o.x,o.y);
+  }else if(o.t==='num'){
+    const r=w*7;g.beginPath();g.arc(o.x,o.y,r,0,Math.PI*2);g.fillStyle='#fff';g.fill();g.stroke();
+    g.fillStyle=o.c;g.font=`bold ${Math.round(r*1.25)}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(o.n,o.x,o.y+r*.06);
+  }
+  g.restore();
+}
+function peDraw(){
+  const cv=document.getElementById('pe-cv');if(!cv||!_pe)return;const g=cv.getContext('2d'),P=_pe,W=cv.width,H=cv.height;
+  g.drawImage(P.img,0,0);
+  [...P.ops,P.cur&&P.cur.t!=='crop'?P.cur:null,P.txt].forEach(o=>o&&peOp(g,o));
+  const c=P.crop||(P.cur&&P.cur.t==='crop'?P.cur:null);
+  if(c){const [x,y,bw,bh]=peBox(c);g.fillStyle='rgba(0,0,0,.55)';
+    g.fillRect(0,0,W,y);g.fillRect(0,y+bh,W,H-y-bh);g.fillRect(0,y,x,bh);g.fillRect(x+bw,y,W-x-bw,bh);
+    g.save();g.setLineDash([peW()*3,peW()*2]);g.lineWidth=peW();g.strokeStyle='#fff';g.strokeRect(x,y,bw,bh);g.restore();}
+}
+function peBake(w,h,draw){ // 지금까지(바탕+그림)를 새 바탕으로 굳힘 — 자르기·회전
+  const P=_pe,src=document.getElementById('pe-cv');P.crop=null;P.txt=null;peDraw();
+  const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),src);
+  const img=new Image();img.onload=()=>{P.hist.push({img:P.img,ops:P.ops});P.img=img;P.ops=[];peBar();peFit();};img.src=c.toDataURL('image/jpeg',.92);
+}
+function peCropOk(){const [x,y,w,h]=peBox(_pe.crop).map(Math.round);peBake(w,h,(g,src)=>g.drawImage(src,x,y,w,h,0,0,w,h));}
+function peRotate(){const s=document.getElementById('pe-cv');peBake(s.height,s.width,(g,src)=>{g.translate(src.height,0);g.rotate(Math.PI/2);g.drawImage(src,0,0);});}
+function peUndo(){
+  const P=_pe;if(P.ops.length){P.ops.pop();return peDraw();}
+  if(P.hist.length){const h=P.hist.pop();P.img=h.img;P.ops=h.ops;peFit();}
+}
+function peOrig(){
+  const P=_pe,img=new Image();
+  img.onload=()=>{P.hist.push({img:P.img,ops:P.ops});P.img=img;P.ops=[];peFit();toast('원본을 불러왔습니다 — [저장]하면 원본으로 돌아갑니다');};
+  img.src=P.p.orig;
+}
+async function peSave(){
+  const P=_pe,p=P.p;peTxtOk();P.crop=null;peDraw();
+  if(!p.orig)p.orig=p.dataUrl;
+  p.dataUrl=document.getElementById('pe-cv').toDataURL('image/jpeg',.88);
+  await dbPut('photos',p);peClose(true);toast('사진 저장 (원본은 따로 보관)');
+}
+function peClose(saved){
+  document.getElementById('pe')?.remove();const p=_pe&&_pe.p;_pe=null;
+  if(saved&&p)_photoBack(p.refType,p.refId); // 저장했으면 썸네일이 바뀌도록 원래 창을 다시 그림
 }
 
 /* ── 예비품 재고 ── */
@@ -4698,12 +5185,13 @@ function vSpare(){
   const low=S.spares.filter(_spLow);
   const mode=S._spareMode||'list';
   const nMaster=S.spares.filter(s=>s.src==='master').length;
-  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품·정비자재 <span class="cnt">${S.spares.length}</span></h2>
+  return `<div class="card"><div class="row"><h2 class="grow">🧰 예비품·정비자재 <span class="cnt">${S.spares.filter(s=>s.src!=='inv').length}</span></h2>
       <button class="btn sm" onclick="editSpare()">+ 추가</button></div>
     ${low.length?`<div class="section-note" style="color:#fca5a5">⚠️ 부족(안전재고 이하) ${low.length}건: ${low.slice(0,8).map(x=>esc(x.name)+' '+(x.qty||0)+'/'+x.minQty).join(', ')}</div>`:''}
     <div class="chips" style="margin:6px 0">
       <button class="chip ${mode==='list'?'on':''}" onclick="S._spareMode='list';render()">📃 목록</button>
       <button class="chip ${mode==='insp'?'on':''}" onclick="S._spareMode='insp';render()">🔍 검수(종류별) ${nMaster?'<span class="cnt">'+nMaster+'</span>':''}</button>
+      <button class="chip ${mode==='inv'?'on':''}" onclick="S._spareMode='inv';render()">📋 재물조사 <span class="cnt">${S.spares.filter(s=>s.src==='inv').length}</span></button>
     </div>
     <div class="row" style="margin:6px 0;flex-wrap:wrap;gap:6px">
       <button class="btn ghost sm" onclick="importMaterialXlsx()">📥 자재마스터 가져오기(xlsx)</button>
@@ -4711,12 +5199,12 @@ function vSpare(){
       <button class="btn ghost sm" onclick="useSpare('')">− 사용(차감)</button>
       <button class="btn ghost sm" onclick="orderListDoc()">📋 발주 목록</button>
     </div>
-    ${mode==='insp'?spareInspHtml():`<div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div><div id="splist">${spareListHtml()}</div>`}
+    ${mode==='inv'?invHtml():mode==='insp'?spareInspHtml():`<div class="searchwrap"><input placeholder="검색: 품명·규격·위치·설비" value="${esc(S._spareQ||'')}" oninput="filterSpare(this.value)"></div><div id="splist">${spareListHtml()}</div>`}
     <button class="btn ghost sm full" onclick="go('more')">← 더보기로</button></div>`;
 }
 function spareListHtml(){
   const q=(S._spareQ||'').toLowerCase();
-  let list=S.spares.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  let list=S.spares.filter(s=>s.src!=='inv').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   if(q)list=list.filter(x=>((x.name||'')+' '+(x.spec||'')+' '+(x.matNo||'')+' '+(x.type||'')+' '+(x.cat||'')+' '+(x.location||'')+' '+(x.equipName||'')).toLowerCase().includes(q));
   return list.map(x=>`<div class="item click" onclick="editSpare('${x.id}')">
       <div class="t"><div class="n">${esc(x.name)} ${_spLow(x)?'<span class="badge b-red">부족</span>':''}</div>
@@ -4756,6 +5244,94 @@ async function saveSpare(id){
 }
 async function delSpare(id){
   if(!(await confirmModal('이 예비품을 삭제할까요?')))return;
+  await dbDel('spares',id);S.spares=S.spares.filter(v=>v.id!==id);closeModal();render();
+}
+
+/* ── 재물조사 (v95) — 본사·지사·부서 시트. 재고 확인된 항목은 노란 배경. 추가·수정·삭제 가능 ── */
+function invHtml(){
+  const sh=S._invSheet||'본사';
+  const all=S.spares.filter(x=>x.src==='inv');
+  const chips=['본사','지사','부서'].map(s=>`<button class="chipf ${sh===s?'on':''}" onclick="S._invSheet='${s}';render()">${s} ${all.filter(x=>x.sheet===s).length}</button>`).join('');
+  const list=all.filter(x=>x.sheet===sh).sort((a,b)=>(a.seq||999)-(b.seq||999)||String(a.matNo).localeCompare(String(b.matNo)));
+  const nf=list.filter(x=>x.found).length;
+  const rows=list.map(x=>`<div class="item click" style="${x.found?'background:rgba(250,204,21,.28)':''}" onclick="editInv('${x.id}')">
+      <div class="t"><div class="n">${esc(x.name||'(품명 없음)')}</div>
+      <div class="d">${esc(x.matNo)}${x.assetNo?' · 자산 '+esc(x.assetNo):''}${x.location?' · '+esc(x.location):''}${x.note?' · '+esc(x.note):''}</div></div>
+      <div style="text-align:right"><b>${esc(String(x.real??x.qty??''))}</b><span class="muted"> ${esc(x.unit||'')}</span><br>
+      <button class="btn ${x.found?'':'ghost'} sm" onclick="event.stopPropagation();invToggle('${x.id}')">${x.found?'✓ 재고있음':'재고 확인'}</button></div></div>`).join('')||'<div class="empty">항목 없음</div>';
+  return `<div class="chips" style="margin:6px 0">${chips}</div>
+    <div class="row" style="margin:6px 0"><div class="muted grow">재고 확인 <b>${nf}</b>/${list.length}건 (노란색 = 재고 있음)</div>
+      <button class="btn ghost sm" onclick="exportInvXlsx()">📤 엑셀</button>
+      <button class="btn sm" onclick="editInv('')">+ 추가</button></div>${rows}`;
+}
+function loadExcelJS(){
+  if(window.ExcelJS)return Promise.resolve(window.ExcelJS);
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    sc.onload=()=>window.ExcelJS?res(window.ExcelJS):rej(new Error('ExcelJS 초기화 실패'));
+    sc.onerror=()=>rej(new Error('ExcelJS 로드 실패 — 인터넷 연결 필요'));
+    document.head.appendChild(sc);
+  });
+}
+/* 본사·지사·부서를 시트 3개로. 재고 확인된 행은 노란 배경(SheetJS 무료판은 서식 불가라 ExcelJS 사용) */
+async function exportInvXlsx(){
+  if(!S.spares.some(x=>x.src==='inv')){toast('내보낼 재물조사 항목이 없습니다');return;}
+  let E;try{E=await loadExcelJS();}catch(e){toast(e.message);return;}
+  const wb=new E.Workbook();
+  const head=['자재번호','자재내역','자산번호','단위','장부수량','실사수량','재고확인','보관위치','비고'];
+  for(const sh of ['본사','지사','부서']){
+    const ws=wb.addWorksheet('재물조사_'+sh);
+    ws.addRow(head).font={bold:true};
+    ws.columns=[14,46,12,7,9,9,9,18,36].map(width=>({width}));
+    S.spares.filter(x=>x.src==='inv'&&x.sheet===sh).sort((a,b)=>(a.seq||999)-(b.seq||999)).forEach(x=>{
+      const r=ws.addRow([x.matNo,x.name||'',x.assetNo||'',x.unit||'',x.qty??'',x.real??'',x.found?'O':'',x.location||'',x.note||'']);
+      if(x.found)r.eachCell({includeEmpty:true},c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFF00'}};});
+    });
+  }
+  const buf=await wb.xlsx.writeBuffer();
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download=`재물조사_${todayStr()}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  toast('엑셀 내보내기 완료 — 본사·지사·부서 3시트');
+}
+async function invToggle(id){
+  const x=S.spares.find(v=>v.id===id);if(!x)return;
+  x.found=!x.found;x.updated=todayStr();await dbPut('spares',x);render();
+}
+function editInv(id){
+  const x=id?S.spares.find(v=>v.id===id):null;
+  openModal(`<h3>${x?'재물조사 수정':'재물조사 추가'} (${esc(x?.sheet||S._invSheet||'본사')})</h3>
+    <label>자재번호 *</label><input id="iv-m" value="${esc(x?.matNo||'')}">
+    <label>자재내역</label><input id="iv-n" value="${esc(x?.name||'')}">
+    <div class="row">
+      <div class="grow"><label>자산번호</label><input id="iv-a" value="${esc(x?.assetNo||'')}"></div>
+      <div class="grow"><label>단위</label><input id="iv-u" value="${esc(x?.unit||'EA')}"></div>
+    </div>
+    <div class="row">
+      <div class="grow"><label>장부수량</label><input id="iv-q" type="number" value="${esc(String(x?.qty??''))}"></div>
+      <div class="grow"><label>실사수량</label><input id="iv-r" type="number" value="${esc(String(x?.real??''))}"></div>
+    </div>
+    <label>보관 위치</label><input id="iv-l" value="${esc(x?.location||'')}">
+    <label>비고</label><input id="iv-note" value="${esc(x?.note||'')}">
+    <label><input id="iv-f" type="checkbox" ${x?.found?'checked':''} style="width:auto"> 재고 있음(노란색)</label>
+    <div class="row" style="margin-top:14px">
+      ${x?`<button class="btn danger sm" onclick="delInv('${x.id}')">삭제</button>`:''}
+      <div class="grow"></div>
+      <button class="btn ghost sm" onclick="closeModal()">취소</button>
+      <button class="btn sm" onclick="saveInv('${x?.id||''}')">저장</button></div>`);
+}
+async function saveInv(id){
+  const matNo=$('#iv-m').value.trim();if(!matNo){toast('자재번호를 입력하세요');return}
+  const num=v=>v===''?'':Number(v);
+  const obj=id?S.spares.find(v=>v.id===id):{id:'IV'+uid(),src:'inv',sheet:S._invSheet||'본사',seq:999};
+  Object.assign(obj,{matNo,name:$('#iv-n').value.trim(),assetNo:$('#iv-a').value.trim(),unit:$('#iv-u').value.trim()||'EA',
+    qty:num($('#iv-q').value),real:num($('#iv-r').value),location:$('#iv-l').value.trim(),note:$('#iv-note').value.trim(),
+    found:$('#iv-f').checked,updated:todayStr()});
+  await dbPut('spares',obj);if(!id)S.spares.push(obj);
+  closeModal();render();toast('저장 완료');
+}
+async function delInv(id){
+  if(!(await confirmModal('이 재물조사 항목을 삭제할까요?')))return;
   await dbDel('spares',id);S.spares=S.spares.filter(v=>v.id!==id);closeModal();render();
 }
 
@@ -5942,9 +6518,9 @@ function vStats(){
 
 /* ================= PART 8.6 : 예비품 ↔ 작업 연계 (v18) ================= */
 function useSpare(backEquipId){
-  if(!S.spares.length){toast('등록된 예비품이 없습니다 (예비품 재고에서 추가)');return;}
+  if(!S.spares.some(x=>x.src!=='inv')){toast('등록된 예비품이 없습니다 (예비품 재고에서 추가)');return;}
   openModal(`<h3>🧰 예비품 사용(차감)</h3>
-    <label>품목</label><select id="us-s">${S.spares.map(x=>`<option value="${x.id}">${esc(x.name)} — 재고 ${x.qty??0}${esc(x.unit||'EA')}</option>`).join('')}</select>
+    <label>품목</label><select id="us-s">${S.spares.filter(x=>x.src!=='inv').map(x=>`<option value="${x.id}">${esc(x.name)} — 재고 ${x.qty??0}${esc(x.unit||'EA')}</option>`).join('')}</select>
     <label>사용 수량</label><input id="us-q" type="number" value="1" min="1">
     <label>비고(작업/설비)</label><input id="us-n">
     <div class="row" style="margin-top:12px"><div class="grow"></div>
@@ -6366,8 +6942,125 @@ function vaultImport(){
   inp.click();
 }
 
-const VIEWS={home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
-const TITLES={home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
+/* ===== v94 화면 단순화: 입구 3개(오늘·설비 찾기·작업) — 모든 경로가 설비 카드(openCard)로 ===== */
+function _eqNode(e){return S.tree.find(x=>x.equipId===e.id&&x.type!=='bus'&&x.type!=='source')||null;}
+/* 태그·노드 ID·설비 ID·이름 → {n 계통 노드, e 설비 마스터, c 로직 카드} / 같은 이름 여럿이면 {amb} / 못 찾으면 null */
+function resolveDev(v){
+  v=String(v||'').trim();if(!v)return null;
+  let n=nodeById(v);if(n)return {n};
+  const e=S.equipment.find(x=>x.id===v);if(e)return {e,n:_eqNode(e)};
+  const k=_normTag(v),c=(S.logic||[]).find(x=>_normTag(x.tag)===k);
+  if(c)return {c,n:_nodeForCard(c)};
+  const es=S.equipment.filter(x=>x.tagNo&&_normTag(x.tagNo)===k);
+  if(es.length===1)return {e:es[0],n:_eqNode(es[0])};
+  let hit=S.tree.filter(x=>x.name===v||x.panelNo===v);if(!hit.length)hit=S.tree.filter(x=>_normTag(x.name)===k||_normTag(x.panelNo)===k);
+  if(hit.length===1)return {n:hit[0]};
+  return hit.length>1||es.length>1?{amb:true}:null;
+}
+function openDevice(v){
+  const r=resolveDev(v);if(!r||r.amb)return false;
+  if(r.n)openCard(r.n.id);else if(r.e)openEquip(r.e.id,1);else openHub(r.c.tag);
+  return true;
+}
+/* 통합 검색: 계통 노드·설비 마스터·로직 태그를 한 목록으로(계통과 연결된 설비·로직은 노드 한 줄로 합침) */
+function devSearch(q){
+  const k=_normTag(q),lo=String(q||'').trim().toLowerCase();if(k.length<2)return [];
+  const out=[],seen=new Set(),eqN=new Map();
+  S.tree.forEach(n=>{if(n.equipId&&n.type!=='bus'&&n.type!=='source')eqN.set(n.equipId,n);});
+  const addN=n=>{if(seen.has(n.id))return;seen.add(n.id);const p=n.parentId&&nodeById(n.parentId);
+    out.push({ref:n.id,nid:n.id,lt:n.type==='load'||n.type==='breaker',ic:(NODE_TYPES[n.type]||['·'])[0],t:n.name,d:[n.voltage,n.panelNo&&'판넬 '+n.panelNo,p&&_kdShort(p.name,24)].filter(Boolean).join(' · ')});};
+  for(const c of S.logic||[])if(_normTag(c.tag).includes(k)){const n=_nodeForCard(c);if(n)addN(n);else if(!seen.has('L'+c.tag)){seen.add('L'+c.tag);out.push({ref:c.tag,ic:'⚡',t:c.tag,d:c.name||'로직 카드'});}}
+  for(const n of S.tree){if(out.length>=40)break;if(_normTag(n.name).includes(k)||_normTag(n.panelNo).includes(k))addN(n);}
+  for(const e of S.equipment){if(out.length>=60)break;
+    if(!(((e.name||'')+' '+(e.group||'')).toLowerCase().includes(lo)||_normTag(e.tagNo).includes(k)))continue;
+    const n=eqN.get(e.id);if(n){addN(n);continue;}
+    out.push({ref:e.id,ic:'🧾',t:e.name,d:[e.tagNo,e.plant,e.category].filter(Boolean).join(' · ')});}
+  return out;
+}
+function devRowsHtml(q,act){
+  if(String(q||'').trim().length<2)return '';
+  const r=devSearch(q),sq=esc(String(q).replace(/['"\\]/g,''));
+  const more=`<div class="muted" style="margin:4px 2px 8px">${r.length?'탭 = '+(act==='loto'?'LOTO 격리 계획':'설비 카드')+' · ':'이름·판넬에 일치 없음 — '}<a href="#" style="color:var(--accent)" onclick="event.preventDefault();devDeep('${sq}')">도면 세부내용까지 검색 ›</a></div>`;
+  return r.slice(0,30).map(h=>`<div class="tkid" onclick="${act==='loto'&&h.lt?`startLoto('${h.nid}')`:`openDevice('${esc(h.ref)}')`}"><span class="tkid-ic">${h.ic}</span>
+    <span class="tkid-nm">${esc(h.t)}${h.d?`<span class="tpath-meta">${esc(h.d)}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')
+    +(r.length>30?`<div class="muted" style="margin:4px 2px">… 외 ${r.length-30}건 — 더 길게 입력하세요</div>`:'')+more;
+}
+function devLive(q,id,act){const el=document.getElementById(id);if(el)el.innerHTML=devRowsHtml(q,act);}
+function devDeep(q){S._treeSubTab='drill';go('tree');const i=$('#tree-find');if(i){i.value=q;treeFind();}}
+function devSearchBox(id,act,ph){
+  const v=S['_q_'+id]||'';
+  return `<div class="row" style="gap:6px;margin-bottom:6px"><input id="${id}-q" placeholder="${ph||'설비 이름·태그·판넬 (예: VCB-501, 송풍기)'}" style="flex:1;min-width:0" autocomplete="off" value="${esc(v)}"
+    oninput="S['_q_${id}']=this.value;devLive(this.value,'${id}','${act||''}')" onkeydown="if(event.key==='Enter'){const h=devSearch(this.value);if(h.length===1)openDevice(h[0].ref)}">
+    ${!act&&'BarcodeDetector' in window?`<button class="btn sm" onclick="qrScan()" title="QR 스티커 읽기">📷 QR</button>`:''}</div><div id="${id}">${devRowsHtml(v,act)}</div>`;
+}
+function vFind(){
+  const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
+  const grp=pl=>{const L=Z.filter(z=>(z.plant||'PB')===pl);return L.length?`<div class="muted" style="margin:8px 0 4px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div><div class="chips" style="flex-wrap:wrap">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
+  const fav=S._fav||[],rec=[...fav.map(x=>({...x,f:1})),...(_rec().hubs||[]).filter(h=>!fav.some(f=>f.key===h.key))].slice(0,10);
+  return `<div class="card"><h2>🔍 설비 찾기</h2>${devSearchBox('find-sr')}
+    <div class="muted">계통 노드·설비 마스터·로직 태그를 한 번에 찾습니다. 같은 설비는 한 줄.</div></div>
+  ${rec.length?`<div class="card"><h2>최근·즐겨찾기</h2>${rec.map(h=>`<div class="tkid" onclick="openDevice('${esc(h.key)}')"><span class="tkid-ic">${h.f?'★':'🕘'}</span><span class="tkid-nm">${esc(h.label)}</span><span class="tkid-arr">›</span></div>`).join('')}</div>`:''}
+  ${Z.length?`<div class="card"><h2>🏢 건물로 둘러보기</h2>${grp('PB')}${grp('DH')}</div>`:''}
+  <div class="card"><h2>다른 방법</h2><div class="row" style="gap:6px;flex-wrap:wrap">
+    <button class="btn ghost sm" onclick="go('equip')">📋 설비 마스터 목록</button>
+    <button class="btn ghost sm" onclick="S._treeSubTab='path';go('tree')">🔌 계통 트리</button>
+    <button class="btn ghost sm" onclick="go('docfind')">📐 도면 찾기</button></div></div>
+  <div class="botpad"></div>`;
+}
+function findZone(id){S._zoneId=null;S._treeSubTab='zone';go('tree');zoneOpen(id);}
+function vWork(){
+  const l=S._loto,ld=l?l.steps.filter(x=>x.done).length:0;
+  return `${l?`<div class="card"><h2>🔒 진행 중 LOTO</h2><div class="item click" onclick="renderLoto()"><div class="t"><div class="n">${esc(l.target)}</div><div class="d">${esc(l.date)} · ${ld}/${l.steps.length} 단계</div></div><span class="badge b-blue">이어서</span></div></div>`:''}
+  ${fdocCard()}
+  <div class="card"><h2>🔒 LOTO 시작 — 작업할 설비</h2>${devSearchBox('work-sr','loto','차단기·부하 이름·태그 (예: VCB-501)')}
+    <div class="muted">탭하면 격리 계획(열 차단기·역가압·자동투입 경고)과 단계 체크가 열립니다.</div></div>
+  <div class="card"><h2>🪪 작업 서류</h2>
+    <div class="muted">현장 서류 초안 생성 → 복사. 계통 트리 입력분에서 차단범위 자동 삽입.</div>
+    <button class="btn full" onclick="openPermit()">🪪 작업허가서 (JSA 위험성평가)</button>
+    <button class="btn full" onclick="docLoto()">⚡ 정전작업 절차서(작업계획서)</button>
+    <button class="btn full" onclick="docSafetyDay()">🗓️ 안전점검의 날 점검표</button>
+    ${permitHistoryHtml()}</div>
+  ${treeLotoCard()}<div class="botpad"></div>`;
+}
+function cardTodo(ref,tag){
+  if(window.pcNewFor)return pcNewFor('todo',ref);
+  editTodo('',todayStr());const el=document.getElementById('td-t');if(el){el.value=tag+' ';el.focus();}
+}
+/* 주소로 열기: ?hub=VCB-501(태그·노드 ID·이름) / ?q=검색어 — QR 스티커·PDF검색기 연동. 같은 이름이 여럿이면 설비 찾기 목록으로 */
+let _urlTries=0;
+function openFromUrl(){
+  const p=new URLSearchParams(location.search.slice(1)+'&'+location.hash.slice(1)),hub=p.get('hub'),hq=p.get('q');
+  if(!hub&&!hq)return;
+  const ex=document.getElementById('exit-confirm');if(ex)ex.remove(); // 해시 이동이 뒤로가기로 새어 '종료할까요?'가 떴으면 지운다
+  if(!S.tree.length&&_urlTries++<100)return setTimeout(openFromUrl,200); // ponytail: 시드 주입(비동기) 끝날 때까지 0.2초 간격 최대 20초
+  history.replaceState(history.state,'',location.pathname); // 새로고침해도 다시 열리지 않게
+  if(hub&&openDevice(hub))return;
+  S['_q_find-sr']=hub||hq;go('find');
+}
+addEventListener('hashchange',openFromUrl);
+// 해시 이동은 popstate도 보낸다 — 뒤로가기 처리(창 닫기·'종료할까요?')보다 먼저 막는다
+addEventListener('popstate',e=>{if(/(^#|&)(hub|q)=/.test(location.hash))e.stopImmediatePropagation();},true);
+/* 앱 안 QR 읽기 — 브라우저 기본 BarcodeDetector(안드로이드 크롬). 없으면 버튼이 안 보인다 */
+async function qrScan(){
+  if(!('BarcodeDetector' in window)){toast('이 브라우저는 QR 읽기를 지원하지 않습니다 — 폰 카메라 앱으로 찍으세요');return;}
+  let st;try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}catch(e){toast('카메라를 열 수 없습니다: '+e.message);return;}
+  openModal(`<h3>📷 QR 스티커 읽기</h3><video id="qr-v" playsinline muted style="width:100%;border-radius:8px;background:#000"></video>
+    <div class="muted" style="margin-top:6px">스티커를 화면 가운데에 맞추세요</div><button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
+  const v=document.getElementById('qr-v'),bd=new BarcodeDetector({formats:['qr_code']}),stop=()=>st.getTracks().forEach(t=>t.stop());
+  v.srcObject=st;v.play().catch(()=>{});
+  (async function loop(){
+    if(!document.body.contains(v))return stop(); // 창을 닫으면 카메라도 끈다
+    try{const r=await bd.detect(v);if(r.length){stop();closeModal();qrOpen(r[0].rawValue);return;}}catch(e){}
+    setTimeout(loop,250);
+  })();
+}
+function qrOpen(raw){
+  let ref=raw;try{const u=new URL(raw);ref=u.searchParams.get('hub')||new URLSearchParams(u.hash.slice(1)).get('hub')||raw;}catch(e){}
+  if(!openDevice(ref)){S['_q_find-sr']=ref;go('find');toast('QR: '+ref+' — 목록에서 고르세요');}
+}
+const _navOf=v=>v==='tree'&&S._treeSubTab==='zone'?'find':({tree:'more',equip:'more',docfind:'more',insp:'home',chk:'home'})[v]||v;
+const VIEWS={find:vFind,work:vWork,home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
+const TITLES={find:'설비 찾기',work:'작업 — 현장 문서·LOTO',home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
 function go(v){
   const st=S._navStack=S._navStack||[];
   if(v!==S.view){
@@ -6381,7 +7074,8 @@ function render(){
   $('#app').innerHTML=(VIEWS[S.view]||vHome)();
   $('#hd-title').textContent=TITLES[S.view]||'';
   $('#hd-sub').textContent=todayStr();
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.view));
+  const nb=[...document.querySelectorAll('#nav button')],on=nb.some(b=>b.dataset.v===S.view)?S.view:_navOf(S.view);
+  nb.forEach(b=>b.classList.toggle('on',b.dataset.v===on));
   if(S.view==='tree'&&(S._treeSubTab||'path')==='diagram')requestAnimationFrame(setupTreeDiagram);
   if(S.view==='tree'&&S._treeSubTab==='zone'&&S._zoneId&&S._zoneTab==='dwg')requestAnimationFrame(zoneDwgDraw);
   if(S.view==='tree'&&S._treeSubTab==='zone'&&S._zoneId&&(S._zoneTab||'table')==='table'&&S._zq)zoneFilter(S._zq);
@@ -6450,6 +7144,7 @@ async function localAutoSeed(){
     try{const th=await dbGet('meta','theme');applyTheme(th&&th.v?th.v:'dark');}catch(e){applyTheme('dark');}
     try{const r=await dbGet('meta','recent'),f=await dbGet('meta','fav');S._rec=(r&&r.v)||{docs:[],hubs:[]};S._fav=(f&&f.v)||[];}catch(e){}
     render();
+    openFromUrl();
     if(S._fbCfg){try{await fbEnsureInit();}catch(e){console.warn('firebase 자동연결 실패',e);}}
   }catch(e){
     $('#app').innerHTML=`<div class="card"><h2>초기화 오류</h2><div class="muted">${esc(e.message)}</div></div>`;
