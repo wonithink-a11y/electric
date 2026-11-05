@@ -369,7 +369,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v94'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v99'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5017,14 +5017,15 @@ function fdHtml(d){
 async function fdPreview(){
   const d=await fdSave(true);
   openModal(`<h3>👁️ 미리보기 <span class="cnt">A4</span></h3>${fdHtml(d)}
-    <div class="muted" style="margin-top:8px">PDF 저장 = 인쇄 창에서 프린터를 'PDF로 저장'으로. 공유 = 내용(글)+사진을 카톡·메일로.</div>
+    <div class="muted" style="margin-top:8px">PDF 저장 = 인쇄 창에서 프린터를 'PDF로 저장'으로. 공유 = 이 A4를 PDF 파일로 카톡·메일에(글자는 그림이라 검색은 안 됨).</div>
     <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="openFdoc('${d.id}')">← 수정</button><div class="grow"></div>
       <button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdPrint()">🖨️ PDF 저장</button></div>`);
 }
+const fdName=d=>d.tag+'_'+d.content.replace(/[\\/:*?"<>|]/g,'')+'_'+d.date; // PDF 파일 이름
 function fdPrint(){
   const d=S.notes.find(x=>x.id===S._fdoc.id);if(!d)return;
   const el=document.createElement('div');el.id='fd-print';el.innerHTML=fdHtml(d);document.body.appendChild(el);
-  const t=document.title;document.title=d.tag+'_'+d.content.replace(/[\\/:*?"<>|]/g,'')+'_'+d.date; // PDF 파일 이름
+  const t=document.title;document.title=fdName(d);
   addEventListener('afterprint',()=>{el.remove();document.title=t;},{once:true});
   setTimeout(()=>window.print(),300); // 사진 그릴 시간
 }
@@ -5033,8 +5034,57 @@ function fdText(d){
   return `[${T.name}]\n`+T.f.filter(([k])=>v[k]).map(([k,l,t])=>t==='s'?`\n■ ${l}\n${fdSteps(v[k]).map((s,i)=>`${i+1}. ${s}`).join('\n')}`:t==='a'?`\n■ ${l}\n${v[k]}`:`${l}: ${v[k]}`).join('\n')
     +fdPh(d.id).map((p,i)=>i?`\n${i+1}. ${p.caption||''}`:`\n\n■ 사진\n1. ${p.caption||''}`).join('');
 }
+/* 공유용 PDF(v99): A4 미리보기를 SVG foreignObject로 그림 → 쪽마다 JPEG → 직접 만든 PDF. 라이브러리 없음(사내망 그대로).
+   글자는 그림이라 검색·복사 안 됨(필요하면 🖨️ PDF 저장). 쪽은 표 줄·문단·사진 경계에서 나눔. */
+function jpegPdf(pages){ // pages:[{jpg:Uint8Array,w,h}] → A4, 여백 12mm, 위쪽 정렬
+  const enc=new TextEncoder(),parts=[],offs=[];let len=0;
+  const add=x=>{const b=typeof x==='string'?enc.encode(x):x;parts.push(b);len+=b.length;};
+  const obj=(n,body,stream)=>{offs[n]=len;add(`${n} 0 obj\n${body}\n`);if(stream){add('stream\n');add(stream);add('\nendstream\n');}add('endobj\n');};
+  const W=595.28,H=841.89,M=34.02,n=pages.length;
+  add('%PDF-1.4\n');
+  obj(1,'<</Type/Catalog/Pages 2 0 R>>');
+  obj(2,`<</Type/Pages/Count ${n}/Kids[${pages.map((_,i)=>`${3+i*3} 0 R`).join(' ')}]>>`);
+  pages.forEach((p,i)=>{const k=3+i*3,dw=W-2*M,dh=dw*p.h/p.w,c=enc.encode(`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${M} ${(H-M-dh).toFixed(2)} cm /I Do Q`);
+    obj(k,`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${W} ${H}]/Resources<</XObject<</I ${k+1} 0 R>>>>/Contents ${k+2} 0 R>>`);
+    obj(k+1,`<</Type/XObject/Subtype/Image/Width ${p.w}/Height ${p.h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${p.jpg.length}>>`,p.jpg);
+    obj(k+2,`<</Length ${c.length}>>`,c);});
+  const xref=len,N=3+n*3;
+  add(`xref\n0 ${N}\n0000000000 65535 f \n${offs.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<</Size ${N}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts,{type:'application/pdf'});
+}
+async function fdPdf(d){
+  const Wp=700,PH=Math.round(Wp*273/186),SC=2; // 700px 폭 = A4 본문 186mm(글자 13px≈10pt), 쪽 높이 = 본문 273mm, 2배 해상도
+  const css=[...document.styleSheets].flatMap(s=>{try{return[...s.cssRules];}catch(e){return[];}})
+    .filter(r=>r.selectorText&&r.selectorText.includes('.fd-')).map(r=>r.cssText).join('\n');
+  const box=document.createElement('div');box.style.cssText=`position:fixed;left:-9999px;top:0;width:${Wp}px`;
+  box.innerHTML=`<div><style>${css}</style>${fdHtml(d)}</div>`;document.body.appendChild(box);
+  const pg=box.querySelector('.fd-page');pg.style.padding='0';pg.style.borderRadius='0';
+  await Promise.all([...pg.querySelectorAll('img')].map(i=>i.decode().catch(()=>{})));
+  const t0=pg.getBoundingClientRect().top,total=Math.ceil(pg.getBoundingClientRect().height);
+  const cuts=[...pg.querySelectorAll(':scope>*,tr,li,figure')].map(e=>Math.round(e.getBoundingClientRect().top-t0)); // 쪽 나눌 수 있는 자리
+  const xml=new XMLSerializer().serializeToString(box.firstElementChild);box.remove();
+  const img=new Image();
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${Wp*SC}" height="${total*SC}" viewBox="0 0 ${Wp} ${total}"><foreignObject width="${Wp}" height="${total}">${xml}</foreignObject></svg>`);
+  await img.decode();
+  const pages=[];
+  for(let y=0;y<total;){
+    let e=Math.min(y+PH,total);
+    if(e<total){const c=cuts.filter(c=>c>y+PH/3&&c<=e).pop();if(c)e=c;} // 1/3쪽도 못 채우면 그냥 자름(아주 큰 덩어리)
+    const cv=document.createElement('canvas');cv.width=Wp*SC;cv.height=(e-y)*SC;
+    const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);
+    g.drawImage(img,0,y*SC,cv.width,cv.height,0,0,cv.width,cv.height);
+    const b=await new Promise((ok,no)=>cv.toBlob(b=>b?ok(b):no(new Error('toBlob')),'image/jpeg',0.85));
+    pages.push({jpg:new Uint8Array(await b.arrayBuffer()),w:cv.width,h:cv.height});y=e;
+  }
+  return jpegPdf(pages);
+}
 async function fdShare(){
   const d=S.notes.find(x=>x.id===S._fdoc.id);if(!d)return;
+  let file=null;
+  try{toast('PDF 만드는 중…');file=new File([await fdPdf(d)],fdName(d)+'.pdf',{type:'application/pdf'});}catch(e){console.warn('fdPdf',e);}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:d.tag+' — '+d.content});}catch(e){}return;}
+  if(file){const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000);toast('공유 기능이 없어 PDF를 내려받았습니다');return;}
+  // PDF를 못 만든 경우(구형 브라우저) — 예전 방식: 글+사진
   const text=fdText(d),data={title:d.tag+' — '+d.content,text};
   try{const files=await Promise.all(fdPh(d.id).map(async(p,i)=>new File([await (await fetch(p.dataUrl)).blob()],`사진${i+1}.jpg`,{type:'image/jpeg'})));
     if(files.length&&navigator.canShare&&navigator.canShare({files}))data.files=files;}catch(e){}
