@@ -381,7 +381,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v110'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v111'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5055,7 +5055,10 @@ function fabMenu(){
 }
 /* v109 칸 종류 'c' = 목록 선택 + 옆 수기(ph가 ''이면 선택만). [키,이름,'c',수기 안내,목록] — 목록 'zones'는 설비동 데이터(S._zones) 이름(코드에 실제 건물명 안 넣음).
    저장: v[k]='선택 · 수기'(목록·A4·검색이 그대로 씀), 다시 열 때 v[k+'_s']·v[k+'_t'] */
-const FD_EQ_KINDS=['전동기','펌프','팬·송풍기','현장 조작반(LCP)','MCC','MCCB·배선차단기','ACB','VCB','변압기','배전반(SWGR)','분전반','조명','UPS','축전지·충전기','비상발전기','케이블·트레이','접지·피뢰','계장·제어전원','기타'];
+// v111 묶음 목록: [묶음 이름,[항목…]]은 <optgroup>(폰 목록에 묶음 제목이 보임), 문자열은 그냥 항목. 저장값은 항목 이름만
+const FD_EQ_KINDS=[['회전기',['전동기','펌프','팬·송풍기']],['차단기',['VCB','ACB','MCCB·배선차단기','ELB(누전차단기)']],
+  ['반·판넬',['MCC','배전반(SWGR)','분전반','현장 조작반(LCP)']],['전원·제어',['변압기','UPS','축전지·충전기','비상발전기','계장·제어전원']],
+  ['배선·조명',['케이블·트레이','조명','접지·피뢰']],['크레인·소방',['크레인·호이스트','소방설비']],'기타'];
 const FDOC_TYPES={
   insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d',,,1],['writer','점검자','c','',['전력계통과','전력설비과'],1],
     ['kind','점검 구분','c','세부 (예: 11월 정기)',['월간','순회','특별','기타']],
@@ -5102,9 +5105,12 @@ function openFdoc(id,type,place){
   }
   S._fdoc={id:d?d.id:'',type};
   const cOpts=o=>o==='zones'?(S._zones||[]).map(z=>z.name):o;
-  const cHtml=(k,ph,o)=>{let L=cOpts(o);if(!ph&&v[k]&&v[k+'_s']===undefined&&!L.includes(v[k]))L=[...L,v[k]]; // 선택만 있는 칸의 옛 값(예: 이름)은 지우지 않고 목록에 붙임
+  const cHtml=(k,ph,o)=>{let G=cOpts(o),L=G.flatMap(x=>Array.isArray(x)?x[1]:[x]);
+    if(!ph&&v[k]&&v[k+'_s']===undefined&&!L.includes(v[k])){G=[...G,v[k]];L=[...L,v[k]];} // 선택만 있는 칸의 옛 값(예: 이름)은 지우지 않고 목록에 붙임
     const sv=v[k+'_s']!==undefined?v[k+'_s']:(L.includes(v[k])?v[k]:''),tv=v[k+'_t']!==undefined?v[k+'_t']:(sv?'':v[k]||'');
-    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1;min-width:0'}"><option value="">선택</option>${L.map(x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
+    if(sv&&!L.includes(sv))G=[...G,sv]; // 목록에서 빠진 옛 항목도 보존
+    const op=x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`;
+    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1;min-width:0'}"><option value="">선택</option>${G.map(x=>Array.isArray(x)?`<optgroup label="${esc(x[0])}">${x[1].map(op).join('')}</optgroup>`:op(x)).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
   // v110 'r' = 버튼 하나 고르기(라벨과 한 줄), 6번째 값 1 = 반 칸(이웃한 반 칸끼리 한 줄)
   const rHtml=(k,l,o)=>`<div class="row fd-r" id="fd-${k}"><span>${l}</span>${o.map(x=>`<button type="button" class="chip${v[k]===x?' on':''}" data-v="${esc(x)}" onclick="fdPick(this)">${esc(x)}</button>`).join('')}</div>`;
   const fh=([k,l,t,ph,o])=>t==='r'?rHtml(k,l,o):`<label>${l}</label>${t==='c'?cHtml(k,ph,o):t==='a'||t==='s'
