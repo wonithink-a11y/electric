@@ -370,7 +370,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v103'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v104'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -422,6 +422,7 @@ async function loadAll(){
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
   try{S._gcCfg=await dbGet('meta','gcCfg')||null;}catch(e){S._gcCfg=null;}
+  try{const u=await dbGet('meta','usage');S._use=u&&u.v||null;}catch(e){S._use=null;}
   try{const fm=await dbGet('meta','fieldMode');S._fieldMode=fm?fm.v:true;}catch(e){S._fieldMode=true;}
 }
 /* v97 현장 모드(기본 켬): 더보기 › 분석 메뉴를 숨기고 설비 카드를 현장 질문 순서로. 사내망 PC 화면(html.pc)에서는 늘 꺼짐 */
@@ -934,7 +935,6 @@ function vHome(){
   return `
   <button class="fab" onclick="editTodo(null,S._selDay||todayStr())" aria-label="할 일 추가">＋</button>
   ${emptyStateCard()}
-  <div class="card" style="padding:10px 12px">${devSearchBox('home-sr')}</div>
   ${homeSumHtml()}
   ${S._calFull?calHtml():weekCalHtml()}
   <div class="chips subtab">
@@ -3550,7 +3550,8 @@ async function saveChk(){
 function vMore(){
   const cnt=s=>S[s]?.length||0;
   const vb=!S._vaultKdf?'미설정':(_vaultKey?(S.vault.length+'건'):'잠김');
-  const row=(oc,ic,nm,bd)=>`<div class="item click" onclick="${oc}"><div class="t"><div class="n">${ic} ${nm}</div></div>${bd?`<span class="cnt">${bd}</span>`:''}<span style="color:var(--dim);margin-left:8px;font-size:18px">›</span></div>`;
+  const row=(oc,ic,nm,bd)=>{const k=nm.replace(/<.*$/,'').trim();(S._menuAll||(S._menuAll=new Set())).add(k); // v104 사용 기록
+    return `<div class="item click" onclick="useHit('메뉴:${k}');${oc}"><div class="t"><div class="n">${ic} ${nm}</div></div>${bd?`<span class="cnt">${bd}</span>`:''}<span style="color:var(--dim);margin-left:8px;font-size:18px">›</span></div>`;};
   return `
   <div class="muted" style="margin:2px 2px 10px">앱 ${APP_VER} · 계통 ${cnt('tree')}노드 · 설비 ${cnt('equipment')} · 로직 카드 ${cnt('logic')}장 · 도면 ${cnt('docs')}
     ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 로직 카드 JSON(logic_cards_v4~v10)을 넣어야 설비 카드의 로직 칸과 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`+`
@@ -3649,6 +3650,7 @@ function moreSetupSheet(){
   const cnt=s=>S[s]?S[s].length:0;
   openModal(`<h3>🩺 자가진단·초기데이터</h3>
     <div class="muted">설비 ${cnt('equipment')} · 검사 ${cnt('inspections')} · 체크 ${cnt('checklists')} · 고장 ${cnt('faults')}</div>
+    <button class="btn full" onclick="useSheet()">📊 메뉴 사용 기록 (안 쓰는 메뉴 찾기)</button>
     <button class="btn full" onclick="closeModal();selfTest()">🩺 자가진단 (기능·저장 점검)</button>
     <button class="btn full" onclick="closeModal();importAll()">📥 한 번에 가져오기 (여러 JSON 선택)</button>
     <div class="section-note">seed · 계통트리 보정 · 로직 카드 · 해석 노트를 <b>한꺼번에 선택</b>하면 내용을 보고 알아서 분류해 넣습니다.
@@ -7144,7 +7146,7 @@ function devSearchBox(id,act,ph){
   const v=S['_q_'+id]||'';
   return `<div class="row" style="gap:6px;margin-bottom:6px"><input id="${id}-q" placeholder="${ph||'설비 이름·태그·판넬 (예: VCB-501, 송풍기)'}" style="flex:1;min-width:0" autocomplete="off" value="${esc(v)}"
     oninput="S['_q_${id}']=this.value;devLive(this.value,'${id}','${act||''}')" onkeydown="if(event.key==='Enter'){const h=devSearch(this.value);if(h.length===1)openDevice(h[0].ref)}">
-    ${!act&&'BarcodeDetector' in window?`<button class="btn sm" onclick="qrScan()" title="QR 스티커 읽기">📷 QR</button>`:''}</div><div id="${id}">${devRowsHtml(v,act)}</div>`;
+    </div><div id="${id}">${devRowsHtml(v,act)}</div>`;
 }
 function vFind(){
   const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
@@ -7195,7 +7197,7 @@ function openFromUrl(){
 addEventListener('hashchange',openFromUrl);
 // 해시 이동은 popstate도 보낸다 — 뒤로가기 처리(창 닫기·'종료할까요?')보다 먼저 막는다
 addEventListener('popstate',e=>{if(/(^#|&)(hub|q)=/.test(location.hash))e.stopImmediatePropagation();},true);
-/* 앱 안 QR 읽기 — 브라우저 기본 BarcodeDetector(안드로이드 크롬). 없으면 버튼이 안 보인다 */
+/* 앱 안 QR 읽기 — 브라우저 기본 BarcodeDetector(안드로이드 크롬). v104: 현장에 QR 스티커가 아직 없어 검색창 옆 📷 QR 버튼을 뺐다(이 함수는 남김 — 스티커 붙이면 devSearchBox에 버튼 한 줄 되살리기) */
 async function qrScan(){
   if(!('BarcodeDetector' in window)){toast('이 브라우저는 QR 읽기를 지원하지 않습니다 — 폰 카메라 앱으로 찍으세요');return;}
   let st;try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}catch(e){toast('카메라를 열 수 없습니다: '+e.message);return;}
@@ -7216,7 +7218,22 @@ function qrOpen(raw){
 const _navOf=v=>v==='tree'&&S._treeSubTab==='zone'?'find':({tree:'more',equip:'more',docfind:'more',insp:'home',chk:'home'})[v]||v;
 const VIEWS={find:vFind,work:vWork,home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
 const TITLES={find:'설비 찾기',work:'작업 — 현장 문서·LOTO',home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
+/* v104 메뉴 사용 기록 — 이 기기 meta 'usage'에만(서버로 안 보냄). 2주쯤 쓴 뒤 안 쓰는 메뉴를 고르는 근거. 더보기 › 자가진단 › 📊 */
+function useHit(k){
+  const u=S._use||(S._use={since:todayStr(),n:{}});u.n[k]=(u.n[k]||0)+1;
+  clearTimeout(S._useT);S._useT=setTimeout(()=>dbPut('meta',{id:'usage',v:u}).catch(()=>{}),1500);
+}
+function useSheet(){
+  const u=S._use||{since:todayStr(),n:{}},e=Object.entries(u.n).sort((a,b)=>b[1]-a[1]);
+  const never=[...(S._menuAll||[])].filter(k=>!u.n['메뉴:'+k]);
+  openModal(`<h3>📊 메뉴 사용 기록</h3><div class="muted">${esc(u.since)}부터 · 이 기기에만 저장(서버로 안 보냄)</div>
+    ${never.length?`<div class="muted" style="margin-top:8px"><b>한 번도 안 연 더보기 메뉴 ${never.length}개</b></div><div class="section-note">${never.map(esc).join(' · ')}</div>`:''}
+    <div class="muted" style="margin-top:8px"><b>많이 쓴 순서</b></div>
+    ${e.map(([k,n])=>`<div class="item"><div class="t"><div class="n">${esc(k)}</div></div><span class="cnt">${n}</span></div>`).join('')||'<div class="empty">아직 기록 없음</div>'}
+    <div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="if(confirm('기록을 지우고 오늘부터 다시 셀까요?')){S._use=null;dbDel('meta','usage');useSheet();}">기록 지우기</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);
+}
 function go(v){
+  if(v!==S.view)useHit('화면:'+(TITLES[v]||v));
   const st=S._navStack=S._navStack||[];
   if(v!==S.view){
     if(v==='home') st.length=0;                          // 홈은 최상위 → 이력 초기화
