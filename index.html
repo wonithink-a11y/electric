@@ -176,7 +176,7 @@ header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);l
 .histrow .hc{font-size:11px;color:var(--dim)}
 .histrow.click{cursor:pointer}
 /* 버튼 */
-.fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:31;width:56px;height:56px;border-radius:50%;background:var(--grad);color:#fff;font-size:30px;line-height:1;font-weight:400;box-shadow:0 4px 14px rgba(0,0,0,.35);padding:0}
+.fab{position:fixed;right:14px;bottom:calc(80px + env(safe-area-inset-bottom));z-index:31;width:46px;height:46px;border-radius:50%;background:var(--grad);color:#fff;font-size:26px;line-height:1;font-weight:400;box-shadow:0 4px 14px rgba(0,0,0,.35);padding:0}
 .btn{background:var(--grad);color:#fff;padding:11px 16px;font-size:14px;font-weight:700;box-shadow:var(--shadow-sm);letter-spacing:-.1px}
 .btn:active{transform:translateY(1px);opacity:.92}
 .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);box-shadow:none}
@@ -376,7 +376,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v107'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v108'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -939,7 +939,7 @@ function vHome(){
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';S._selDay=null;render()">${l}</button>`;
   const body=S._selDay?homeDayHtml(S._selDay):tab==='all'?homeAllHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab();
   return `
-  <button class="fab" onclick="editTodo(null,S._selDay||todayStr())" aria-label="할 일 추가">＋</button>
+  <button class="fab" onclick="fabMenu()" aria-label="새로 작성">＋</button>
   ${emptyStateCard()}
   ${homeSumHtml()}
   ${S._calFull?calHtml():weekCalHtml()}
@@ -5040,6 +5040,14 @@ function photoStrip(refType,refId){
 /* ── 현장 문서(v96): 사진·내용 입력 → A4 미리보기 → PDF(브라우저 인쇄 'PDF로 저장')·공유.
    notes 스토어에 kind:'fdoc'로 저장(DB_VER 그대로·백업 포함·Firebase 제외), 사진은 photos(refType 'fdoc', caption=사진 설명).
    필드 [키, 이름, 형식(d 날짜·t 한 줄·a 여러 줄·s 단계), 안내] — 양식을 바꾸려면 여기만 고친다 ── */
+/* v108 홈 ＋ = 작성 메뉴(할 일·현안·현장 문서 종류별, 사진대장 포함) */
+function fabMenu(){
+  const b=(oc,t)=>`<button class="btn ghost full" style="text-align:left;margin-bottom:6px" onclick="${oc}">${t}</button>`;
+  openModal(`<h3>＋ 새로 작성</h3>
+    ${b(`editTodo(null,S._selDay||todayStr())`,'📌 할 일')}${b('editIssue()','🔧 현안')}
+    ${Object.entries(FDOC_TYPES).map(([k,T])=>b(`openFdoc(null,'${k}')`,`${T.ic} ${T.name}`)).join('')}
+    <button class="btn ghost sm full" onclick="closeModal()">닫기</button>`);
+}
 const FDOC_TYPES={
   insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d'],['place','설비·장소','t','예: 2층 전기실 MCC-1'],['writer','점검자','t'],['kind','점검 구분','t','예: 월간 점검, 순회 점검, 특별 점검'],
     ['items','점검 내용·결과','a','한 줄에 한 항목 (예: 절연저항 500MΩ 양호)'],['issue','이상·특이사항','a'],['action','조치 내용·향후 계획','a']]},
@@ -7338,6 +7346,7 @@ async function localAutoSeed(){
 (async function init(){
   try{
     await openDB();
+    try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){} // v108: 저장공간 부족 때 크롬이 이 앱 데이터를 지우지 않게 요청
     await loadAll();
     try{if(await localAutoSeed())console.info('로컬 시드 주입 완료');}catch(e){console.warn('로컬 자동 주입 실패',e);}
     if(location.protocol==='http:'&&window.LOCAL_SEED&&window.LOCAL_SEED.pdfs)setTimeout(()=>localAutoDocs(window.LOCAL_SEED).then(()=>localDocText()).catch(e=>console.warn('로컬 도면 주입 실패',e)),300);
