@@ -136,7 +136,13 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .cal-legend{margin-top:10px;font-size:11px;color:var(--dim);display:flex;gap:12px}
 .cal-legend .dot{margin-right:4px}
 .hs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}
-.hs-p{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 2px;text-align:center;color:var(--txt)}
+/* v106 오늘 화면: 요약 칸 = 업무별 색(--tone) + 아이콘 원, 목록 = 왼쪽 색띠 */
+.hs-p{--tone:var(--accent);background:color-mix(in srgb,var(--tone) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--tone) 35%,var(--line));border-radius:12px;padding:9px 2px 8px;text-align:center;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:1px;box-shadow:var(--shadow-sm)}
+.hs-top{display:flex;align-items:center;gap:6px}
+.hs-ic{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;background:color-mix(in srgb,var(--tone) 24%,transparent);flex:none}
+.t-todo,.k-todo{--tone:var(--accent)}.t-iss,.k-iss{--tone:var(--purple)}.t-wk,.k-chk{--tone:var(--ok)}.t-insp,.k-insp{--tone:var(--warn)}
+.item.k{border-left:3px solid var(--tone);padding-left:9px}
+header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);letter-spacing:-.1px}header .hd-tag:empty{display:none}
 .hs-p b{display:block;font-size:19px;line-height:1.3}.hs-p b.hot{color:#ef4444}
 .hs-p span{font-size:11px;color:var(--dim)}.hs-p em{display:block;font-style:normal;font-size:11px}.hs-p em.hs-over{color:#ef4444;font-weight:700}
 .wk-c{position:relative;height:46px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer}
@@ -356,7 +362,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 </head>
 <body>
 <header>
-  <h1 id="hd-title">전력계통과 업무</h1>
+  <div class="hd-t"><h1 id="hd-title">전력계통과 업무</h1><div class="hd-tag" id="hd-tag"></div></div>
   <span class="sub" id="hd-sub"></span>
   <button id="theme-btn" class="theme-btn" onclick="toggleTheme()" title="테마 전환">🌙</button>
 </header>
@@ -370,7 +376,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v105'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v106'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -953,10 +959,10 @@ function homeSumHtml(){
   const all=S.inspections.map(i=>dday(i.nextDue)).filter(n=>n!==null),dd=all.filter(n=>n>=0);
   const over=all.length-dd.length,nx=dd.length?Math.min(...dd):null,ym=ts.slice(0,7);
   const mon=S.inspections.filter(i=>i.nextDue&&i.nextDue.startsWith(ym)&&i.nextDue>=ts).length;
-  const p=(n,l,tab,cls)=>`<button class="hs-p" onclick="S.homeTab='${tab}';S._selDay=null;render()"><b class="${cls||''}">${n}</b><span>${l}</span></button>`;
+  const tile=(oc,t,ic,n,l,sub)=>`<button class="hs-p ${t}" onclick="${oc}"><span class="hs-top"><span class="hs-ic">${ic}</span><b>${n}</b></span><span>${l}${sub||''}</span></button>`;
+  const p=(n,l,tab,t,ic)=>tile(`S.homeTab='${tab}';S._selDay=null;render()`,t,ic,n,l);
   const sub=over?` <em class="hs-over">초과 ${over}</em>`:!mon&&nx!==null?` <em>다음 D-${nx}</em>`:'';
-  const insp=`<button class="hs-p" onclick="go('insp')"><b>${mon}</b><span>이달 법정검사${sub}</span></button>`;
-  return `<div class="hs">${p(todo,'오늘 할일','todo')}${p(issue,'진행 현안','issue')}${p(wk,'이번주 점검','week')}${insp}</div>`;
+  return `<div class="hs">${p(todo,'오늘 할일','todo','t-todo','📌')}${p(issue,'진행 현안','issue','t-iss','🔧')}${p(wk,'이번주 점검','week','t-wk','✅')}${tile("go('insp')",'t-insp','📋',mon,'이달 법정검사',sub)}</div>`;
 }
 const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 function weekCalHtml(){
@@ -1023,8 +1029,8 @@ function homeAllHtml(){
     +`<div class="row" style="gap:8px"><button class="btn ghost sm grow" onclick="openDay('${ts}')">＋ 할 일</button><button class="btn ghost sm grow" onclick="editIssue()">＋ 현안</button></div>`;
 }
 const _issCmp=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999');
-const _issRow=i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div>
-  <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${i.due?'목표 '+esc(mdShort(i.due))+' · ':''}${esc(i.date)} ${esc(i.note||'')}</div></div>${i.due?ddayBadge(dday(i.due)):''}</div>`;
+const _issRow=i=>`<div class="item k k-iss"><div class="chk" onclick="doneIssue('${i.id}')"></div>
+  <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${i.due?'목표 '+esc(mdShort(i.due))+' · ':''}${esc(i.date)} ${esc(i.note||'')}</div></div>${i.due?ddayBadge(dday(i.due)):'<span class="badge b-purple">진행중</span>'}</div>`;
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
   const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
@@ -1123,12 +1129,12 @@ function _weekRange(){
   const f=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   return [f(mon),f(sun),ts];
 }
-function _inspRow(i){return `<div class="item click" onclick="go('insp')"><span class="badge b-red" style="flex:none">검사</span>
+function _inspRow(i){return `<div class="item click k k-insp" onclick="go('insp')"><span class="badge b-yellow" style="flex:none">검사</span>
   <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)}${i.target?' · '+esc(i.target):''}</div></div>${ddayBadge(i.dd)}</div>`;}
-function _todoRow(x,ts){return `<div class="item"><div class="chk" onclick="toggleTodo('${x.id}',0)"></div>
+function _todoRow(x,ts){return `<div class="item k k-todo"><div class="chk" onclick="toggleTodo('${x.id}',0)"></div>
   <div class="t click" onclick="openDay('${x.date}')"><div class="n">${esc(x.title)}</div>
-  <div class="d">${x.date===ts?'오늘':esc(x.date)+(x.date<ts?' · 지남':'')}</div></div></div>`;}
-function _chkRow(c){return `<div class="item"><div class="chk" onclick="toggleChk('${c.id}')"></div>
+  <div class="d">${esc(x.date)}${x.note?' · '+esc(x.note):''}</div></div>${x.date===ts?'<span class="badge b-blue">오늘</span>':x.date<ts?'<span class="badge b-red">지남</span>':`<span class="badge b-gray">${esc(mdShort(x.date))}</span>`}</div>`;}
+function _chkRow(c){return `<div class="item k k-chk"><div class="chk" onclick="toggleChk('${c.id}')"></div>
   <div class="t"><div class="n">${esc(c.name)}</div><div class="d">주기업무${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
   <span class="badge b-gray">${CYCLE_KO[c.cycle]||''}</span></div>`;}
 function homeSearch(q){
@@ -7247,7 +7253,8 @@ function go(v){
 function render(){
   $('#app').innerHTML=(VIEWS[S.view]||vHome)();
   $('#hd-title').textContent=TITLES[S.view]||'';
-  $('#hd-sub').textContent=todayStr();
+  $('#hd-sub').textContent=todayStr()+' ('+'일월화수목금토'[new Date().getDay()]+')';
+  const tg=$('#hd-tag');if(tg)tg.textContent=S.view==='home'?'발전소 전기설비 유지보수 업무지원':''; // v106 (사내망 PC 헤더엔 없을 수 있음)
   const nb=[...document.querySelectorAll('#nav button')],on=nb.some(b=>b.dataset.v===S.view)?S.view:_navOf(S.view);
   nb.forEach(b=>b.classList.toggle('on',b.dataset.v===on));
   if(S.view==='tree'&&(S._treeSubTab||'path')==='diagram')requestAnimationFrame(setupTreeDiagram);
