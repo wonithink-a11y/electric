@@ -185,6 +185,11 @@ header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);l
 .btn.full{width:100%;margin-top:8px}
 .chip{background:var(--panel2);border:1px solid var(--line);color:var(--dim);padding:6px 13px;border-radius:20px;font-size:13px;white-space:nowrap;font-weight:600}
 .chip.on{background:var(--grad);color:#fff;border-color:transparent}
+/* v110 현장 문서 작성 창: 한 화면에 들어가게 간격·칸 높이 줄임, 반 칸 2열, 판정 버튼 줄 */
+.fdf h3{margin-bottom:0;font-size:16px}.fdf label{margin:4px 0 1px;font-size:12px;line-height:1.35}
+.fdf input,.fdf select,.fdf textarea{padding:7px 9px;font-size:14px}
+.fd-half{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fd-r{gap:6px;margin-top:6px;align-items:center}.fdf textarea{line-height:1.4}.fd-r>span{font-size:12px;color:var(--dim);min-width:40px;font-weight:500}.fd-r .chip{flex:1;padding:6px 0}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;flex-wrap:wrap}
 .chips::-webkit-scrollbar{display:none}
 .chips.one{flex-wrap:nowrap}.chips.one .chip{flex:none}
@@ -376,7 +381,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v109'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v110'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5052,9 +5057,10 @@ function fabMenu(){
    저장: v[k]='선택 · 수기'(목록·A4·검색이 그대로 씀), 다시 열 때 v[k+'_s']·v[k+'_t'] */
 const FD_EQ_KINDS=['전동기','펌프','팬·송풍기','현장 조작반(LCP)','MCC','MCCB·배선차단기','ACB','VCB','변압기','배전반(SWGR)','분전반','조명','UPS','축전지·충전기','비상발전기','케이블·트레이','접지·피뢰','계장·제어전원','기타'];
 const FDOC_TYPES={
-  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d'],['kind','점검 구분','c','세부 (예: 11월 정기)',['월간','순회','특별','기타']],
+  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d',,,1],['writer','점검자','c','',['전력계통과','전력설비과'],1],
+    ['kind','점검 구분','c','세부 (예: 11월 정기)',['월간','순회','특별','기타']],
     ['place','설비 장소','c','세부 위치 (예: 2층 MCC실)','zones'],['equip','설비 품목','c','설비명·번호 (예: MCC-1 #3)',FD_EQ_KINDS],
-    ['writer','점검자','t'],['result','판정','c','',['양호','요주의','불량']],
+    ['result','판정','r','',['양호','요주의','불량']],
     ['items','점검 내용·결과','a','한 줄에 한 항목 (예: 절연저항 500MΩ 양호)'],['issue','이상·특이사항','a'],['action','조치 내용·향후 계획','a']]},
   man:{name:'조치매뉴얼',short:'조치매뉴얼',ic:'📘',f:[['date','작성일','d'],['place','대상 설비','t','예: ACB-101'],['writer','작성자','t'],['purpose','목적·적용 상황','a','예: MCC 차단기 트립 시 복구'],
     ['prep','준비물(공구·보호구)','a'],['safety','안전조치','a','예: LOTO, 검전, 접지'],['steps','작업 순서','s','한 줄에 한 단계 — 번호는 자동'],['caution','주의사항','a']]},
@@ -5090,32 +5096,41 @@ function openFdoc(id,type,place){
   let v=d?d.v:{date:todayStr()};
   if(!d){ // 새 문서: 설비 카드에서 넘어온 이름은 점검보고서면 '설비 품목' 수기 칸에, 점검자·작성자는 지난 문서 값
     if(place){if(T.f.some(f=>f[0]==='equip'))v.equip_t=place;else v.place=place;}
-    const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;
+    const wf=T.f.find(f=>f[0]==='writer');
+    if(wf&&wf[2]==='c')v.writer_s=wf[4][0]; // v110: 점검자 = 부서 선택, 기본 첫 항목(전력계통과)
+    else{const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;}
   }
   S._fdoc={id:d?d.id:'',type};
   const cOpts=o=>o==='zones'?(S._zones||[]).map(z=>z.name):o;
-  const cHtml=(k,ph,o)=>{const L=cOpts(o),sv=v[k+'_s']!==undefined?v[k+'_s']:(L.includes(v[k])?v[k]:''),tv=v[k+'_t']!==undefined?v[k+'_t']:(sv?'':v[k]||'');
-    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1'}"><option value="">선택</option>${L.map(x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
-  openModal(`<h3>${T.ic} ${T.name}${d?'':' 작성'}${d&&d.archived?` <span class="badge b-gray">📦 보관 ${esc(mdShort(d.archived))}</span>`:''}</h3>
-    ${T.f.map(([k,l,t,ph,o])=>`<label>${l}</label>${t==='c'?cHtml(k,ph,o):t==='a'||t==='s'
-      ?`<textarea id="fd-${k}" rows="${t==='s'?5:3}" placeholder="${esc(ph||'')}">${esc(v[k]||'')}</textarea>`
-      :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`).join('')}
-    <label>사진 <span class="muted" style="font-weight:400">— 사진을 누르면 동그라미·화살표·글자 표시, 밑 칸에 설명</span></label>
-    <div class="photostrip">${fdPh(d?d.id:'-').map((p,i,a)=>`<div style="width:120px"><div class="thumb" style="width:120px;height:90px"><img src="${p.dataUrl}" onclick="fdEdit('${p.id}')">
+  const cHtml=(k,ph,o)=>{let L=cOpts(o);if(!ph&&v[k]&&v[k+'_s']===undefined&&!L.includes(v[k]))L=[...L,v[k]]; // 선택만 있는 칸의 옛 값(예: 이름)은 지우지 않고 목록에 붙임
+    const sv=v[k+'_s']!==undefined?v[k+'_s']:(L.includes(v[k])?v[k]:''),tv=v[k+'_t']!==undefined?v[k+'_t']:(sv?'':v[k]||'');
+    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1;min-width:0'}"><option value="">선택</option>${L.map(x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
+  // v110 'r' = 버튼 하나 고르기(라벨과 한 줄), 6번째 값 1 = 반 칸(이웃한 반 칸끼리 한 줄)
+  const rHtml=(k,l,o)=>`<div class="row fd-r" id="fd-${k}"><span>${l}</span>${o.map(x=>`<button type="button" class="chip${v[k]===x?' on':''}" data-v="${esc(x)}" onclick="fdPick(this)">${esc(x)}</button>`).join('')}</div>`;
+  const fh=([k,l,t,ph,o])=>t==='r'?rHtml(k,l,o):`<label>${l}</label>${t==='c'?cHtml(k,ph,o):t==='a'||t==='s'
+      ?`<textarea id="fd-${k}" rows="${t==='s'?4:2}" placeholder="${esc(ph||'')}">${esc(v[k]||'')}</textarea>`
+      :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`;
+  let fields='';for(let i=0;i<T.f.length;i++){const f=T.f[i],g=T.f[i+1];if(f[5]&&g&&g[5]){fields+=`<div class="fd-half"><div>${fh(f)}</div><div>${fh(g)}</div></div>`;i++;}else fields+=fh(f);}
+  openModal(`<div class="fdf"><h3>${T.ic} ${T.name}${d?'':' 작성'}${d&&d.archived?` <span class="badge b-gray">📦 보관 ${esc(mdShort(d.archived))}</span>`:''}</h3>
+    ${fields}
+    <label>사진 <span class="muted" style="font-weight:400">— 누르면 표시·그리기</span></label>
+    <div class="photostrip">${fdPh(d?d.id:'-').map((p,i,a)=>`<div style="width:100px"><div class="thumb" style="width:100px;height:75px"><img src="${p.dataUrl}" onclick="fdEdit('${p.id}')">
       <button class="thx" onclick="fdPhoto('${p.id}')">✕</button><span class="pe-no">${i+1}</span></div>
       <input id="fdc-${p.id}" value="${esc(p.caption)}" placeholder="설명" style="margin-top:4px;padding:4px 6px;font-size:12px">
       <div class="row" style="gap:4px;margin-top:4px"><button class="btn ghost sm" style="padding:3px 0;flex:1" ${i?'':'disabled'} onclick="fdMove('${p.id}',-1)">◀</button>
         <button class="btn ghost sm" style="padding:3px 0;flex:1" onclick="fdEdit('${p.id}')">✏️</button>
         <button class="btn ghost sm" style="padding:3px 0;flex:1" ${i<a.length-1?'':'disabled'} onclick="fdMove('${p.id}',1)">▶</button></div></div>`).join('')}
-      <button class="addph" style="width:120px;height:90px" onclick="fdPhoto()">＋<br>사진(여러 장)</button></div>
-    <div class="row" style="margin-top:12px;gap:6px">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<div class="grow"></div>
+      <button class="addph" style="width:100px;height:56px" onclick="fdPhoto()">＋ 사진</button></div>
+    <div class="row" style="margin-top:8px;gap:6px">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<div class="grow"></div>
       <button class="btn ghost sm" onclick="fdSave().then(()=>openFdoc(S._fdoc.id))">임시저장</button>
-      <button class="btn sm" onclick="fdPreview()">미리보기·PDF</button></div>`);
+      <button class="btn sm" onclick="fdPreview()">미리보기·PDF</button></div></div>`);
 }
+function fdPick(b){const on=b.classList.contains('on');b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');} // 다시 누르면 해제
 async function fdSave(quiet){
   const {id,type}=S._fdoc,T=FDOC_TYPES[type],v={};
   T.f.forEach(([k,,t])=>{const el=document.getElementById('fd-'+k);
-    if(t==='c'){const s=(document.getElementById('fd-'+k+'-s')||{}).value||'',x=el?el.value.trim():'';v[k+'_s']=s;v[k+'_t']=x;v[k]=[s,x].filter(Boolean).join(' · ');}
+    if(t==='c'){const s=(document.getElementById('fd-'+k+'-s')||{}).value||'',x=el&&el.tagName==='INPUT'?el.value.trim():'';v[k+'_s']=s;v[k+'_t']=x;v[k]=[s,x].filter(Boolean).join(' · ');}
+    else if(t==='r'){const on=el&&el.querySelector('.chip.on');v[k]=on?on.dataset.v:'';}
     else if(el)v[k]=el.value.trim();});
   let d=id&&S.notes.find(x=>x.id===id);
   if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
@@ -5140,7 +5155,7 @@ async function fdDel(){
 const fdSteps=s=>s.split('\n').map(x=>x.trim().replace(/^\d+[.)]\s*/,'')).filter(Boolean); // 작업 순서: 적어 넣은 번호는 떼고 다시 매김
 function fdHtml(d){
   const T=FDOC_TYPES[d.type],v=d.v||{},ph=fdPh(d.id);
-  const head=T.f.filter(f=>f[2]==='d'||f[2]==='t'||f[2]==='c'),body=T.f.filter(f=>(f[2]==='a'||f[2]==='s')&&v[f[0]]);
+  const head=T.f.filter(f=>'dtcr'.includes(f[2])),body=T.f.filter(f=>(f[2]==='a'||f[2]==='s')&&v[f[0]]);
   const rows=[];for(let i=0;i<head.length;i+=2)rows.push(head.slice(i,i+2));
   return `<div class="fd-page"><h1>${T.name}</h1>
     <table>${rows.map(r=>`<tr>${r.map(([k,l,t])=>`<th>${l}</th><td${r.length<2?' colspan="3"':''}${t==='d'?' style="white-space:nowrap"':''}>${esc(v[k]||'')}</td>`).join('')}</tr>`).join('')}</table>
