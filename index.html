@@ -376,7 +376,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v108'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v109'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3121,7 +3121,7 @@ function openCard(id){
   const short=_kdShort(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,'');
   if(fieldOn()){ // v97 현장 모드: 끌 차단기 → 정전 영향 → 전원 경로 → 이력·현장 문서 → 도면 → 사양. 로직·연결 설비·분석 버튼은 분석 메뉴에서
     const eqN=o?o.dead.filter(d=>d.type!=='breaker'&&d.type!=='source').length:0;
-    const fds=tk.length>=4?S.notes.filter(x=>x.kind==='fdoc'&&_normTag((x.v&&x.v.place)||'').includes(tk)):[];
+    const fds=tk.length>=4?S.notes.filter(x=>x.kind==='fdoc'&&x.v&&_normTag((x.v.place||'')+' '+(x.v.equip||'')).includes(tk)):[];
     const fdH=fds.map(d=>`<div class="item click" onclick="openFdoc('${d.id}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(d.tag)} · ${esc(d.content)}</div><div class="d">${esc(d.date)}</div></div></div>`).join('');
     openModal(`<h3>${esc(title)}</h3>
     <div class="muted">${zp?'🏢 '+esc(zp.z.name)+' · ':''}${NODE_TYPES[n.type][1]}${n.voltage?' · '+esc(n.voltage):''}${e&&e.tagNo?' · '+esc(e.tagNo):''} · ${live.has(id)?'🟢 가압':'⚪ 무전압'}</div>
@@ -5048,8 +5048,13 @@ function fabMenu(){
     ${Object.entries(FDOC_TYPES).map(([k,T])=>b(`openFdoc(null,'${k}')`,`${T.ic} ${T.name}`)).join('')}
     <button class="btn ghost sm full" onclick="closeModal()">닫기</button>`);
 }
+/* v109 칸 종류 'c' = 목록 선택 + 옆 수기(ph가 ''이면 선택만). [키,이름,'c',수기 안내,목록] — 목록 'zones'는 설비동 데이터(S._zones) 이름(코드에 실제 건물명 안 넣음).
+   저장: v[k]='선택 · 수기'(목록·A4·검색이 그대로 씀), 다시 열 때 v[k+'_s']·v[k+'_t'] */
+const FD_EQ_KINDS=['전동기','펌프','팬·송풍기','현장 조작반(LCP)','MCC','MCCB·배선차단기','ACB','VCB','변압기','배전반(SWGR)','분전반','조명','UPS','축전지·충전기','비상발전기','케이블·트레이','접지·피뢰','계장·제어전원','기타'];
 const FDOC_TYPES={
-  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d'],['place','설비·장소','t','예: 2층 전기실 MCC-1'],['writer','점검자','t'],['kind','점검 구분','t','예: 월간 점검, 순회 점검, 특별 점검'],
+  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d'],['kind','점검 구분','c','세부 (예: 11월 정기)',['월간','순회','특별','기타']],
+    ['place','설비 장소','c','세부 위치 (예: 2층 MCC실)','zones'],['equip','설비 품목','c','설비명·번호 (예: MCC-1 #3)',FD_EQ_KINDS],
+    ['writer','점검자','t'],['result','판정','c','',['양호','요주의','불량']],
     ['items','점검 내용·결과','a','한 줄에 한 항목 (예: 절연저항 500MΩ 양호)'],['issue','이상·특이사항','a'],['action','조치 내용·향후 계획','a']]},
   man:{name:'조치매뉴얼',short:'조치매뉴얼',ic:'📘',f:[['date','작성일','d'],['place','대상 설비','t','예: ACB-101'],['writer','작성자','t'],['purpose','목적·적용 상황','a','예: MCC 차단기 트립 시 복구'],
     ['prep','준비물(공구·보호구)','a'],['safety','안전조치','a','예: LOTO, 검전, 접지'],['steps','작업 순서','s','한 줄에 한 단계 — 번호는 자동'],['caution','주의사항','a']]},
@@ -5081,10 +5086,18 @@ function fdFor(place){ // 설비 카드 '＋ 현장 문서' — 종류를 고르
 }
 function openFdoc(id,type,place){
   const d=id?S.notes.find(x=>x.id===id):null;if(id&&!d)return;
-  type=d?d.type:type;const T=FDOC_TYPES[type],v=d?d.v:{date:todayStr(),place:place||''};
+  type=d?d.type:type;const T=FDOC_TYPES[type];
+  let v=d?d.v:{date:todayStr()};
+  if(!d){ // 새 문서: 설비 카드에서 넘어온 이름은 점검보고서면 '설비 품목' 수기 칸에, 점검자·작성자는 지난 문서 값
+    if(place){if(T.f.some(f=>f[0]==='equip'))v.equip_t=place;else v.place=place;}
+    const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;
+  }
   S._fdoc={id:d?d.id:'',type};
+  const cOpts=o=>o==='zones'?(S._zones||[]).map(z=>z.name):o;
+  const cHtml=(k,ph,o)=>{const L=cOpts(o),sv=v[k+'_s']!==undefined?v[k+'_s']:(L.includes(v[k])?v[k]:''),tv=v[k+'_t']!==undefined?v[k+'_t']:(sv?'':v[k]||'');
+    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1'}"><option value="">선택</option>${L.map(x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
   openModal(`<h3>${T.ic} ${T.name}${d?'':' 작성'}${d&&d.archived?` <span class="badge b-gray">📦 보관 ${esc(mdShort(d.archived))}</span>`:''}</h3>
-    ${T.f.map(([k,l,t,ph])=>`<label>${l}</label>${t==='a'||t==='s'
+    ${T.f.map(([k,l,t,ph,o])=>`<label>${l}</label>${t==='c'?cHtml(k,ph,o):t==='a'||t==='s'
       ?`<textarea id="fd-${k}" rows="${t==='s'?5:3}" placeholder="${esc(ph||'')}">${esc(v[k]||'')}</textarea>`
       :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`).join('')}
     <label>사진 <span class="muted" style="font-weight:400">— 사진을 누르면 동그라미·화살표·글자 표시, 밑 칸에 설명</span></label>
@@ -5101,11 +5114,13 @@ function openFdoc(id,type,place){
 }
 async function fdSave(quiet){
   const {id,type}=S._fdoc,T=FDOC_TYPES[type],v={};
-  T.f.forEach(([k])=>{const el=document.getElementById('fd-'+k);if(el)v[k]=el.value.trim();});
+  T.f.forEach(([k,,t])=>{const el=document.getElementById('fd-'+k);
+    if(t==='c'){const s=(document.getElementById('fd-'+k+'-s')||{}).value||'',x=el?el.value.trim():'';v[k+'_s']=s;v[k+'_t']=x;v[k]=[s,x].filter(Boolean).join(' · ');}
+    else if(el)v[k]=el.value.trim();});
   let d=id&&S.notes.find(x=>x.id===id);
   if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
   // date·tag·content는 업무 메모 목록(noteListHtml)이 그대로 쓰는 필드
-  Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:(v.place||'(제목 없음)')+(v.kind?' · '+v.kind:'')});
+  Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:[v.place,v.equip,v.kind].filter(Boolean).join(' · ')||'(제목 없음)'});
   await dbPut('notes',d);
   for(const p of fdPh(d.id)){const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;await dbPut('photos',p);}}
   if(S.view==='work')render();
@@ -5125,7 +5140,7 @@ async function fdDel(){
 const fdSteps=s=>s.split('\n').map(x=>x.trim().replace(/^\d+[.)]\s*/,'')).filter(Boolean); // 작업 순서: 적어 넣은 번호는 떼고 다시 매김
 function fdHtml(d){
   const T=FDOC_TYPES[d.type],v=d.v||{},ph=fdPh(d.id);
-  const head=T.f.filter(f=>f[2]==='d'||f[2]==='t'),body=T.f.filter(f=>(f[2]==='a'||f[2]==='s')&&v[f[0]]);
+  const head=T.f.filter(f=>f[2]==='d'||f[2]==='t'||f[2]==='c'),body=T.f.filter(f=>(f[2]==='a'||f[2]==='s')&&v[f[0]]);
   const rows=[];for(let i=0;i<head.length;i+=2)rows.push(head.slice(i,i+2));
   return `<div class="fd-page"><h1>${T.name}</h1>
     <table>${rows.map(r=>`<tr>${r.map(([k,l,t])=>`<th>${l}</th><td${r.length<2?' colspan="3"':''}${t==='d'?' style="white-space:nowrap"':''}>${esc(v[k]||'')}</td>`).join('')}</tr>`).join('')}</table>
