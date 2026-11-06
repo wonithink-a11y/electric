@@ -376,7 +376,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v106'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v107'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5075,7 +5075,7 @@ function openFdoc(id,type,place){
   const d=id?S.notes.find(x=>x.id===id):null;if(id&&!d)return;
   type=d?d.type:type;const T=FDOC_TYPES[type],v=d?d.v:{date:todayStr(),place:place||''};
   S._fdoc={id:d?d.id:'',type};
-  openModal(`<h3>${T.ic} ${T.name}${d?'':' 작성'}</h3>
+  openModal(`<h3>${T.ic} ${T.name}${d?'':' 작성'}${d&&d.archived?` <span class="badge b-gray">📦 보관 ${esc(mdShort(d.archived))}</span>`:''}</h3>
     ${T.f.map(([k,l,t,ph])=>`<label>${l}</label>${t==='a'||t==='s'
       ?`<textarea id="fd-${k}" rows="${t==='s'?5:3}" placeholder="${esc(ph||'')}">${esc(v[k]||'')}</textarea>`
       :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`).join('')}
@@ -5132,7 +5132,26 @@ async function fdPreview(){
   openModal(`<h3>👁️ 미리보기 <span class="cnt">A4</span></h3>${fdHtml(d)}
     <div class="muted" style="margin-top:8px">PDF 저장 = 인쇄 창에서 프린터를 'PDF로 저장'으로. 공유 = 이 A4를 PDF 파일로 카톡·메일에(글자는 그림이라 검색은 안 됨).</div>
     <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="openFdoc('${d.id}')">← 수정</button><div class="grow"></div>
-      <button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdPrint()">🖨️ PDF 저장</button></div>`);
+      <button class="btn ghost sm" onclick="fdArchive()">📦 보관</button><button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdPrint()">🖨️ PDF 저장</button></div>`);
+}
+/* v107 📦 보관 — 다 쓴 보고서의 사진만 긴 변 1024px·JPEG 60%로 한 번 더 줄인다(찍을 때는 1600px·80%).
+   글·순서·설명은 그대로라 다시 고치고 PDF를 다시 만들 수 있다. 줄인 사진은 되돌릴 수 없어 전후 용량을 보여 주고 묻는다.
+   줄인 사진은 p.small=1(다시 누르면 새로 넣은 사진만), 문서는 d.archived=날짜 */
+const _mb=n=>(n*0.75/1048576).toFixed(n*0.75<1048576?2:1)+'MB'; // dataUrl 글자 수 → 대략 용량
+function _shrinkUrl(url,maxDim,q){return new Promise(res=>{const img=new Image();
+  img.onload=()=>{const r=Math.min(1,maxDim/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
+    c.width=Math.round(img.naturalWidth*r);c.height=Math.round(img.naturalHeight*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    let o=url;try{o=c.toDataURL('image/jpeg',q);}catch(e){}res(o.length<url.length?o:url);};
+  img.onerror=()=>res(url);img.src=url;});}
+async function fdArchive(){
+  const d=await fdSave(true),ph=fdPh(d.id).filter(p=>!p.small);
+  if(!ph.length){toast(d.archived?'이미 보관됨 — 줄일 새 사진이 없습니다':'사진이 없습니다');return;}
+  const out=await Promise.all(ph.map(p=>_shrinkUrl(p.dataUrl,1024,0.6)));
+  const a=ph.reduce((s,p)=>s+p.dataUrl.length,0),b=out.reduce((s,u)=>s+u.length,0);
+  if(!(await confirmModal(`📦 이 보고서 사진 ${ph.length}장을 줄여 보관할까요?\n${_mb(a)} → ${_mb(b)}\n글·사진 설명은 그대로이고 PDF도 다시 만들 수 있습니다.\n줄인 사진은 원래 화질로 되돌릴 수 없습니다.`)))return;
+  for(let i=0;i<ph.length;i++){ph[i].dataUrl=out[i];ph[i].small=1;await dbPut('photos',ph[i]);}
+  d.archived=todayStr();await dbPut('notes',d);
+  toast(`보관됨 — ${_mb(a)} → ${_mb(b)}`);fdPreview();
 }
 const fdName=d=>d.tag+'_'+d.content.replace(/[\\/:*?"<>|]/g,'')+'_'+d.date; // PDF 파일 이름
 function fdPrint(){
