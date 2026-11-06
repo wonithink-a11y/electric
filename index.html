@@ -369,7 +369,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v100'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v101'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -420,6 +420,7 @@ async function loadAll(){
   try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
+  try{S._gcCfg=await dbGet('meta','gcCfg')||null;if(gcOn())loadGis().catch(()=>{});}catch(e){S._gcCfg=null;}
   try{const fm=await dbGet('meta','fieldMode');S._fieldMode=fm?fm.v:true;}catch(e){S._fieldMode=true;}
 }
 /* v97 현장 모드(기본 켬): 더보기 › 분석 메뉴를 숨기고 설비 카드를 현장 질문 순서로. 사내망 PC 화면(html.pc)에서는 늘 꺼짐 */
@@ -805,7 +806,8 @@ function fbStartSync(){
   });
 }
 function fbStopSync(){fbUnsubs.forEach(u=>{try{u();}catch(e){}});fbUnsubs=[];}
-function fbPush(store,obj){
+function fbPush(store,obj,noGc){ // 할 일·현안 저장은 모두 여기를 지나므로 구글 캘린더 반영도 여기서(v101)
+  if(!noGc&&(store==='todos'||store==='issues'))gcSync(store,obj);
   if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
   fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(obj.id)).set(obj).catch(e=>console.warn('fbPush',e));
 }
@@ -835,6 +837,88 @@ async function saveFbConfig(){
   if(!cfg.apiKey||!cfg.projectId){toast('apiKey/projectId가 필요합니다');return;}
   await dbPut('meta',{id:'fbConfig',json:raw});
   S._fbCfg=cfg;render();toast('저장됨 — 이제 Google로 로그인하세요');
+}
+/* ===== 📅 구글 캘린더 자동 연동(v101) — Google Identity Services 토큰 + Calendar API(기본 캘린더 primary)
+   할 일 1건 = 종일 일정 1건(여러 날 할 일은 날마다 따로), 현안은 목표일 있을 때만. 일정 id는 레코드의 gcalId.
+   클라이언트 ID는 meta 'gcCfg'(이 기기에만, GitHub 코드에 없음). 토큰은 메모리에만(1시간, 끝나면 저장 때 다시 받음).
+   ponytail: 실패하면 알림만 — 다시 보내기는 설정의 '캘린더로 보내기'(gcalId 없는 것만). 다른 기기에서 지운 건 그 기기가 연동돼 있어야 지워짐 */
+let gcTok=null,gcExp=0,gcWait=null;
+const GC_API='https://www.googleapis.com/calendar/v3/calendars/primary/events';
+// 기본 클라이언트 ID(공개값 — 등록 원본 wonithink-a11y.github.io·테스트 사용자만 사용 가능, 비밀번호 아님). 허남원님 결정 2026-11-06
+const GC_CID='365986409504-s2fh3bk116j7e6he5q5iombertbpo1rf.apps.googleusercontent.com';
+const gcCid=()=>(S._gcCfg&&S._gcCfg.cid)||GC_CID;
+const gcOn=()=>!!(S._gcCfg&&S._gcCfg.on);
+function loadGis(){
+  if(window.google&&google.accounts&&google.accounts.oauth2)return Promise.resolve();
+  return new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';
+    s.onload=res;s.onerror=()=>rej(new Error('구글 로그인 스크립트 로드 실패 — 인터넷 연결 필요'));document.head.appendChild(s);});
+}
+function gcToken(){ // 저장 버튼 누른 직후(5초 안)에 불러야 팝업이 안 막힘
+  if(gcTok&&Date.now()<gcExp)return Promise.resolve(gcTok);
+  if(gcWait)return gcWait;
+  if(!(window.google&&google.accounts&&google.accounts.oauth2))return loadGis().then(gcToken);
+  gcWait=new Promise((res,rej)=>{
+    google.accounts.oauth2.initTokenClient({client_id:gcCid(),scope:'https://www.googleapis.com/auth/calendar.events',
+      callback:t=>{gcWait=null;if(t.error){rej(new Error(t.error));return;}gcTok=t.access_token;gcExp=Date.now()+(t.expires_in-60)*1000;res(gcTok);},
+      error_callback:e=>{gcWait=null;rej(new Error(e.type==='popup_closed'?'로그인 창이 닫힘':e.type||'로그인 실패'));}
+    }).requestAccessToken({prompt:''});
+  });
+  return gcWait;
+}
+async function gcFetch(method,id,body){
+  const tok=await gcToken();
+  const r=await fetch(GC_API+(id?'/'+encodeURIComponent(id):''),{method,
+    headers:body?{Authorization:'Bearer '+tok,'Content-Type':'application/json'}:{Authorization:'Bearer '+tok},
+    body:body?JSON.stringify(body):undefined});
+  if(r.status===401)gcTok=null;
+  if(method==='DELETE'&&(r.status===404||r.status===410))return null; // 캘린더에서 이미 지움
+  if(!r.ok){const e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
+  return method==='DELETE'?null:r.json();
+}
+// store 'todos'|'issues' 레코드를 캘린더에 맞춘다. del=true면 일정 삭제(레코드는 호출한 쪽이 지움)
+async function gcSync(store,obj,del){
+  if(!gcOn())return;
+  const day=del?null:store==='todos'?obj.date:obj.due;
+  if(!day&&!obj.gcalId)return;
+  const save=async()=>{if(!del){await dbPut(store,obj);fbPush(store,obj,true);}};
+  try{
+    if(!day){await gcFetch('DELETE',obj.gcalId);delete obj.gcalId;await save();return;}
+    const e=new Date(day+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정 끝날 = 다음 날
+    const body={summary:(obj.done?'✔ ':'')+(store==='issues'?'[현안] ':'')+obj.title,description:obj.note||'',
+      start:{date:day},end:{date:_dstr(e)}};
+    if(obj.gcalId){
+      try{await gcFetch('PATCH',obj.gcalId,body);return;}
+      catch(er){if(er.status!==404&&er.status!==410)throw er;} // 캘린더에서 지운 일정 → 새로 만듦
+    }
+    obj.gcalId=(await gcFetch('POST',null,body)).id;await save();
+  }catch(er){toast('구글 캘린더 반영 실패: '+er.message);}
+}
+function gcDel(store,id){const o=S[store].find(x=>x.id===id);if(o)gcSync(store,o,true);} // S에서 빼기 전에 부를 것
+async function gcPushAll(){ // 오늘 이후·미완료인데 아직 캘린더에 없는 것
+  const ts=todayStr();
+  const L=[...S.todos.filter(x=>!x.done&&!x.gcalId&&x.date>=ts).map(x=>['todos',x]),
+    ...S.issues.filter(x=>!x.done&&!x.gcalId&&x.due&&x.due>=ts).map(x=>['issues',x])];
+  if(!L.length){toast('보낼 것이 없습니다');return;}
+  try{await gcToken();}catch(e){toast('연결 실패: '+e.message);return;}
+  for(const [s,x] of L)await gcSync(s,x);
+  toast(`${L.filter(([,x])=>x.gcalId).length}/${L.length}건 캘린더에 넣음`);
+}
+function gcCfgHtml(){
+  const c=S._gcCfg||{};
+  return `<hr><div class="muted">📅 구글 캘린더 자동 연동 — 할 일·현안(목표일 있는 것)을 저장·수정·완료·삭제하면 구글 캘린더에도 반영</div>
+    <label>OAuth 클라이언트 ID</label><input id="gc-cid" value="${esc(gcCid())}" placeholder="…apps.googleusercontent.com">
+    <label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="gc-on" type="checkbox" style="width:auto" ${c.on?'checked':''}> 자동 연동 켜기</label>
+    <button class="btn full" onclick="saveGcCfg()">저장 · 연결</button>
+    ${gcOn()?`<button class="btn ghost full" onclick="gcPushAll()">📤 오늘 이후 할 일·현안 캘린더로 보내기</button>`:''}
+    <div class="section-note">기본 클라이언트 ID가 채워져 있으니 '자동 연동 켜기'만 체크하고 저장하세요(기기마다 한 번). 이 기기에서 바꾼 것만 캘린더에 반영됩니다.</div>`;
+}
+async function saveGcCfg(){
+  const cid=$('#gc-cid').value.trim(),on=$('#gc-on').checked;
+  if(on&&!/\.apps\.googleusercontent\.com$/.test(cid)){toast('클라이언트 ID 형식이 아닙니다(…apps.googleusercontent.com)');return;}
+  S._gcCfg={cid,on};gcTok=null;await dbPut('meta',{id:'gcCfg',cid,on});
+  if(on)try{await gcToken();toast('구글 캘린더 연결됨');}catch(e){toast('연결 실패: '+e.message);}
+  else toast('캘린더 연동 끔');
+  moreDataSheet();
 }
 /* ================= PART 4 : 모달 ================= */
 function openModal(html){
@@ -1068,6 +1152,7 @@ async function reopenIssue(id){
 }
 async function delIssueHome(id){
   if(!(await confirmModal('이 완료 현안을 삭제할까요? (이력에서도 사라집니다)')))return;
+  gcDel('issues',id);
   await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);render();
 }
 function promoteIssue(id){
@@ -1114,7 +1199,7 @@ function editIssue(id){
     <label>메모</label><textarea id="is-n" rows="2">${esc(i?.note||'')}</textarea>
     <div class="row" style="margin-top:14px">
       ${i?'<button class="btn danger sm" onclick="delIssue(\''+i.id+'\')">삭제</button>':''}
-      <button class="btn ghost sm" onclick="calFrom('is')">📅 캘린더</button>
+      ${gcOn()?'':`<button class="btn ghost sm" onclick="calFrom('is')">📅 캘린더</button>`}
       <div class="grow"></div>
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveIssue('${i?.id||''}')">저장</button>
@@ -1131,6 +1216,7 @@ async function saveIssue(id){
 }
 async function delIssue(id){
   if(!(await confirmModal('이 현안을 삭제할까요?')))return;
+  gcDel('issues',id);
   await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);
   closeModal();render();
 }
@@ -1194,6 +1280,7 @@ function todoTodayHtml(){
 }
 async function delTodoHome(id){
   if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
+  gcDel('todos',id);
   await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);render();
 }
 function openDay(date){
@@ -1250,7 +1337,7 @@ function editTodo(id,date){
     <label>날짜${t?'':' <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 시작일→종료일 순서로 탭)</span>'}</label>
     <div class="dp" id="dp">${dpHtml()}</div>
     <label>메모</label><textarea id="td-n" rows="2">${esc(t?.note||'')}</textarea>
-    <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}<button class="btn ghost sm" onclick="calFrom('td')">📅 캘린더</button><div class="grow"></div>
+    <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}${gcOn()?'':`<button class="btn ghost sm" onclick="calFrom('td')">📅 캘린더</button>`}<div class="grow"></div>
       <button class="btn ghost sm" onclick="openDay('${date||todayStr()}')">취소</button>
       <button class="btn sm" onclick="saveTodo('${t?.id||''}')">저장</button></div>`);
 }
@@ -1294,6 +1381,7 @@ async function toggleTodo(id,reopen){
 async function delTodo(id,date){
   if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
   const t=S.todos.find(x=>x.id===id);
+  gcDel('todos',id);
   await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);
   render();openDay(date||(t&&t.date)||todayStr());
 }
@@ -3550,6 +3638,7 @@ function moreDataSheet(){
     <hr>
     <div class="muted">☁️ 실시간 동기화(Firebase) — 할일·현안·검사·체크만 PC↔모바일. 설비·계통·도면·금고는 이 기기에만.</div>
     ${fbConfigHtml()}
+    ${gcCfgHtml()}
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
 function moreSetupSheet(){
