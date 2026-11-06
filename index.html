@@ -383,7 +383,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v112'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v113'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -938,7 +938,7 @@ async function saveGcCfg(){
 function openModal(html){
   $('#modal-root').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
 }
-function closeModal(){$('#modal-root').innerHTML=''}
+function closeModal(){if(S._fdT)fdAutoNow();$('#modal-root').innerHTML=''} // v113: 현장 문서 자동 저장이 남았으면 칸을 지우기 전에 마저 저장(fdSave는 첫 await 전에 칸을 다 읽음)
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
@@ -5124,9 +5124,27 @@ function openFdoc(id,type,place){
         <button class="btn ghost sm" style="padding:3px 0;flex:1" onclick="fdEdit('${p.id}')">✏️</button>
         <button class="btn ghost sm" style="padding:3px 0;flex:1" ${i<a.length-1?'':'disabled'} onclick="fdMove('${p.id}',1)">▶</button></div></div>`).join('')}
       <button class="addph" style="width:100px;height:56px" onclick="fdPhoto()">＋ 사진</button></div>
-    <div class="row" style="margin-top:8px;gap:6px">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<div class="grow"></div>
-      <button class="btn ghost sm" onclick="fdSave().then(()=>openFdoc(S._fdoc.id))">임시저장</button>
-      <button class="btn sm" onclick="fdPreview()">미리보기·PDF</button></div></div>`);
+    <div class="row" style="margin-top:8px;gap:6px;align-items:center">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<span class="muted" id="fd-st" style="font-size:12px">${d?'✓ 저장됨':'쓰면 자동 저장'}</span><div class="grow"></div>
+      <button class="btn ghost sm" onclick="fdPreview()">미리보기</button>
+      <button class="btn sm" onclick="fdSavePdf()">💾 PDF 저장</button></div></div>`);
+  // v113 자동 저장: 칸에 쓰거나 고르면 0.8초 뒤 저장(창을 닫을 때 남은 것도 closeModal이 마저 저장)
+  const box=document.querySelector('#modal-root .fdf');if(box){box.oninput=fdAuto;box.onchange=fdAuto;}
+}
+function fdAuto(){
+  const has=S._fdoc&&S._fdoc.id||[...document.querySelectorAll('.fdf input:not([type=date]),.fdf textarea')].some(e=>e.value.trim())
+    ||['kind','place','equip'].some(k=>(document.getElementById('fd-'+k+'-s')||{}).value)||document.querySelector('.fdf .fd-r .chip.on');
+  if(!has)return; // 아무것도 안 쓴 새 문서는 만들지 않음
+  const st=document.getElementById('fd-st');if(st)st.textContent='저장 중…';
+  clearTimeout(S._fdT);S._fdT=setTimeout(fdAutoNow,800);
+}
+function fdAutoNow(){clearTimeout(S._fdT);S._fdT=null;if(!document.querySelector('#modal-root .fdf'))return;
+  fdSave(true).then(()=>{const st=document.getElementById('fd-st');if(st)st.textContent='✓ 자동 저장됨';});}
+async function fdSavePdf(){ // v113: 인쇄 창 없이 바로 PDF 파일로 — 폰은 '다운로드' 폴더에 저장됨
+  const d=await fdSave(true);toast('PDF 만드는 중…');
+  let blob=null;try{blob=await fdPdf(d);}catch(e){console.warn('fdPdf',e);}
+  if(!blob){toast('PDF를 만들지 못해 인쇄 창으로 엽니다');fdPrint();return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fdName(d)+'.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  toast('다운로드 폴더에 저장: '+a.download);
 }
 function fdChoose(k){ // 작성 창 위에 따로 뜨는 선택창(작성 창 내용은 그대로) — 묶음 제목 아래 항목을 가로로 줄바꿈
   const sel=document.getElementById('fd-'+k+'-s'),btn=document.getElementById('fd-'+k+'-b');if(!sel)return;
@@ -5137,10 +5155,10 @@ function fdChoose(k){ // 작성 창 위에 따로 뜨는 선택창(작성 창 �
   box.innerHTML=`<div class="modal fd-pick"><h3>${esc(title)}</h3>${grp.map(([h,xs])=>`${h?`<div class="fp-h">${esc(h)}</div>`:''}<div class="fp-c">${xs.map(x=>`<button type="button" class="chip${x===sel.value?' on':''}" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>`).join('')}
     <div class="row" style="margin-top:12px"><button type="button" class="btn ghost sm" data-v="">선택 안 함</button><div class="grow"></div><button type="button" class="btn ghost sm" data-x>닫기</button></div></div>`;
   box.onclick=e=>{const b=e.target.closest('[data-v],[data-x]');if(e.target!==box&&!b)return;
-    if(b&&b.dataset.v!==undefined){sel.value=b.dataset.v;if(btn)btn.textContent=b.dataset.v||'선택';}box.remove();};
+    if(b&&b.dataset.v!==undefined){sel.value=b.dataset.v;if(btn)btn.textContent=b.dataset.v||'선택';fdAuto();}box.remove();};
   document.body.appendChild(box);
 }
-function fdPick(b){const on=b.classList.contains('on');b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');} // 다시 누르면 해제
+function fdPick(b){const on=b.classList.contains('on');b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');fdAuto();} // 다시 누르면 해제
 async function fdSave(quiet){
   const {id,type}=S._fdoc,T=FDOC_TYPES[type],v={};
   T.f.forEach(([k,,t])=>{const el=document.getElementById('fd-'+k);
@@ -5151,8 +5169,9 @@ async function fdSave(quiet){
   if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
   // date·tag·content는 업무 메모 목록(noteListHtml)이 그대로 쓰는 필드
   Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:[v.place,v.equip,v.kind].filter(Boolean).join(' · ')||'(제목 없음)'});
+  const caps=fdPh(d.id).filter(p=>{const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;return true;}}); // 첫 await 전에 칸을 다 읽음(창 닫기와 겹쳐도 안전)
   await dbPut('notes',d);
-  for(const p of fdPh(d.id)){const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;await dbPut('photos',p);}}
+  for(const p of caps)await dbPut('photos',p);
   if(S.view==='work')render();
   if(!quiet)toast('저장됨 — 작업 탭 현장 문서함');
   return d;
@@ -5183,9 +5202,9 @@ function fdHtml(d){
 async function fdPreview(){
   const d=await fdSave(true);
   openModal(`<h3>👁️ 미리보기 <span class="cnt">A4</span></h3>${fdHtml(d)}
-    <div class="muted" style="margin-top:8px">PDF 저장 = 인쇄 창에서 프린터를 'PDF로 저장'으로. 공유 = 이 A4를 PDF 파일로 카톡·메일에(글자는 그림이라 검색은 안 됨).</div>
+    <div class="muted" style="margin-top:8px">💾 PDF 저장 = 폰 '다운로드' 폴더에 바로 저장. 📤 공유 = 카톡·Gmail·드라이브로(글자는 그림이라 검색은 안 됨). 종이로 뽑으려면 <a href="#" onclick="fdPrint();return false">🖨️ 인쇄</a>.</div>
     <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="openFdoc('${d.id}')">← 수정</button><div class="grow"></div>
-      <button class="btn ghost sm" onclick="fdArchive()">📦 보관</button><button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdPrint()">🖨️ PDF 저장</button></div>`);
+      <button class="btn ghost sm" onclick="fdArchive()">📦 보관</button><button class="btn ghost sm" onclick="fdShare()">📤 공유</button><button class="btn sm" onclick="fdSavePdf()">💾 PDF 저장</button></div>`);
 }
 /* v107 📦 보관 — 다 쓴 보고서의 사진만 긴 변 1024px·JPEG 60%로 한 번 더 줄인다(찍을 때는 1600px·80%).
    글·순서·설명은 그대로라 다시 고치고 PDF를 다시 만들 수 있다. 줄인 사진은 되돌릴 수 없어 전후 용량을 보여 주고 묻는다.
