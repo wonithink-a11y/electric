@@ -170,6 +170,7 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .histrow .hc{font-size:11px;color:var(--dim)}
 .histrow.click{cursor:pointer}
 /* 버튼 */
+.fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:31;width:56px;height:56px;border-radius:50%;background:var(--grad);color:#fff;font-size:30px;line-height:1;font-weight:400;box-shadow:0 4px 14px rgba(0,0,0,.35);padding:0}
 .btn{background:var(--grad);color:#fff;padding:11px 16px;font-size:14px;font-weight:700;box-shadow:var(--shadow-sm);letter-spacing:-.1px}
 .btn:active{transform:translateY(1px);opacity:.92}
 .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);box-shadow:none}
@@ -369,7 +370,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v102'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v103'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -807,7 +808,7 @@ function fbStartSync(){
 }
 function fbStopSync(){fbUnsubs.forEach(u=>{try{u();}catch(e){}});fbUnsubs=[];}
 function fbPush(store,obj,noGc){ // 할 일·현안 저장은 모두 여기를 지나므로 구글 캘린더 반영도 여기서(v101)
-  if(!noGc&&(store==='todos'||store==='issues'))gcSync(store,obj);
+  if(!noGc&&(store==='todos'||store==='issues'||store==='inspections'))gcSync(store,obj);
   if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
   fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(obj.id)).set(obj).catch(e=>console.warn('fbPush',e));
 }
@@ -871,14 +872,16 @@ async function gcCall(q){
 // store 'todos'|'issues' 레코드를 캘린더에 맞춘다. del=true면 일정 삭제(레코드는 호출한 쪽이 지움)
 async function gcSync(store,obj,del){
   if(!gcOn())return;
-  const day=del?null:store==='todos'?obj.date:obj.due;
+  const day=del?null:store==='todos'?obj.date:store==='issues'?obj.due:obj.nextDue; // 법정검사(v103)는 다음 기한
   if(!day&&!obj.gcalId)return;
   const save=async()=>{if(!del){await dbPut(store,obj);fbPush(store,obj,true);}};
   try{
     if(!day){await gcCall({op:'delete',id:obj.gcalId});delete obj.gcalId;await save();return;}
     const e=new Date(day+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정 끝날 = 다음 날(제외)
-    const r=await gcCall({op:'upsert',id:obj.gcalId||'',title:(obj.done?'✔ ':'')+(store==='issues'?'[현안] ':'')+obj.title,
-      desc:obj.note||'',start:day,end:_dstr(e)});
+    const ins=store==='inspections';
+    const r=await gcCall({op:'upsert',id:obj.gcalId||'',
+      title:ins?'[법정검사] '+obj.name:(obj.done?'✔ ':'')+(store==='issues'?'[현안] ':'')+obj.title,
+      desc:ins?[obj.cycle,obj.law].filter(Boolean).join(' · '):obj.note||'',start:day,end:_dstr(e)});
     if(r.id!==obj.gcalId){obj.gcalId=r.id;await save();}
   }catch(er){toast('구글 캘린더 반영 실패: '+er.message);}
 }
@@ -886,20 +889,21 @@ function gcDel(store,id){const o=S[store].find(x=>x.id===id);if(o)gcSync(store,o
 async function gcPushAll(){ // 오늘 이후·미완료인데 아직 캘린더에 없는 것
   const ts=todayStr();
   const L=[...S.todos.filter(x=>!x.done&&!x.gcalId&&x.date>=ts).map(x=>['todos',x]),
-    ...S.issues.filter(x=>!x.done&&!x.gcalId&&x.due&&x.due>=ts).map(x=>['issues',x])];
+    ...S.issues.filter(x=>!x.done&&!x.gcalId&&x.due&&x.due>=ts).map(x=>['issues',x]),
+    ...S.inspections.filter(x=>!x.gcalId&&x.nextDue).map(x=>['inspections',x])]; // 법정검사는 기한 지난 것도
   if(!L.length){toast('보낼 것이 없습니다');return;}
   for(const [s,x] of L)await gcSync(s,x);
   toast(`${L.filter(([,x])=>x.gcalId).length}/${L.length}건 캘린더에 넣음`);
 }
 function gcCfgHtml(){
   const c=S._gcCfg||{};
-  return `<hr><div class="muted">📅 구글 캘린더 자동 연동 — 할 일·현안(목표일 있는 것)을 저장·수정·완료·삭제하면 구글 캘린더에도 반영</div>
+  return `<hr><div class="muted">📅 구글 캘린더 자동 연동 — 할 일·현안(목표일 있는 것)·법정검사 기한을 저장·수정·완료·삭제하면 구글 캘린더에도 반영</div>
     <label>비밀키 <span class="muted" style="font-weight:400">(다른 기기에도 같은 값을 넣으세요)</span></label><input id="gc-key" value="${esc(c.key||(S._gcKey=S._gcKey||[...crypto.getRandomValues(new Uint8Array(12))].map(b=>b.toString(16).padStart(2,'0')).join('')))}">
     <button class="btn ghost full" onclick="gcCopyScript()">📋 ① Apps Script 코드 복사 (비밀키 포함)</button>
     <label>② 웹 앱 주소</label><input id="gc-url" value="${esc(c.url||'')}" placeholder="https://script.google.com/macros/s/…/exec">
     <label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="gc-on" type="checkbox" style="width:auto" ${c.on?'checked':''}> 자동 연동 켜기</label>
     <button class="btn full" onclick="saveGcCfg()">저장 · 연결 시험</button>
-    ${gcOn()?`<button class="btn ghost full" onclick="gcPushAll()">📤 오늘 이후 할 일·현안 캘린더로 보내기</button>`:''}
+    ${gcOn()?`<button class="btn ghost full" onclick="gcPushAll()">📤 할 일·현안·법정검사 캘린더로 보내기 (아직 안 간 것만)</button>`:''}
     <div class="section-note">처음 한 번: script.google.com → 새 프로젝트 → 코드 전부 지우고 붙여넣기 → 배포 › 새 배포 › 웹 앱(실행: 나, 액세스: 모든 사용자) → 권한 허용 → 나온 주소를 ②에. 로그인 창은 다시 안 뜹니다. 주소·비밀키는 이 기기에만 저장(GitHub 코드에 없음).</div>`;
 }
 async function gcCopyScript(){
@@ -928,6 +932,7 @@ function vHome(){
   const chip=(v,l)=>`<button class="chip ${tab===v?'on':''}" onclick="S.homeTab='${v}';S._selDay=null;render()">${l}</button>`;
   const body=S._selDay?homeDayHtml(S._selDay):tab==='all'?homeAllHtml():tab==='issue'?homeIssuesCard():tab==='todo'?homeTodoTab():tab==='hist'?homeHistHtml():homeInspTab();
   return `
+  <button class="fab" onclick="editTodo(null,S._selDay||todayStr())" aria-label="할 일 추가">＋</button>
   ${emptyStateCard()}
   <div class="card" style="padding:10px 12px">${devSearchBox('home-sr')}</div>
   ${homeSumHtml()}
@@ -944,10 +949,12 @@ function homeSumHtml(){
   const todo=S.todos.filter(x=>!x.done&&x.date<=ts).length;
   const issue=S.issues.filter(i=>!i.done).length;
   const wk=S.inspections.filter(i=>i.nextDue&&i.nextDue>=ws&&i.nextDue<=we).length+S.checklists.filter(c=>(CHK_TIER[c.cycle]||'B')==='A'&&!isChkDone(c)).length;
-  const dd=S.inspections.map(i=>dday(i.nextDue)).filter(n=>n!==null&&n>=0);
+  const all=S.inspections.map(i=>dday(i.nextDue)).filter(n=>n!==null),dd=all.filter(n=>n>=0);
+  const over=all.length-dd.length; // v103: 기한 지난 검사가 있으면 그게 먼저 보이게
   const nx=dd.length?Math.min(...dd):null;
   const p=(n,l,tab,cls)=>`<button class="hs-p" onclick="S.homeTab='${tab}';S._selDay=null;render()"><b class="${cls||''}">${n}</b><span>${l}</span></button>`;
-  return `<div class="hs">${p(todo,'오늘 할일','todo')}${p(issue,'진행 현안','issue')}${p(wk,'이번주 점검','week')}${p(nx===null?'-':nx===0?'D-DAY':'D-'+nx,'법정검사','week',nx!==null&&nx<=7?'hot':'')}</div>`;
+  const insp=over?p('초과 '+over,'법정검사','week','hot'):p(nx===null?'-':nx===0?'D-DAY':'D-'+nx,'법정검사','week',nx!==null&&nx<=7?'hot':'');
+  return `<div class="hs">${p(todo,'오늘 할일','todo')}${p(issue,'진행 현안','issue')}${p(wk,'이번주 점검','week')}${insp}</div>`;
 }
 const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 function weekCalHtml(){
@@ -1008,7 +1015,7 @@ function homeAllHtml(){
   const out=sec('📌 오늘·이번주 할일',wk.length,wk.slice(0,20).map(x=>_todoRow(x,ts)).join(''))
     +sec('🔧 진행 중 현안',iss.length,iss.sort(_issCmp).map(_issRow).join(''))
     +sec('📋 이번주 점검·검사',wkInsp.length+wkChk.length,wkInsp.map(_inspRow).join('')+wkChk.map(_chkRow).join(''))
-    +sec('🗓️ 다가오는 법정검사 (D-30)',soon.length,soon.slice(0,5).map(i=>`<div class="item click" onclick="go('insp')">
+    +sec(soon.some(i=>i.dd<0)?'🗓️ 법정검사 — 기한 초과·30일 이내':'🗓️ 다가오는 법정검사 (D-30)',soon.length,soon.slice(0,5).map(i=>`<div class="item click" onclick="go('insp')">
       <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)} · ${esc(i.cycle||'')}</div></div>${ddayBadge(i.dd)}</div>`).join(''));
   return (out||'<div class="card"><div class="empty">오늘·이번주 일정 없음 👍</div></div>')
     +`<div class="row" style="gap:8px"><button class="btn ghost sm grow" onclick="openDay('${ts}')">＋ 할 일</button><button class="btn ghost sm grow" onclick="editIssue()">＋ 현안</button></div>`;
@@ -3486,6 +3493,7 @@ async function saveInsp(id){
 }
 async function delInsp(id){
   if(!(await confirmModal('이 검사를 삭제할까요?')))return;
+  gcDel('inspections',id);
   await dbDel('inspections',id);S.inspections=S.inspections.filter(x=>x.id!==id);fbRemove('inspections',id);
   closeModal();render();
 }
