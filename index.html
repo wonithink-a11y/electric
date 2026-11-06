@@ -137,15 +137,15 @@ main{padding:14px 14px calc(76px + env(safe-area-inset-bottom)) 14px;max-width:7
 .cal-legend .dot{margin-right:4px}
 .hs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}
 /* v106 오늘 화면: 요약 칸 = 업무별 색(--tone) + 아이콘 원, 목록 = 왼쪽 색띠 */
-.hs-p{--tone:var(--accent);background:color-mix(in srgb,var(--tone) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--tone) 35%,var(--line));border-radius:12px;padding:9px 2px 8px;text-align:center;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:1px;box-shadow:var(--shadow-sm)}
-.hs-top{display:flex;align-items:center;gap:6px}
-.hs-ic{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;background:color-mix(in srgb,var(--tone) 24%,transparent);flex:none}
+.hs-p{--tone:var(--accent);background:color-mix(in srgb,var(--tone) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--tone) 35%,var(--line));border-radius:12px;padding:6px 2px 5px;text-align:center;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:1px;box-shadow:var(--shadow-sm)}
+.hs-top{display:flex;align-items:center;gap:4px}
+.hs-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;background:color-mix(in srgb,var(--tone) 24%,transparent);flex:none}
 .t-todo,.k-todo{--tone:var(--accent)}.t-iss,.k-iss{--tone:var(--purple)}.t-wk,.k-chk{--tone:var(--ok)}.t-insp,.k-insp{--tone:var(--warn)}
 .item.k{border-left:3px solid var(--tone);padding-left:9px}
 header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);letter-spacing:-.1px}header .hd-tag:empty{display:none}
-.hs-p b{display:block;font-size:19px;line-height:1.3}.hs-p b.hot{color:#ef4444}
-.hs-p span{font-size:11px;color:var(--dim)}.hs-p em{display:block;font-style:normal;font-size:11px}.hs-p em.hs-over{color:#ef4444;font-weight:700}
-.wk-c{position:relative;height:46px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer}
+.hs-p b{display:block;font-size:17px;line-height:1.2}.hs-p b.hot{color:#ef4444}
+.hs-p span{font-size:11px;color:var(--dim)}.hs-p em{font-style:normal;font-size:10px;white-space:nowrap}.hs-p em.hs-over{color:#ef4444;font-weight:700}
+.wk-c{position:relative;height:40px;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13px;font-weight:600;cursor:pointer}
 .wk-c small{position:absolute;top:1px;left:4px;font-size:9px;color:var(--dim);font-weight:400}
 .wk-c.today{border-color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
 .wk-c.sel{background:color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -188,6 +188,8 @@ header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);l
 /* v110 현장 문서 작성 창: 한 화면에 들어가게 간격·칸 높이 줄임, 반 칸 2열, 판정 버튼 줄 */
 .fdf h3{margin-bottom:0;font-size:16px}.fdf label{margin:4px 0 1px;font-size:12px;line-height:1.35}
 .fdf input,.fdf select,.fdf textarea{padding:7px 9px;font-size:14px}
+.fd-pk{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);text-align:left;padding:7px 9px;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fd-pk::after{content:' ▾';color:var(--dim);font-size:11px}
+.fp-h{font-size:12px;color:var(--dim);margin:8px 0 4px;font-weight:700}.fp-c{display:flex;flex-wrap:wrap;gap:6px}.fd-pick .chip{padding:7px 11px;font-size:14px}.fd-pick h3{margin-bottom:0}
 .fd-half{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .fd-r{gap:6px;margin-top:6px;align-items:center}.fdf textarea{line-height:1.4}.fd-r>span{font-size:12px;color:var(--dim);min-width:40px;font-weight:500}.fd-r .chip{flex:1;padding:6px 0}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;flex-wrap:wrap}
@@ -381,7 +383,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v111'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v112'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -964,44 +966,37 @@ function homeSumHtml(){
   const all=S.inspections.map(i=>dday(i.nextDue)).filter(n=>n!==null),dd=all.filter(n=>n>=0);
   const over=all.length-dd.length,nx=dd.length?Math.min(...dd):null,ym=ts.slice(0,7);
   const mon=S.inspections.filter(i=>i.nextDue&&i.nextDue.startsWith(ym)&&i.nextDue>=ts).length;
-  const tile=(oc,t,ic,n,l,sub)=>`<button class="hs-p ${t}" onclick="${oc}"><span class="hs-top"><span class="hs-ic">${ic}</span><b>${n}</b></span><span>${l}${sub||''}</span></button>`;
+  const tile=(oc,t,ic,n,l,sub)=>`<button class="hs-p ${t}" onclick="${oc}"><span class="hs-top"><span class="hs-ic">${ic}</span><b>${n}</b>${sub||''}</span><span>${l}</span></button>`; // v112: 초과 표시는 숫자 옆(칸 높이 같게)
   const p=(n,l,tab,t,ic)=>tile(`S.homeTab='${tab}';S._selDay=null;render()`,t,ic,n,l);
-  const sub=over?` <em class="hs-over">초과 ${over}</em>`:!mon&&nx!==null?` <em>다음 D-${nx}</em>`:'';
+  const sub=over?`<em class="hs-over">초과${over}</em>`:'';
   return `<div class="hs">${p(todo,'오늘 할일','todo','t-todo','📌')}${p(issue,'진행 현안','issue','t-iss','🔧')}${p(wk,'이번주 점검','week','t-wk','✅')}${tile("go('insp')",'t-insp','📋',mon,'이달 법정검사',sub)}</div>`;
 }
 const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-function weekCalHtml(){
-  const ts=todayStr(),sel=S._selDay;
-  const t=new Date(ts+'T00:00:00');t.setDate(t.getDate()-t.getDay()+7*(S._calWk||0));
-  const mid=new Date(t);mid.setDate(t.getDate()+6);
-  let cells='';
-  for(let i=0;i<14;i++){
-    const d=new Date(t);d.setDate(t.getDate()+i);const ds=_dstr(d);
+function weekCalHtml(){ // v112: 2주 → 한 달 보기(점 표시), ◀▶ = 달 넘기기(calNav). '크게'는 칸마다 제목이 보이는 큰 달력(calHtml)
+  const ts=todayStr(),sel=S._selDay,ym=_curYM(),[Y,M]=ym.split('-').map(Number);
+  const first=new Date(Y,M-1,1).getDay(),dim=new Date(Y,M,0).getDate();
+  let cells='<div></div>'.repeat(first);
+  for(let n=1;n<=dim;n++){
+    const ds=ym+'-'+String(n).padStart(2,'0');
     const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds),iss=S.issues.some(x=>!x.done&&x.due===ds);
-    cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')">
-      ${i===0||d.getDate()===1?`<small>${d.getMonth()+1}/</small>`:''}<span>${d.getDate()}</span>
+    cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')"><span>${n}</span>
       <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}${iss?'<span class="dot d-iss"></span>':''}</span></div>`;
   }
   return `<div class="card">
-    <div class="cal-head"><button class="btn ghost sm" onclick="S._calWk=(S._calWk||0)-1;render()">◀</button>
-      <div class="cal-title">${mid.getFullYear()}년 ${mid.getMonth()+1}월</div>
-      <button class="btn ghost sm" onclick="S._calWk=(S._calWk||0)+1;render()">▶</button>
-      <button class="btn ghost sm" onclick="S._calWk=0;S._selDay=null;render()">오늘</button>
-      <button class="btn ghost sm" onclick="S._calFull=true;render()">월 ▾</button></div>
+    <div class="cal-head"><button class="btn ghost sm" onclick="calNav(-1)">◀</button>
+      <div class="cal-title">${Y}년 ${M}월</div>
+      <button class="btn ghost sm" onclick="calNav(1)">▶</button>
+      <button class="btn ghost sm" onclick="S._calYM=null;S._selDay=null;render()">오늘</button>
+      <button class="btn ghost sm" onclick="S._calFull=true;render()">크게 ▾</button></div>
     <div class="cal-grid cal-dow">${['일','월','화','수','목','금','토'].map((w,i)=>`<div class="cal-w${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('')}</div>
     <div class="cal-grid">${cells}</div>
     <div class="cal-legend"><span><span class="dot d-todo"></span>할일</span><span><span class="dot d-insp"></span>법정검사</span><span><span class="dot d-iss"></span>현안 목표일</span></div>
   </div>`;
 }
 function selDay(ds){
-  if(S._calFull){S._calFull=false;S._calWk=0;}
+  if(S._calFull){S._calFull=false;}
   S._selDay=S._selDay===ds?null:ds;
-  if(S._selDay){
-    const w0=new Date(todayStr()+'T00:00:00');w0.setDate(w0.getDate()-w0.getDay());
-    const d=new Date(ds+'T00:00:00');d.setDate(d.getDate()-d.getDay());
-    const off=Math.round((d-w0)/6048e5),w=S._calWk||0;
-    if(off<w||off>w+1)S._calWk=off;
-  }
+  if(S._selDay)S._calYM=ds.slice(0,7); // v112: 고른 날의 달을 보여 줌
   render();
 }
 function homeDayHtml(ds){
@@ -5104,13 +5099,15 @@ function openFdoc(id,type,place){
     else{const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;}
   }
   S._fdoc={id:d?d.id:'',type};
-  const cOpts=o=>o==='zones'?(S._zones||[]).map(z=>z.name):o;
+  const cOpts=o=>{if(o!=='zones')return o; // 설비동은 plant(PB·DH 등)별 묶음
+    const Z=S._zones||[],P=[...new Set(Z.map(z=>z.plant||''))];return P.length>1?P.map(p=>[p||'그 밖',Z.filter(z=>(z.plant||'')===p).map(z=>z.name)]):Z.map(z=>z.name);};
   const cHtml=(k,ph,o)=>{let G=cOpts(o),L=G.flatMap(x=>Array.isArray(x)?x[1]:[x]);
     if(!ph&&v[k]&&v[k+'_s']===undefined&&!L.includes(v[k])){G=[...G,v[k]];L=[...L,v[k]];} // 선택만 있는 칸의 옛 값(예: 이름)은 지우지 않고 목록에 붙임
     const sv=v[k+'_s']!==undefined?v[k+'_s']:(L.includes(v[k])?v[k]:''),tv=v[k+'_t']!==undefined?v[k+'_t']:(sv?'':v[k]||'');
     if(sv&&!L.includes(sv))G=[...G,sv]; // 목록에서 빠진 옛 항목도 보존
-    const op=x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`;
-    return `<div class="row" style="gap:6px"><select id="fd-${k}-s" style="${ph?'flex:0 0 44%;min-width:0':'flex:1;min-width:0'}"><option value="">선택</option>${G.map(x=>Array.isArray(x)?`<optgroup label="${esc(x[0])}">${x[1].map(op).join('')}</optgroup>`:op(x)).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
+    const op=x=>`<option${x===sv?' selected':''}>${esc(x)}</option>`,w=ph?'flex:0 0 44%;min-width:0':'flex:1;min-width:0';
+    const pk=G.some(Array.isArray)||L.length>6; // v112: 긴 목록은 버튼 → 묶음별 가로 버튼 선택창(fdChoose), select는 숨겨 값만 보관
+    return `<div class="row" style="gap:6px">${pk?`<button type="button" class="fd-pk" id="fd-${k}-b" style="${w}" onclick="fdChoose('${k}')">${esc(sv||'선택')}</button>`:''}<select id="fd-${k}-s" style="${pk?'display:none':w}"><option value="">선택</option>${G.map(x=>Array.isArray(x)?`<optgroup label="${esc(x[0])}">${x[1].map(op).join('')}</optgroup>`:op(x)).join('')}</select>${ph?`<input id="fd-${k}" value="${esc(tv)}" placeholder="${esc(ph)}" style="flex:1;min-width:0">`:''}</div>`;};
   // v110 'r' = 버튼 하나 고르기(라벨과 한 줄), 6번째 값 1 = 반 칸(이웃한 반 칸끼리 한 줄)
   const rHtml=(k,l,o)=>`<div class="row fd-r" id="fd-${k}"><span>${l}</span>${o.map(x=>`<button type="button" class="chip${v[k]===x?' on':''}" data-v="${esc(x)}" onclick="fdPick(this)">${esc(x)}</button>`).join('')}</div>`;
   const fh=([k,l,t,ph,o])=>t==='r'?rHtml(k,l,o):`<label>${l}</label>${t==='c'?cHtml(k,ph,o):t==='a'||t==='s'
@@ -5130,6 +5127,18 @@ function openFdoc(id,type,place){
     <div class="row" style="margin-top:8px;gap:6px">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<div class="grow"></div>
       <button class="btn ghost sm" onclick="fdSave().then(()=>openFdoc(S._fdoc.id))">임시저장</button>
       <button class="btn sm" onclick="fdPreview()">미리보기·PDF</button></div></div>`);
+}
+function fdChoose(k){ // 작성 창 위에 따로 뜨는 선택창(작성 창 내용은 그대로) — 묶음 제목 아래 항목을 가로로 줄바꿈
+  const sel=document.getElementById('fd-'+k+'-s'),btn=document.getElementById('fd-'+k+'-b');if(!sel)return;
+  const lb=sel.closest('.row').previousElementSibling,title=lb&&lb.tagName==='LABEL'?lb.textContent:'선택';
+  const grp=[],loose=[];for(const c of sel.children){if(c.tagName==='OPTGROUP')grp.push([c.label,[...c.children].map(o=>o.value)]);else if(c.value)loose.push(c.value);}
+  if(loose.length)grp.push([grp.length?'그 밖':'',loose]);
+  const box=document.createElement('div');box.className='modal-bg';box.style.zIndex=45;
+  box.innerHTML=`<div class="modal fd-pick"><h3>${esc(title)}</h3>${grp.map(([h,xs])=>`${h?`<div class="fp-h">${esc(h)}</div>`:''}<div class="fp-c">${xs.map(x=>`<button type="button" class="chip${x===sel.value?' on':''}" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>`).join('')}
+    <div class="row" style="margin-top:12px"><button type="button" class="btn ghost sm" data-v="">선택 안 함</button><div class="grow"></div><button type="button" class="btn ghost sm" data-x>닫기</button></div></div>`;
+  box.onclick=e=>{const b=e.target.closest('[data-v],[data-x]');if(e.target!==box&&!b)return;
+    if(b&&b.dataset.v!==undefined){sel.value=b.dataset.v;if(btn)btn.textContent=b.dataset.v||'선택';}box.remove();};
+  document.body.appendChild(box);
 }
 function fdPick(b){const on=b.classList.contains('on');b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');} // 다시 누르면 해제
 async function fdSave(quiet){
