@@ -204,6 +204,7 @@ header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);l
 .g-a{background:#f5b400;color:#1b1b1b;font-weight:700}.g-k{background:#8fce4f;color:#1b1b1b}.g-b{background:#ffe08a;color:#1b1b1b}
 .g-x{color:var(--dim);opacity:.6}.g-ok{background:#c9ecd0;color:#1b1b1b}.g-bad{background:#f4a3a3;color:#1b1b1b;font-weight:700}
 .xt-key{padding:1px 6px;border-radius:4px;font-size:11px}
+.xt-sum{width:100%;font-size:13px}.xt-sum tbody th{min-width:84px}.xt-sum td{padding:8px 2px}.xt-sum .xt-tot th,.xt-sum .xt-tot td{background:var(--panel2);font-weight:700}
 .fd-r{gap:6px;margin-top:6px;align-items:center}.fdf textarea{line-height:1.4}.fd-r>span{font-size:12px;color:var(--dim);min-width:40px;font-weight:500}.fd-r .chip{flex:1;padding:6px 0}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;flex-wrap:wrap}
 .chips::-webkit-scrollbar{display:none}
@@ -396,7 +397,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v118'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v119'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3477,19 +3478,38 @@ function vInspCable(){
 function vInspPlan(){
   const E=S.equipment.filter(e=>e.grades&&Object.keys(e.grades).length);
   if(!E.length)return `<div class="card"><div class="empty">정비 이력 데이터가 없습니다.<br>더보기 › 자가진단·초기데이터 › ☁️ 드라이브에서 전체 데이터 가져오기</div></div>`;
-  const key=e=>(e.plant||'')+' '+(e.category||''),sheets=[...new Set(E.map(key))];
-  const sh=sheets.includes(S._planSheet)?S._planSheet:sheets[0],f=S._planF||'all';
-  const py=Object.keys(E.find(e=>e.plan)?.plan||{})[0]||'';
-  let L=E.filter(e=>key(e)===sh);
-  const cnt={A:L.filter(e=>e.plan&&e.plan[py]==='A').length,chk:L.filter(e=>e.planCheck).length};
-  if(f==='A')L=L.filter(e=>e.plan&&e.plan[py]==='A');else if(f==='chk')L=L.filter(e=>e.planCheck);
+  /* v119: 첫 화면 = 한 화면 요약표 — PB·DH·태양광 버튼, 분류(엑셀 시트)×최근 5년+계획 칸에 A급 대수(진할수록 비율 높음).
+     칸을 누르면 그 분류·그 해 A급 설비만, 분류 이름을 누르면 그 분류 전체 표(아래 상세). S._planPlant·S._planCat·S._planY·S._planF */
+  const isA=g=>/^A|신품|재권선/.test(String(g||'')),py=Object.keys(E.find(e=>e.plan)?.plan||{})[0]||'';
+  const plants=[...new Set(E.map(e=>e.plant||'기타'))],pl=plants.includes(S._planPlant)?S._planPlant:plants[0];
+  const P=E.filter(e=>(e.plant||'기타')===pl),cats=[...new Set(P.map(e=>e.category||'기타'))],ofC=c=>P.filter(e=>(e.category||'기타')===c);
+  const seg=`<div class="row" style="gap:6px;margin-bottom:8px">${plants.map(p=>`<button class="chip ${p===pl?'on':''}" style="flex:1;padding:7px 4px" onclick="S._planPlant='${p}';S._planCat=null;render()">${esc(p)} <span class="cnt">${E.filter(e=>(e.plant||'기타')===p).length}</span></button>`).join('')}</div>`;
+  const cat=cats.includes(S._planCat)?S._planCat:null;
+  if(!cat){
+    const ys=[...new Set(P.flatMap(e=>Object.keys(e.grades)))].sort().slice(-5),cols=[...ys,...(py?['plan']:[])];
+    const nA=(L,y)=>y==='plan'?L.filter(e=>e.plan&&e.plan[py]==='A').length:L.filter(e=>isA(e.grades[y])).length;
+    const cell=(c,y)=>{const L=ofC(c),n=nA(L,y),r=L.length?n/L.length:0;
+      return `<td class="${y==='plan'?'xt-plan':''}" onclick="event.stopPropagation();S._planCat='${c}';S._planY='${y}';S._planF='y';render()" style="${n?`background:rgba(245,180,0,${(0.2+0.8*r).toFixed(2)});${r>0.3?'color:#1b1b1b;':''}font-weight:700`:'color:var(--dim)'}">${n||'·'}</td>`;};
+    const rows=cats.map(c=>{const L=ofC(c),ck=L.filter(e=>e.planCheck).length;
+      return `<tr onclick="S._planCat='${c}';S._planF='all';render()"><th><b>${esc(c)}</b><div class="muted">${L.length}대${ck?' · ⚠'+ck:''}</div></th>${cols.map(y=>cell(c,y)).join('')}</tr>`;}).join('');
+    return `<div class="card">${seg}
+      <div class="xt-wrap"><table class="xt xt-sum"><thead><tr><th>분류</th>${ys.map(y=>`<td>${y}</td>`).join('')}${py?`<td class="xt-plan">${py}<br>계획</td>`:''}</tr></thead>
+      <tbody>${rows}<tr class="xt-tot"><th><b>합계</b><div class="muted">${P.length}대</div></th>${cols.map(y=>`<td>${nA(P,y)}</td>`).join('')}</tr></tbody></table></div>
+      <div class="section-note">숫자 = 그 해 A급 대수(경상 A·신품교체 포함), 진할수록 분류 안 비율이 높음 · <b>칸</b>을 누르면 그 해 A급 설비, <b>분류 이름</b>을 누르면 분류 전체 표.<br>
+      ${py?py+' 계획은 2026년까지 시행 완료로 보고 주기로 계산한 안입니다(정비내역 엑셀 기준). ⚠ = 확인 필요 대수':''}</div></div>`;
+  }
+  const f=S._planF||'all',yy=S._planY||'',all=ofC(cat);
+  const inY=e=>yy==='plan'?e.plan&&e.plan[py]==='A':isA(e.grades[yy]);
+  let L=all;
+  const cnt={A:L.filter(e=>e.plan&&e.plan[py]==='A').length,chk:L.filter(e=>e.planCheck).length,y:yy?L.filter(inY).length:0};
+  if(f==='A')L=L.filter(e=>e.plan&&e.plan[py]==='A');else if(f==='chk')L=L.filter(e=>e.planCheck);else if(f==='y'&&yy)L=L.filter(inY);
   const ys=[...new Set(L.flatMap(e=>Object.keys(e.grades)))].sort().slice(innerWidth<600?-5:-9); // 폰은 최근 5년(계획 열이 한 화면에)
   const chip=(v,l,o,on)=>`<button class="chip ${on?'on':''}" onclick="${o}='${v}';render()">${l}</button>`;
   const rows=L.map(e=>`<tr onclick="openEquip('${e.id}')"><th><b>${esc(e.name)}</b><div class="muted">${esc(e.tagNo||'')}${e.ratedKw?' · '+esc(e.ratedKw)+'kW':''}</div></th>
     ${ys.map(y=>{const g=e.grades[y]||'';return `<td class="${_gradeCls(g)}">${esc(g.replace(/\(경상\)/,'경').replace(/\(.*\)/,'*').replace('신품교체','신품').replace('재권선','재권'))}</td>`;}).join('')}
     ${py?`<td class="xt-plan ${_gradeCls(e.plan&&e.plan[py])}">${esc(e.plan&&e.plan[py]||'')}${e.planCheck?'<span title="'+esc(e.planWhy||'')+'">⚠</span>':''}</td><td>${esc(e.cycle||'')}</td>`:''}</tr>`).join('');
-  return `<div class="card"><div class="chips" style="flex-wrap:nowrap">${sheets.map(s=>chip(s,esc(s.replace('태양광 태양광','태양광')),'S._planSheet',s===sh)).join('')}</div>
-    <div class="chips">${chip('all','전체 '+E.filter(e=>key(e)===sh).length,'S._planF',f==='all')}${py?chip('A',py+' A급 '+cnt.A,'S._planF',f==='A'):''}${chip('chk','⚠ 확인 필요 '+cnt.chk,'S._planF',f==='chk')}</div>
+  return `<div class="card">${seg}<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost sm" onclick="S._planCat=null;render()">← 요약</button><b>${esc(pl)} ${esc(cat)}</b></div>
+    <div class="chips">${chip('all','전체 '+all.length,'S._planF',f==='all')}${yy&&yy!=='plan'?chip('y',yy+' A급 '+cnt.y,'S._planF',f==='y'):''}${py?chip('A',py+' 계획 A '+cnt.A,'S._planF',f==='A'||(f==='y'&&yy==='plan')):''}${chip('chk','⚠ 확인 '+cnt.chk,'S._planF',f==='chk')}</div>
     <div class="xt-wrap"><table class="xt"><thead><tr><th>기기명 · Tag</th>${ys.map(y=>`<td>${y}</td>`).join('')}${py?`<td class="xt-plan">${py}<br>계획</td><td>주기</td>`:''}</tr></thead><tbody>${rows||'<tr><th>해당 없음</th></tr>'}</tbody></table></div>
     <div class="section-note">칸 색: <span class="g-a xt-key">A</span> <span class="g-k xt-key">경 = A(경상)</span> <span class="g-b xt-key">B</span> C <span class="g-x xt-key">X</span> · ⚠ = 확인 필요(누르면 이유) · 행을 누르면 설비 카드.<br>
     ${py?py+' 계획은 2026년까지 시행 완료로 보고 주기로 계산한 안입니다(정비내역 엑셀 기준).':''}</div></div>`;
