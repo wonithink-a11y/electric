@@ -204,6 +204,11 @@ header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);l
 .g-a{background:#f5b400;color:#1b1b1b;font-weight:700}.g-k{background:#8fce4f;color:#1b1b1b}.g-b{background:#ffe08a;color:#1b1b1b}
 .g-x{color:var(--dim);opacity:.6}.g-ok{background:#c9ecd0;color:#1b1b1b}.g-bad{background:#f4a3a3;color:#1b1b1b;font-weight:700}
 .xt-key{padding:1px 6px;border-radius:4px;font-size:11px}
+.mt-card{padding:11px 10px}.mt-card h2{font-size:14px;margin:0 2px 8px}
+.mt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.mt{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 2px 7px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;color:var(--txt);font:inherit;cursor:pointer;min-height:66px}
+.mt:active{filter:brightness(1.2)}.mt-i{font-size:22px;line-height:1}.mt-t{font-size:11px;line-height:1.25;text-align:center;word-break:keep-all}
+.mt-n{position:absolute;top:3px;right:4px;font-size:9.5px;color:var(--dim);font-weight:600}
 .xt-sum{width:100%;font-size:13px}.xt-sum tbody th{min-width:84px}.xt-sum td{padding:8px 2px}.xt-sum .xt-tot th,.xt-sum .xt-tot td{background:var(--panel2);font-weight:700}
 .fd-r{gap:6px;margin-top:6px;align-items:center}.fdf textarea{line-height:1.4}.fd-r>span{font-size:12px;color:var(--dim);min-width:40px;font-weight:500}.fd-r .chip{flex:1;padding:6px 0}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none;flex-wrap:wrap}
@@ -397,7 +402,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v121'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v122'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -881,6 +886,7 @@ const GC_GAS=[
 "function doPost(e){",
 "  const q=JSON.parse(e.postData.contents);",
 "  if(q.key!==KEY)return out({ok:false,err:'key'});",
+"  if(q.op==='list'||q.op==='get'||q.op==='put')return out(fileOp(q)); // 범용 파일(v122): 허용 폴더 안에서 목록·받기·올리기",
 "  if(q.op==='data'||q.op==='dataPut'){ // 앱 데이터 묶음 ↔ 드라이브 '전력앱 데이터' 폴더 (PC가 올리고 폰이 받음)",
 "    const nm='전력앱 데이터',fs=DriveApp.getFoldersByName(nm),dir=fs.hasNext()?fs.next():DriveApp.createFolder(nm),fn=q.name||'전력앱_데이터.json';",
 "    if(q.op==='dataPut'){const old=dir.getFilesByName(fn);while(old.hasNext())old.next().setTrashed(true);",
@@ -905,6 +911,38 @@ const GC_GAS=[
 "  return out({ok:true,id:ev.getId()});",
 "}",
 "function out(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);}",
+"// ── 범용 파일: 앱이 열 수 있는 최상위 폴더(하위 포함). 필요하면 이 목록만 고쳐 다시 배포 ──",
+"const ALLOW=['계전부','전력앱 보고서','전력앱 데이터','전력앱 정비내역'];",
+"const MAXB=30*1024*1024; // 받기·올리기 한도(Apps Script 응답 크기 제한)",
+"const MIME={pdf:'application/pdf',hwpx:'application/hwp+zip',hwp:'application/x-hwp',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',xls:'application/vnd.ms-excel',pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation',ppt:'application/vnd.ms-powerpoint',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',json:'application/json',txt:'text/plain',csv:'text/csv',zip:'application/zip'};",
+"function dirOf(path,make){",
+"  const p=String(path||'').split('/').filter(String);if(!p.length||ALLOW.indexOf(p[0])<0)throw new Error('허용 안 된 폴더: '+(p[0]||'(없음)'));",
+"  let it=DriveApp.getFoldersByName(p[0]),d=it.hasNext()?it.next():(make?DriveApp.createFolder(p[0]):null);if(!d)throw new Error('폴더 없음: '+p[0]);",
+"  for(const n of p.slice(1)){it=d.getFoldersByName(n);d=it.hasNext()?it.next():(make?d.createFolder(n):null);if(!d)throw new Error('폴더 없음: '+n);}",
+"  return d;",
+"}",
+"function inAllow(f){let q=[f],k=0;while(q.length&&k++<12){const n=[];for(const x of q){const ps=x.getParents();while(ps.hasNext()){const p=ps.next();if(ALLOW.indexOf(p.getName())>=0)return true;n.push(p);}}q=n;}return false;}",
+"function fileOp(q){",
+"  try{",
+"    if(q.op==='list'){",
+"      if(!q.folder)return {ok:true,folders:ALLOW,files:[]};",
+"      const d=dirOf(q.folder,false),fo=[],fi=[];let it=d.getFolders();while(it.hasNext())fo.push(it.next().getName());",
+"      it=d.getFiles();while(it.hasNext()){const f=it.next();fi.push({id:f.getId(),name:f.getName(),size:f.getSize(),mime:f.getMimeType(),updated:f.getLastUpdated().toISOString(),url:f.getUrl()});}",
+"      fo.sort();fi.sort((a,b)=>a.name<b.name?-1:1);return {ok:true,folders:fo,files:fi};",
+"    }",
+"    if(q.op==='get'){",
+"      const f=DriveApp.getFileById(q.id);if(!inAllow(f))return {ok:false,err:'허용 안 된 폴더의 파일'};",
+"      if(f.getSize()>MAXB)return {ok:false,err:'30MB 초과 — 드라이브 앱에서 여세요',url:f.getUrl()};",
+"      return {ok:true,name:f.getName(),mime:f.getMimeType(),size:f.getSize(),b64:Utilities.base64Encode(f.getBlob().getBytes())};",
+"    }",
+"    if(q.op==='put'){",
+"      const d=dirOf(q.folder,true),ext=String(q.name).split('.').pop().toLowerCase(),old=d.getFilesByName(q.name);",
+"      while(old.hasNext())old.next().setTrashed(true);",
+"      const f=d.createFile(Utilities.newBlob(Utilities.base64Decode(q.b64),q.mime||MIME[ext]||'application/octet-stream',q.name));",
+"      return {ok:true,id:f.getId(),url:f.getUrl()};",
+"    }",
+"  }catch(e){return {ok:false,err:String(e.message||e)};}",
+"}",
 "// 권한 창이 안 뜨면 위 함수 목록에서 이것을 골라 ▶실행 → 캘린더·드라이브 권한 허용",
 "function 권한허용(){CalendarApp.getDefaultCalendar();DriveApp.getRootFolder();}"].join('\n');
 async function gcCall(q){
@@ -3801,49 +3839,65 @@ async function saveChk(){
 function vMore(){
   const cnt=s=>S[s]?.length||0;
   const vb=!S._vaultKdf?'미설정':(_vaultKey?(S.vault.length+'건'):'잠김');
-  const row=(oc,ic,nm,bd)=>{const k=nm.replace(/<.*$/,'').trim();(S._menuAll||(S._menuAll=new Set())).add(k); // v104 사용 기록
-    return `<div class="item click" onclick="useHit('메뉴:${k}');${oc}"><div class="t"><div class="n">${ic} ${nm}</div></div>${bd?`<span class="cnt">${bd}</span>`:''}<span style="color:var(--dim);margin-left:8px;font-size:18px">›</span></div>`;};
+  /* v122: 나열 → 묶음별 타일(4열). k = 사용 기록 키(v104부터 쓰던 메뉴 이름 그대로 — 기록 이어짐), t = 타일 글자.
+     맨 위 '자주 쓰는'은 이 기기 사용 기록(meta usage) 상위 4개(3회 이상). */
+  const M=[
+    ['업무',[["go('insp')",'📋','법정검사·정비','법정검사',cnt('inspections')],["go('chk')",'✅','주기 체크','주기 체크리스트',cnt('checklists')],
+      ["go('spare')",'🧰','예비품','예비품 재고',cnt('spares')],["go('budget')",'💰','예산','예산 집계',cnt('budget')],["go('stats')",'📈','실적 요약','실적 요약',''],
+      ["go('notes')",'🗒️','업무 메모','업무 메모',cnt('notes')]]],
+    ['문서·보고',[["moreDocsSheet()",'🗂️','도면·문서','도면·문서 관리',cnt('docs')],["driveFiles('')",'☁️','드라이브 파일','드라이브 파일',''],
+      ["go('proc')",'📑','매뉴얼 진행','매뉴얼 진행 추적',''],["moreReportSheet()",'📝','보고서','보고서 생성',''],["moreHwpxSheet()",'📄','hwpx 양식','hwpx 양식 생성','']]],
+    ['안전·법령',[["go('work')",'🔒','작업·LOTO','작업 서류·LOTO (작업 탭)',''],["go('law')",'📖','법령','법령 내비게이터',cnt('laws')],
+      ["moreFaultSheet()",'🔍','고장모드','고장모드 라이브러리',FAULTMODE_LIB.length]]],
+    ['🔬 분석',fieldOn()?[['setFieldMode(false)','🔬','분석 메뉴 보기','분석 메뉴 보기','']]:[
+      ...(document.documentElement.classList.contains('pc')?[]:[['setFieldMode(true)','📱','현장 모드로','현장 모드로 (분석 메뉴 숨기기)','']]),
+      ["S._treeSubTab='path';go('tree')",'🔌','계통 트리','계통 트리 · 전원 경로 · 설비동',cnt('tree')],["S._treeSubTab='diagram';S._treeAdv=true;_tdNeedFit=true;go('tree')",'▤','KEY 단선도','KEY 단선도',''],
+      ["go('equip')",'🏭','설비 목록','설비 마스터 목록 · 계통도',cnt('equipment')],["go('docfind')",'📐','도면 찾기','도면 찾기 · 둘러보기',cnt('docs')],
+      ["moreLogicSheet()",'⚡','로직 카드','로직 카드 목록 (투입조건·트립·회선)',cnt('logic')],["S._quiz=null;S._qi=0;S._qok=0;S._qrv=0;go('study')",'🎴','계통 학습','계통 학습','']]],
+    ['데이터·설정',[["go('vault')",'🔐','보안 금고','보안 금고',vb],["moreDataSheet()",'💾','백업·동기화','백업·복원·동기화',''],
+      ["moreSetupSheet()",'🩺','자가진단·초기데이터','자가진단·초기데이터',''],["moreInfoSheet()",'🗺️','로드맵·초기화','로드맵·데이터 초기화','']]]];
+  const tile=([oc,ic,t,k,bd])=>{(S._menuAll||(S._menuAll=new Set())).add(k);
+    return `<button class="mt" onclick="useHit('메뉴:${k}');${oc}"><span class="mt-i">${ic}</span><span class="mt-t">${t}</span>${bd?`<span class="mt-n">${bd}</span>`:''}</button>`;};
+  const used=(S._use&&S._use.n)||{},all=M.flatMap(s=>s[1]),fav=all.filter(x=>(used['메뉴:'+x[3]]||0)>=3).sort((a,b)=>used['메뉴:'+b[3]]-used['메뉴:'+a[3]]).slice(0,4);
+  const sec=(h,L)=>L.length?`<div class="card mt-card"><h2>${h}</h2><div class="mt-grid">${L.map(tile).join('')}</div></div>`:'';
   return `
   <div class="muted" style="margin:2px 2px 10px">앱 ${APP_VER} · 계통 ${cnt('tree')}노드 · 설비 ${cnt('equipment')} · 로직 카드 ${cnt('logic')}장 · 도면 ${cnt('docs')}
-    ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 로직 카드 JSON(logic_cards_v4~v10)을 넣어야 설비 카드의 로직 칸과 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`+`
-  <div class="card"><h2>업무</h2>
-    ${row("go('insp')",'📋','법정검사',cnt('inspections'))}
-    ${row("go('chk')",'✅','주기 체크리스트',cnt('checklists'))}
-    ${row("go('spare')",'🧰','예비품 재고',cnt('spares'))}
-    ${row("go('budget')",'💰','예산 집계',cnt('budget'))}
-    ${row("go('stats')",'📈','실적 요약','')}
-    ${row("go('notes')",'🗒️','업무 메모',cnt('notes'))}
-  </div>
-  <div class="card"><h2>문서·보고</h2>
-    ${row("moreDocsSheet()",'🗂️','도면·문서 관리',cnt('docs'))}
-    ${row("go('proc')",'📋','매뉴얼 진행 추적','')}
-    ${row("moreReportSheet()",'📝','보고서 생성','')}
-    ${row("moreHwpxSheet()",'📄','hwpx 양식 생성','')}
-  </div>
-  <div class="card"><h2>안전·법령</h2>
-    ${row("go('work')",'🔒','작업 서류·LOTO (작업 탭)','')}
-    ${row("go('law')",'📖','법령 내비게이터',cnt('laws'))}
-    ${row("moreFaultSheet()",'🔍','고장모드 라이브러리',FAULTMODE_LIB.length)}
-  </div>
-  ${fieldOn()?`<div class="card">${row('setFieldMode(false)','🔬','분석 메뉴 보기 <span class="muted" style="font-weight:400;font-size:12px">계통 트리·단선도·도면·로직 — 현장 모드 끄기</span>','')}</div>`:`
-  <div class="card"><h2>🔬 분석 <span class="muted" style="font-weight:400;font-size:12px">예전 계통·설비·도면 탭</span></h2>
-    ${document.documentElement.classList.contains('pc')?'':row('setFieldMode(true)','📱','현장 모드로 (분석 메뉴 숨기기)','')}
-    ${row("S._treeSubTab='path';go('tree')",'🔌','계통 트리 · 전원 경로 · 설비동',cnt('tree'))}
-    ${row("S._treeSubTab='diagram';S._treeAdv=true;_tdNeedFit=true;go('tree')",'▤','KEY 단선도','')}
-    ${row("go('equip')",'📋','설비 마스터 목록 · 계통도',cnt('equipment'))}
-    ${row("go('docfind')",'📐','도면 찾기 · 둘러보기',cnt('docs'))}
-    ${row("moreLogicSheet()",'⚡','로직 카드 목록 (투입조건·트립·회선)',cnt('logic'))}
-    ${row("S._quiz=null;S._qi=0;S._qok=0;S._qrv=0;go('study')",'🎴','계통 학습','')}
-  </div>`}
-  <div class="card"><h2>보안</h2>
-    ${row("go('vault')",'🔐','보안 금고',vb)}
-  </div>
-  <div class="card"><h2>데이터·설정</h2>
-    ${row("moreDataSheet()",'💾','백업·복원·동기화','')}
-    ${row("moreSetupSheet()",'🩺','자가진단·초기데이터','')}
-    ${row("moreInfoSheet()",'🗺️','로드맵·데이터 초기화','')}
-  </div>
-  <div class="botpad"></div>`;
+    ${cnt('logic')?'':'<br><b style="color:var(--warn,#e0a800)">로직 카드 0장 — 아래 [🩺 자가진단·초기데이터]에서 로직 카드 JSON(logic_cards_v4~v10)을 넣어야 설비 카드의 로직 칸과 로직↔스키매틱 그림이 나옵니다.</b>'}</div>`
+  +(fav.length?sec('⭐ 자주 쓰는',fav):'')+M.map(([h,L])=>sec(h,L)).join('')+`<div class="botpad"></div>`;
+}
+/* v122: ☁️ 드라이브 파일 — Apps Script op list/get(스크립트 ALLOW 폴더와 그 하위만, 30MB 이하).
+   PDF → 앱 PDF 뷰어, 사진 → 창, 그 밖(hwpx·xlsx·pptx…) → 폰에 받기(한컴·엑셀·PPT 앱으로). 폴더·파일은 번호로 넘겨 이름 따옴표 문제 없음 */
+const _fsz=n=>n>1048576?(n/1048576).toFixed(1)+'MB':Math.max(1,Math.round(n/1024))+'KB';
+async function driveFiles(path){
+  if(!gcOn()){toast('먼저 더보기 › 💾 백업·동기화 › 📅 구글 캘린더 자동 연동을 설정하세요');return;}
+  openModal(`<h3>☁️ ${esc(path||'드라이브 파일')}</h3><div class="muted">불러오는 중…</div>`);
+  let r;try{r=await gcCall({op:'list',folder:path||''});}
+  catch(e){openModal(`<h3>☁️ 드라이브 파일</h3><div class="empty">${esc(e.message)}<br><br>스크립트를 v122 코드로 다시 붙여넣고 <b>새 버전</b>으로 배포했는지 확인하세요(더보기 › 💾 백업·동기화 › 📋 코드 복사).</div><button class="btn ghost full" onclick="closeModal()">닫기</button>`);return;}
+  S._df={path:path||'',dirs:r.folders||[],files:r.files||[]};
+  const ic=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^(jpe?g|png|gif|webp)$/.test(x)?'🖼️':/^hwpx?$/.test(x)?'📘':/^(xlsx?|csv)$/.test(x)?'📗':/^pptx?$/.test(x)?'📙':'📄';};
+  const P=S._df.path.split('/').filter(Boolean);
+  openModal(`<h3>☁️ ${esc(P.length?P[P.length-1]:'드라이브 파일')}</h3>
+    <div class="muted" style="font-size:12px">${P.length?esc(P.join(' › ')):'앱에서 열 수 있게 허용한 폴더(스크립트의 ALLOW)'}</div>
+    ${P.length?`<button class="btn ghost sm" style="margin:6px 0" onclick="driveFiles(S._df.path.split('/').slice(0,-1).join('/'))">← ${esc(P.length>1?P[P.length-2]:'처음')}</button>`:''}
+    ${S._df.dirs.map((d,i)=>`<div class="item click" onclick="driveFiles(S._df.path?S._df.path+'/'+S._df.dirs[${i}]:S._df.dirs[${i}])"><div class="t"><div class="n">📁 ${esc(d)}</div></div><span style="color:var(--dim)">›</span></div>`).join('')}
+    ${S._df.files.map((f,i)=>`<div class="item click" onclick="driveOpen(${i})"><div class="t"><div class="n" style="white-space:normal">${ic(f.name)} ${esc(f.name)}</div>
+      <div class="d">${_fsz(f.size)} · ${esc((f.updated||'').slice(0,10))}${f.size>30*1048576?' · <b>30MB 초과 — 드라이브 앱에서</b>':''}</div></div></div>`).join('')}
+    ${!S._df.dirs.length&&!S._df.files.length?'<div class="empty">비어 있음</div>':''}
+    <div class="section-note">PDF는 앱 뷰어로, 사진은 바로 보기, 한글·엑셀·PPT는 폰에 받은 뒤 그 앱으로 엽니다. 30MB가 넘으면 드라이브 앱으로 열립니다.</div>
+    <button class="btn ghost sm full" onclick="closeModal()">닫기</button>`);
+}
+async function driveOpen(i){
+  const f=S._df&&S._df.files[i];if(!f)return;
+  if(f.size>30*1048576){window.open(f.url,'_blank');return;}
+  toast('받는 중… '+_fsz(f.size));
+  let r;try{r=await gcCall({op:'get',id:f.id});}catch(e){toast('받기 실패: '+e.message);return;}
+  const bin=atob(r.b64),u8=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u8[k]=bin.charCodeAt(k);
+  const blob=new Blob([u8],{type:r.mime||'application/octet-stream'}),ext=f.name.split('.').pop().toLowerCase();
+  if(ext==='pdf')return viewPdf(blob,f.name);
+  if(/^(jpe?g|png|gif|webp)$/.test(ext)){const u=URL.createObjectURL(blob);
+    openModal(`<h3>🖼️ ${esc(f.name)}</h3><img src="${u}" style="width:100%;border-radius:8px"><div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="driveFiles(S._df.path)">← 목록</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=f.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  toast('다운로드 폴더에 받음 — 알림에서 열면 한컴·엑셀 앱으로 열립니다');
 }
 function moreDocsSheet(){
   const reidx=S.docs.filter(d=>d.ext==='pdf'&&!(d.pages&&d.pages.length)).length;
