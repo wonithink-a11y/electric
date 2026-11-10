@@ -383,7 +383,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v116'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v117'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3727,7 +3727,7 @@ function moreSetupSheet(){
     <button class="btn full" onclick="useSheet()">📊 메뉴 사용 기록 (안 쓰는 메뉴 찾기)</button>
     <button class="btn full" onclick="closeModal();selfTest()">🩺 자가진단 (기능·저장 점검)</button>
     <button class="btn full" onclick="driveSeed()">☁️ 드라이브에서 전체 데이터 가져오기</button>
-    <div class="section-note">PC에서 올린 '전력앱 데이터' 묶음(설비·계통·로직 카드·도면 색인 등)을 한 번에 받습니다. 구글 연동(데이터·연동 › Apps Script) 설정이 있어야 합니다.</div>
+    <div class="section-note">PC에서 올린 '전력앱 데이터' 묶음(설비·계통·로직 카드·도면 색인 등)을 한 번에 받습니다. 구글 연동(더보기 › 💾 백업·복원·동기화 › 📅 구글 캘린더 자동 연동 › Apps Script) 설정이 있어야 합니다.</div>
     <button class="btn full" onclick="closeModal();importAll()">📥 한 번에 가져오기 (여러 JSON 선택)</button>
     <div class="section-note">seed · 계통트리 보정 · 로직 카드 · 해석 노트를 <b>한꺼번에 선택</b>하면 내용을 보고 알아서 분류해 넣습니다.
       파일명이 달라도 되고, 넣는 순서도 알아서 맞춥니다(seed → 계통트리 → 로직카드 → 해석노트).</div>
@@ -7494,7 +7494,7 @@ async function localAutoSeed(){
    Apps Script op 'dataPut'으로 내 드라이브 '전력앱 데이터/전력앱_데이터.json'에 올리고, 폰은 op 'data'로 받아 localAutoSeed와 같은 순서로 넣는다.
    설비·검사는 병합(_applyJson 'seed'), 체크리스트·현안·할 일은 없는 것만, 로직 카드는 파생 데이터라 비우고 다시. 데이터는 GitHub에 안 감. */
 async function driveSeed(){
-  if(!gcOn()){toast('먼저 더보기 › 데이터·연동에서 구글 연동(Apps Script)을 설정하세요');return;}
+  if(!gcOn()){toast('먼저 더보기 › 💾 백업·복원·동기화 › 📅 구글 캘린더 자동 연동을 설정하세요');return;}
   toast('드라이브에서 받는 중…');
   let r,B;
   try{r=await gcCall({op:'data'});B=JSON.parse(r.text);}catch(e){toast('드라이브 가져오기 실패: '+e.message);return;}
