@@ -397,7 +397,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v120'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v121'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1534,7 +1534,75 @@ function eqPlanHtml(e){
     ${e.planCheck?`<span class="badge b-yellow" title="${esc(e.planWhy||'')}">확인 필요</span>`:''}</div>${e.planWhy?`<div class="muted" style="font-size:12px">근거: ${esc(e.planWhy)}</div>`:''}
     ${e.guideId?`<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center"><span class="muted">정비 기준</span><span style="font-size:13px">${esc(e.guide||'')}</span>
       ${e.guideDiff?'<span class="badge b-yellow">지침과 주기 다름</span>':''}
-      <button class="btn ghost sm" onclick="guideItems('${e.guideId}','${g==='A'||g==='B'?g:'C'}','${e.id}')">📋 점검항목</button></div>`:''}`;
+      <button class="btn ghost sm" onclick="guideItems('${e.guideId}','${g==='A'||g==='B'?g:'C'}','${e.id}')">📋 점검항목</button></div>`:''}
+    <div class="row" style="gap:6px;margin-top:4px;align-items:center"><button class="btn ghost sm" onclick="maintRec('${e.id}')">✅ 정비 실적 기록</button>
+      ${(e.maintLog||[]).length?`<span class="muted" style="font-size:12px">${e.maintLog.map(m=>esc(m.year+' '+m.grade+'급 '+(m.date||''))).join(' · ')}</span>`:''}</div>`;
+}
+/* v121: 정비 실적 기록 — 정기점검보수 때 설비별로 연도·등급·시행일·지침 점검항목 체크·메모를 남긴다.
+   저장하면 grades[연도]=등급(정비 이력표·엑셀 내보내기에 그대로), A급이면 최근 A·다음 A 갱신. 기록은 equipment.maintLog(연도마다 1건) */
+async function maintRec(eqId,yr,gr){
+  const e=S.equipment.find(x=>x.id===eqId);if(!e)return;
+  const py=Object.keys(e.plan||{}).sort().pop(),cy=todayStr().slice(0,4),years=[...new Set([cy,py].filter(Boolean))].sort();
+  const y=yr||py||cy,old=(e.maintLog||[]).find(m=>m.year===y),g=gr||(old&&old.grade)||(e.plan&&e.plan[y])||'C';
+  const m=S._guide||(S._guide=await dbGet('meta','guide')),r=m&&m.rules&&m.rules.find(x=>x.id===e.guideId);
+  const src=r&&!(r.items||[]).length&&r.ref?m.rules.find(x=>x.id===r.ref):r,items=((src&&src.items)||[]).filter(i=>(i.grades||'').includes(g));
+  const done=new Set(old?old.parts||[]:[]);
+  const ch=(v,cur,fn)=>`<button class="chip ${v===cur?'on':''}" onclick="${fn}">${v}</button>`;
+  openModal(`<h3>✅ 정비 실적 — ${esc(e.name)}</h3>
+    <div class="muted">${esc(e.tagNo||'')} · ${py?py+' 계획 '+esc(e.plan[py])+'급 · ':''}${esc(e.guide||'지침 기준 없음')}</div>
+    <label>연도</label><div class="chips">${years.map(v=>ch(v,y,`maintRec('${eqId}','${v}')`)).join('')}</div>
+    <label>시행 등급</label><div class="chips">${['A','B','C','X'].map(v=>ch(v,g,`maintRec('${eqId}','${y}','${v}')`)).join('')}</div>
+    <label>시행일</label><input id="mr-d" type="date" value="${esc((old&&old.date)||todayStr())}">
+    ${items.length?`<label>${g}급 점검항목 (한 것 체크)</label>${items.map((i,k)=>`<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0"><input type="checkbox" class="mr-p" value="${esc(i.part)}" style="width:auto;margin-top:3px" ${done.has(i.part)?'checked':''}> <span><b>${esc(i.part)}</b><div class="muted" style="font-size:12px">${esc(String(i.check||'').replace(/\s*\/\s*/g,' ').slice(0,90))}…</div></span></label>`).join('')}`:`<div class="muted" style="margin-top:6px">${g==='X'?'X = 해당 없음(시행 안 함)':'이 등급 점검항목이 지침에 없습니다'}</div>`}
+    <label>메모 (이상 소견·교체 부품 등)</label><textarea id="mr-n" rows="3">${esc((old&&old.memo)||'')}</textarea>
+    <div class="row" style="margin-top:12px">${old?`<button class="btn danger sm" onclick="maintDel('${eqId}','${y}')">기록 삭제</button>`:''}<div class="grow"></div>
+      <button class="btn ghost sm" onclick="openEquip('${eqId}')">취소</button><button class="btn sm" onclick="maintSave('${eqId}','${y}','${g}')">저장</button></div>`);
+}
+async function maintSave(eqId,y,g){
+  const e=S.equipment.find(x=>x.id===eqId);if(!e)return;
+  const rec={year:y,grade:g,date:$('#mr-d').value||todayStr(),parts:[...document.querySelectorAll('.mr-p:checked')].map(c=>c.value),memo:$('#mr-n').value.trim(),at:new Date().toISOString()};
+  e.maintLog=[...(e.maintLog||[]).filter(m=>m.year!==y),rec].sort((a,b)=>a.year.localeCompare(b.year));
+  e.grades={...(e.grades||{}),[y]:g};
+  const ay=Object.keys(e.grades).filter(k=>/^A|신품|재권선/.test(e.grades[k])).sort();
+  e.lastA=ay.length?+ay[ay.length-1]:e.lastA;if(e.lastA&&e.cycle)e.nextA=e.lastA+e.cycle;
+  await dbPut('equipment',e);toast(`${y}년 ${g}급 실적 저장`);openEquip(eqId);
+}
+async function maintDel(eqId,y){
+  const e=S.equipment.find(x=>x.id===eqId);if(!e||!confirm(y+'년 실적 기록을 지울까요? (정비 이력표의 그 해 등급도 지워집니다)'))return;
+  e.maintLog=(e.maintLog||[]).filter(m=>m.year!==y);if(e.grades)delete e.grades[y];
+  await dbPut('equipment',e);toast('삭제함');openEquip(eqId);
+}
+/* v121: 정비내역 엑셀 내보내기 — 원본 '전기분야 설비 정비내역' 모양: 시트=분류(플랜트), 연도별 등급, A 주황(OH 완)·A(경상) 연두·다음 해 계획 A 분홍(OH 예정).
+   이 파일을 다음 해 build_plan.py에 다시 넣으면 다음 계획이 나온다(실적 → 계획 순환). */
+async function exportMaintXlsx(){
+  const E0=S.equipment.filter(e=>e.grades&&Object.keys(e.grades).length);if(!E0.length){toast('정비 이력 데이터가 없습니다');return;}
+  let X;try{X=await loadExcelJS();}catch(e){toast(e.message);return;}
+  const wb=new X.Workbook(),fill=c=>({type:'pattern',pattern:'solid',fgColor:{argb:c}}),py=Object.keys(E0.find(e=>e.plan)?.plan||{})[0]||'';
+  const thin={style:'thin',color:{argb:'FFBFBFBF'}},box={top:thin,left:thin,bottom:thin,right:thin};
+  const sheets=[...new Set(E0.map(e=>(e.plant||'')+'|'+(e.category||'')))];
+  for(const s of sheets){
+    const [pl,cat]=s.split('|'),L=E0.filter(e=>(e.plant||'')+'|'+(e.category||'')===s);
+    const ys=[...new Set(L.flatMap(e=>Object.keys(e.grades)))].sort(),pc=py&&!ys.includes(py);
+    const ws=wb.addWorksheet((pl==='태양광'?'태양광':`${cat}(${pl})`).slice(0,31));
+    const t=ws.addRow([pl==='태양광'?'신안 태양광':`${cat}(${pl})`,'OH(완)','OH(예정)','경상(완)']);t.font={bold:true};
+    t.getCell(2).fill=fill('FFFFC000');t.getCell(3).fill=fill('FFFFC7CE');t.getCell(4).fill=fill('FF92D050');
+    const head=['순번','구분','Tag. No.','기기명','전압(kV)','정격(kW)',...ys.map(Number),...(pc?[py+' 계획']:[]),'비 고','정비 기준(지침)','계획 근거'];
+    const h=ws.addRow(head);h.font={bold:true};h.eachCell(c=>{c.fill=fill('FFD9E1F2');c.border=box;c.alignment={horizontal:'center',vertical:'middle',wrapText:true};});
+    ws.addRow([...Array(6).fill(''),...ys.map(()=>'정비등급')]).font={size:9}; // 원본처럼 3행 — build_plan.py가 4행부터 읽음
+    L.forEach((e,k)=>{
+      const row=ws.addRow([k+1,e.group||'',e.tagNo||'',e.name||'',e.voltage||'',e.ratedKw||'',...ys.map(y=>e.grades[y]||''),...(pc?[(e.plan||{})[py]||'']:[]),e.remark||'',e.guide||'',e.planWhy||'']);
+      row.eachCell({includeEmpty:true},c=>{c.border=box;});
+      ys.forEach((y,j)=>{const g=String(e.grades[y]||''),c=row.getCell(7+j);c.alignment={horizontal:'center'};
+        if(/경상/.test(g))c.fill=fill('FF92D050');else if(/^A|신품|재권선/.test(g))c.fill=fill(y===py&&!(e.maintLog||[]).some(m=>m.year===y)?'FFFFC7CE':'FFFFC000');});
+      if(pc){const c=row.getCell(7+ys.length);c.alignment={horizontal:'center'};if((e.plan||{})[py]==='A')c.fill=fill('FFFFC7CE');}
+    });
+    ws.columns=[6,16,16,40,8,8,...ys.map(()=>7),...(pc?[9]:[]),14,28,40].map(width=>({width}));
+    ws.views=[{state:'frozen',xSplit:4,ySplit:2}];
+  }
+  const buf=await wb.xlsx.writeBuffer();
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download=`전기분야 설비 정비내역(${todayStr().replace(/-/g,'')}).xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  toast(`정비내역 엑셀 내보내기 완료 — ${sheets.length}개 시트`);
 }
 /* v120: 운영지침 52200 점검항목 창 — meta 'guide'(드라이브 묶음의 정비지침_v1.json). 등급 칩으로 그 등급 해당 항목만, ← 설비로 */
 async function guideItems(gid,grade,eqId){
@@ -3524,7 +3592,9 @@ function vInspPlan(){
       <div class="xt-wrap"><table class="xt xt-sum"><thead><tr><th>분류</th>${ys.map(y=>`<td>${y}</td>`).join('')}${py?`<td class="xt-plan">${py}<br>계획</td>`:''}</tr></thead>
       <tbody>${rows}<tr class="xt-tot"><th><b>합계</b><div class="muted">${P.length}대</div></th>${cols.map(y=>`<td>${nA(P,y)}</td>`).join('')}</tr></tbody></table></div>
       <div class="section-note">숫자 = 그 해 A급 대수(경상 A·신품교체 포함), 진할수록 분류 안 비율이 높음 · <b>칸</b>을 누르면 그 해 A급 설비, <b>분류 이름</b>을 누르면 분류 전체 표.<br>
-      ${py?py+' 계획은 2026년까지 시행 완료로 보고 주기로 계산한 안입니다(정비내역 엑셀 기준). ⚠ = 확인 필요 대수':''}</div></div>`;
+      ${py?py+' 계획은 2026년까지 시행 완료로 보고 주기로 계산한 안입니다(정비내역 엑셀 기준). ⚠ = 확인 필요 대수':''}<br>
+      정비 후 설비 카드의 <b>✅ 정비 실적 기록</b>으로 그 해 등급을 남기면 이 표와 엑셀에 반영됩니다.</div>
+      <button class="btn ghost sm full" style="margin-top:8px" onclick="exportMaintXlsx()">📤 정비내역 엑셀 내보내기 (원본 양식)</button></div>`;
   }
   const f=S._planF||'all',yy=S._planY||'',all=ofC(cat);
   const inY=e=>yy==='plan'?e.plan&&e.plan[py]==='A':isA(e.grades[yy]);
