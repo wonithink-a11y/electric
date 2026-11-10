@@ -397,7 +397,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v119'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v120'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -545,6 +545,7 @@ function _sniffJson(d){
   if(Array.isArray(d.flows)&&d.flows.length&&d.flows[0].steps)return '공정흐름';
   if(Array.isArray(d.links)&&d.links.length&&d.links[0].tag&&d.links[0].node)return '로직연결';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
+  if(d.schema==='pwr-guide-v1'&&Array.isArray(d.rules))return '정비지침'; // v120: 운영지침 52200 기준표
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
   if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
   if(Array.isArray(d)&&d.length&&d[0].tag)return '로직카드';
@@ -595,6 +596,10 @@ async function _applyJson(kind,d){
       await dbPut('logic',rec);if(!ex)cur.push(rec);n++;
     }
     return `로직 카드 ${n}장`;
+  }
+  if(kind==='정비지침'){ // v120: 사내 지침이라 코드엔 없고 이 기기 meta에만
+    await dbPut('meta',{id:'guide',source:d.source||'',grades:d.grades||{},rules:d.rules,added:todayStr()});S._guide=null;
+    return `정비 지침 ${d.rules.length}개 기기`;
   }
   if(kind==='도면색인'){
     await dbPut('meta',{id:'dwgindex',docs:d.docs,generated:d.generated||'',added:todayStr()});
@@ -651,7 +656,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6,'재물조사':7};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6,'재물조사':7,'정비지침':8};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -1526,7 +1531,30 @@ function eqPlanHtml(e){
   const g=e.plan[y],c=g==='A'?'b-red':g==='B'?'b-yellow':'b-gray';
   return `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><span class="muted">${y} 계획</span><span class="badge ${c}">${esc(g)}급</span>
     <span class="muted" style="font-size:12px">${[e.cycle&&e.cycle+'년 주기',e.lastA&&'최근 A '+e.lastA,e.nextA&&'다음 A '+e.nextA].filter(Boolean).join(' · ')}</span>
-    ${e.planCheck?`<span class="badge b-yellow" title="${esc(e.planWhy||'')}">확인 필요</span>`:''}</div>${e.planCheck&&e.planWhy?`<div class="muted" style="font-size:12px">${esc(e.planWhy)}</div>`:''}`;
+    ${e.planCheck?`<span class="badge b-yellow" title="${esc(e.planWhy||'')}">확인 필요</span>`:''}</div>${e.planWhy?`<div class="muted" style="font-size:12px">근거: ${esc(e.planWhy)}</div>`:''}
+    ${e.guideId?`<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center"><span class="muted">정비 기준</span><span style="font-size:13px">${esc(e.guide||'')}</span>
+      ${e.guideDiff?'<span class="badge b-yellow">지침과 주기 다름</span>':''}
+      <button class="btn ghost sm" onclick="guideItems('${e.guideId}','${g==='A'||g==='B'?g:'C'}','${e.id}')">📋 점검항목</button></div>`:''}`;
+}
+/* v120: 운영지침 52200 점검항목 창 — meta 'guide'(드라이브 묶음의 정비지침_v1.json). 등급 칩으로 그 등급 해당 항목만, ← 설비로 */
+async function guideItems(gid,grade,eqId){
+  const m=S._guide||(S._guide=await dbGet('meta','guide'));
+  const back=eqId?`<button class="btn ghost sm" onclick="openEquip('${eqId}')">← 설비로</button>`:'';
+  if(!m||!m.rules){openModal(`<h3>정비 지침</h3><div class="empty">정비 지침 데이터가 없습니다.<br>더보기 › 자가진단·초기데이터 › ☁️ 드라이브에서 전체 데이터 가져오기</div>${back}`);return;}
+  const r=m.rules.find(x=>x.id===gid);if(!r){toast('지침 항목 없음');return;}
+  const src=!(r.items||[]).length&&r.ref?m.rules.find(x=>x.id===r.ref):r,items=(src&&src.items)||[];
+  const has=L=>items.some(i=>(i.grades||'').includes(L)),gs=['A','B','C'].filter(has);
+  const gr=gs.includes(grade)?grade:gs[0]||'A',L=items.filter(i=>(i.grades||'').includes(gr));
+  const lines=t=>String(t||'').replace(/\s*\/\s*/g,' ').split(/\s(?=\d+\.\s)/).map(x=>esc(x.trim())).filter(Boolean).join('<br>');
+  openModal(`<h3>📋 ${esc(r.name)}</h3>
+    <div class="muted">${esc(r.cycle?r.cycle+'년 '+(r.pattern||''):'')}${r.alt?' (또는 '+esc(r.alt)+')':''} · ${esc((m.grades||{})[gr]||'')}${src!==r?' · '+esc(src.name)+' 항목과 같음':''}</div>
+    <div class="chips" style="margin-top:6px">${gs.map(x=>`<button class="chip ${x===gr?'on':''}" onclick="guideItems('${gid}','${x}','${eqId||''}')">${x}급 ${items.filter(i=>(i.grades||'').includes(x)).length}</button>`).join('')}</div>
+    ${L.map(i=>`<div class="card" style="margin:6px 0;padding:8px 10px"><b>${esc(i.part)}</b> <span class="muted">${esc(i.grades)}</span>
+      <div style="font-size:13px;margin-top:4px">${lines(i.check)}</div>
+      ${i.action?`<div class="muted" style="font-size:12px;margin-top:4px">조치: ${lines(i.action)}</div>`:''}</div>`).join('')||'<div class="empty">이 등급 점검항목이 지침 표에 없습니다</div>'}
+    ${(r.notes||[]).length?`<div class="section-note">${r.notes.map(esc).join('<br>')}</div>`:''}
+    <div class="muted" style="font-size:11px;margin-top:6px">${esc(m.source||'')}</div>
+    <div class="row" style="margin-top:10px">${back}<div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);
 }
 function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비 카드로. full=1이면 옛 전체 화면(사진·측정·개별 도면·수정)
   const e=S.equipment.find(x=>x.id===id);if(!e)return;
@@ -3501,15 +3529,15 @@ function vInspPlan(){
   const f=S._planF||'all',yy=S._planY||'',all=ofC(cat);
   const inY=e=>yy==='plan'?e.plan&&e.plan[py]==='A':isA(e.grades[yy]);
   let L=all;
-  const cnt={A:L.filter(e=>e.plan&&e.plan[py]==='A').length,chk:L.filter(e=>e.planCheck).length,y:yy?L.filter(inY).length:0};
-  if(f==='A')L=L.filter(e=>e.plan&&e.plan[py]==='A');else if(f==='chk')L=L.filter(e=>e.planCheck);else if(f==='y'&&yy)L=L.filter(inY);
+  const cnt={A:L.filter(e=>e.plan&&e.plan[py]==='A').length,chk:L.filter(e=>e.planCheck).length,y:yy?L.filter(inY).length:0,gd:L.filter(e=>e.guideDiff).length};
+  if(f==='A')L=L.filter(e=>e.plan&&e.plan[py]==='A');else if(f==='chk')L=L.filter(e=>e.planCheck);else if(f==='y'&&yy)L=L.filter(inY);else if(f==='gd')L=L.filter(e=>e.guideDiff); // v120
   const ys=[...new Set(L.flatMap(e=>Object.keys(e.grades)))].sort().slice(innerWidth<600?-5:-9); // 폰은 최근 5년(계획 열이 한 화면에)
   const chip=(v,l,o,on)=>`<button class="chip ${on?'on':''}" onclick="${o}='${v}';render()">${l}</button>`;
   const rows=L.map(e=>`<tr onclick="openEquip('${e.id}')"><th><b>${esc(e.name)}</b><div class="muted">${esc(e.tagNo||'')}${e.ratedKw?' · '+esc(e.ratedKw)+'kW':''}</div></th>
     ${ys.map(y=>{const g=e.grades[y]||'';return `<td class="${_gradeCls(g)}">${esc(g.replace(/\(경상\)/,'경').replace(/\(.*\)/,'*').replace('신품교체','신품').replace('재권선','재권'))}</td>`;}).join('')}
     ${py?`<td class="xt-plan ${_gradeCls(e.plan&&e.plan[py])}">${esc(e.plan&&e.plan[py]||'')}${e.planCheck?'<span title="'+esc(e.planWhy||'')+'">⚠</span>':''}</td><td>${esc(e.cycle||'')}</td>`:''}</tr>`).join('');
   return `<div class="card">${seg}<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost sm" onclick="S._planCat=null;render()">← 요약</button><b>${esc(pl)} ${esc(cat)}</b></div>
-    <div class="chips">${chip('all','전체 '+all.length,'S._planF',f==='all')}${yy&&yy!=='plan'?chip('y',yy+' A급 '+cnt.y,'S._planF',f==='y'):''}${py?chip('A',py+' 계획 A '+cnt.A,'S._planF',f==='A'||(f==='y'&&yy==='plan')):''}${chip('chk','⚠ 확인 '+cnt.chk,'S._planF',f==='chk')}</div>
+    <div class="chips">${chip('all','전체 '+all.length,'S._planF',f==='all')}${yy&&yy!=='plan'?chip('y',yy+' A급 '+cnt.y,'S._planF',f==='y'):''}${py?chip('A',py+' 계획 A '+cnt.A,'S._planF',f==='A'||(f==='y'&&yy==='plan')):''}${chip('chk','⚠ 확인 '+cnt.chk,'S._planF',f==='chk')}${cnt.gd?chip('gd','지침과 다름 '+cnt.gd,'S._planF',f==='gd'):''}</div>
     <div class="xt-wrap"><table class="xt"><thead><tr><th>기기명 · Tag</th>${ys.map(y=>`<td>${y}</td>`).join('')}${py?`<td class="xt-plan">${py}<br>계획</td><td>주기</td>`:''}</tr></thead><tbody>${rows||'<tr><th>해당 없음</th></tr>'}</tbody></table></div>
     <div class="section-note">칸 색: <span class="g-a xt-key">A</span> <span class="g-k xt-key">경 = A(경상)</span> <span class="g-b xt-key">B</span> C <span class="g-x xt-key">X</span> · ⚠ = 확인 필요(누르면 이유) · 행을 누르면 설비 카드.<br>
     ${py?py+' 계획은 2026년까지 시행 완료로 보고 주기로 계산한 안입니다(정비내역 엑셀 기준).':''}</div></div>`;
@@ -7019,6 +7047,7 @@ async function selfTest(){
   ok('핵심 위젯 생성 ('+Object.keys(gens).length+'개)',gbad.length===0,gbad.length?gbad.join(' / '):'모든 위젯 정상');
   { const a=cableNext('2025-12-18','활선','양호',2007,['양호'],79),b=cableNext('2024-12-03','활선','양호',2015,[],32),
       c=cableNext('2025-12-18','활선','요주의',2016,['요주의','요주의'],10),d=cableNext('2024-12-03','사선','요주의',2015,[],43);
+    ok('정비지침 JSON 인식',_sniffJson({schema:'pwr-guide-v1',rules:[]})==='정비지침');
     ok('케이블 진단 기한 규칙',a.due==='2027-12-18'&&b.due==='2028-12-03'&&c.due==='2026-12-18'&&/3회 연속/.test(c.warn)&&/30m 미만/.test(c.warn)&&d.due==='2028-12-03'&&!a.warn,
       [a.due,b.due,c.due,d.due].join(' / ')); }
   ok('데이터 요약',true,`설비 ${S.equipment.length}·검사 ${S.inspections.length}·체크 ${S.checklists.length}·도면 ${S.docs.length}·측정 ${S.measurements.length}·예비품 ${S.spares.length}·할일 ${S.todos.length}·허가 ${S.permits.length}`);
