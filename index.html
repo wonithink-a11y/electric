@@ -383,7 +383,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v115'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v116'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -547,10 +547,13 @@ async function _applyJson(kind,d){
       const h=[...(i.history||[]),...(x.history||[])],seen=new Set();
       return {...x,...i,history:h.filter(r=>{const k=r.date+'|'+r.result;return seen.has(k)?false:seen.add(k);}).sort((a,b)=>(a.date||'').localeCompare(b.date||'')),
         nextDue:(x.nextDue||'')>(i.nextDue||'')?x.nextDue:i.nextDue,equipId:x.equipId||i.equipId||''};});
-    const chk=(d.checklists||[]).map(c=>({...c}));
+    // v116: 체크리스트·현안·할 일은 기기에서 고치는 것이라 이 기기에 없는 id만 넣는다(드라이브에서 여러 번 받아도 안 덮어씀)
+    const has=async s=>new Set((await dbAll(s)).map(x=>x.id));
+    const hc=await has('checklists'),hi=await has('issues'),ht=await has('todos');
+    const chk=(d.checklists||[]).filter(c=>!hc.has(c.id)).map(c=>({...c}));
     if([...eq,...ins,...chk].some(x=>x.id===undefined||x.id===null))throw new Error('id 없는 항목이 있습니다');
-    await dbBulkPut('equipment',eq);await dbBulkPut('inspections',ins);await dbBulkPut('checklists',chk);
-    const iss=(d.issues||[]).filter(x=>x.id),tds=(d.todos||[]).filter(x=>x.id),trn=(d.tree||[]).filter(x=>x.id);
+    await dbBulkPut('equipment',eq);await dbBulkPut('inspections',ins);if(chk.length)await dbBulkPut('checklists',chk);
+    const iss=(d.issues||[]).filter(x=>x.id&&!hi.has(x.id)),tds=(d.todos||[]).filter(x=>x.id&&!ht.has(x.id)),trn=(d.tree||[]).filter(x=>x.id);
     if(iss.length)await dbBulkPut('issues',iss);
     if(tds.length)await dbBulkPut('todos',tds);
     if(trn.length){await dbBulkPut('tree',trn);invalidateAdj();}
@@ -668,22 +671,9 @@ function importSeed(){
   pickFile(async data=>{
     try{
       if(!data.equipment||!data.inspections){toast('seed 형식이 아닙니다 (equipment/inspections 필드 없음)');return}
-      const eq=data.equipment.map(e=>({...e,location:e.location||'',feeder:e.feeder||'',spare:e.spare||'',memo:e.memo||''}));
-      const ins=data.inspections.map(i=>({...i,history:i.history||[]}));
-      const chk=(data.checklists||[]).map(c=>({...c}));
-      const noId=[...eq,...ins,...chk].find(x=>x.id===undefined||x.id===null);
-      if(noId){toast('가져오기 실패: id 없는 항목이 있습니다');console.error('seed import: missing id',noId);return}
-      await dbBulkPut('equipment',eq);
-      await dbBulkPut('inspections',ins);
-      await dbBulkPut('checklists',chk);
-      const iss=(data.issues||[]).filter(x=>x.id);const tds=(data.todos||[]).filter(x=>x.id);
-      const trn=(data.tree||[]).filter(x=>x.id);
-      if(iss.length)await dbBulkPut('issues',iss);
-      if(tds.length)await dbBulkPut('todos',tds);
-      if(trn.length)await dbBulkPut('tree',trn);
-      if(data.responsibleAreas)await dbPut('meta',{id:'areas',value:data.responsibleAreas});
+      const msg=await _applyJson('seed',data); // v116: 한 번에 가져오기와 같은 병합 경로(v115까지 이 버튼만 덮어쓰기였음)
       await loadAll();render();
-      toast(`가져오기 완료: 설비 ${eq.length} / 검사 ${ins.length} / 체크 ${chk.length}`+(iss.length?` / 현안 ${iss.length}`:'')+(tds.length?` / 할일 ${tds.length}`:'')+(trn.length?` / 계통 ${trn.length}노드`:''));
+      toast('가져오기 완료: '+msg);
     }catch(e){
       console.error('importSeed 실패',e);
       toast('가져오기 실패: '+e.message);
@@ -872,6 +862,13 @@ const GC_GAS=[
 "function doPost(e){",
 "  const q=JSON.parse(e.postData.contents);",
 "  if(q.key!==KEY)return out({ok:false,err:'key'});",
+"  if(q.op==='data'||q.op==='dataPut'){ // 앱 데이터 묶음 ↔ 드라이브 '전력앱 데이터' 폴더 (PC가 올리고 폰이 받음)",
+"    const nm='전력앱 데이터',fs=DriveApp.getFoldersByName(nm),dir=fs.hasNext()?fs.next():DriveApp.createFolder(nm),fn=q.name||'전력앱_데이터.json';",
+"    if(q.op==='dataPut'){const old=dir.getFilesByName(fn);while(old.hasNext())old.next().setTrashed(true);",
+"      dir.createFile(Utilities.newBlob(q.text,'application/json',fn));return out({ok:true,folder:nm});}",
+"    const it=dir.getFilesByName(fn);if(!it.hasNext())return out({ok:false,err:'드라이브 '+nm+' 폴더에 '+fn+' 없음'});",
+"    const f=it.next();return out({ok:true,text:f.getBlob().getDataAsString('UTF-8'),updated:f.getLastUpdated().toISOString()});",
+"  }",
 "  if(q.op==='pdf'){ // 현장 문서 PDF → 드라이브 폴더(같은 이름은 옛 파일 휴지통 후 새로)",
 "    const nm=q.folder||'전력앱 보고서',fs=DriveApp.getFoldersByName(nm),dir=fs.hasNext()?fs.next():DriveApp.createFolder(nm);",
 "    const old=dir.getFilesByName(q.name);while(old.hasNext())old.next().setTrashed(true);",
@@ -3729,11 +3726,13 @@ function moreSetupSheet(){
     <div class="muted">설비 ${cnt('equipment')} · 검사 ${cnt('inspections')} · 체크 ${cnt('checklists')} · 고장 ${cnt('faults')}</div>
     <button class="btn full" onclick="useSheet()">📊 메뉴 사용 기록 (안 쓰는 메뉴 찾기)</button>
     <button class="btn full" onclick="closeModal();selfTest()">🩺 자가진단 (기능·저장 점검)</button>
+    <button class="btn full" onclick="driveSeed()">☁️ 드라이브에서 전체 데이터 가져오기</button>
+    <div class="section-note">PC에서 올린 '전력앱 데이터' 묶음(설비·계통·로직 카드·도면 색인 등)을 한 번에 받습니다. 구글 연동(데이터·연동 › Apps Script) 설정이 있어야 합니다.</div>
     <button class="btn full" onclick="closeModal();importAll()">📥 한 번에 가져오기 (여러 JSON 선택)</button>
     <div class="section-note">seed · 계통트리 보정 · 로직 카드 · 해석 노트를 <b>한꺼번에 선택</b>하면 내용을 보고 알아서 분류해 넣습니다.
       파일명이 달라도 되고, 넣는 순서도 알아서 맞춥니다(seed → 계통트리 → 로직카드 → 해석노트).</div>
     <div class="muted" style="margin-top:10px">개별로 넣기</div>
-    <button class="btn ghost sm full" onclick="closeModal();importSeed()">📥 초기 데이터만 (seed_data_v1.json)</button>
+    <button class="btn ghost sm full" onclick="closeModal();importSeed()">📥 초기 데이터만 (seed_data_v2.json)</button>
     <button class="btn ghost sm full" onclick="closeModal();importLogicCards()">⚡ 로직 카드만 (logic_cards_*.json)</button>
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
@@ -7490,6 +7489,34 @@ async function localAutoSeed(){
   await dbPut('meta',{id:'localseed',v:L.stamp});
   await loadAll();
   return true;
+}
+/* v116: 드라이브에서 전체 데이터 — PC의 데이터/push_drive.py가 묶음(로컬시드.js와 같은 files 목록, PDF 제외)을
+   Apps Script op 'dataPut'으로 내 드라이브 '전력앱 데이터/전력앱_데이터.json'에 올리고, 폰은 op 'data'로 받아 localAutoSeed와 같은 순서로 넣는다.
+   설비·검사는 병합(_applyJson 'seed'), 체크리스트·현안·할 일은 없는 것만, 로직 카드는 파생 데이터라 비우고 다시. 데이터는 GitHub에 안 감. */
+async function driveSeed(){
+  if(!gcOn()){toast('먼저 더보기 › 데이터·연동에서 구글 연동(Apps Script)을 설정하세요');return;}
+  toast('드라이브에서 받는 중…');
+  let r,B;
+  try{r=await gcCall({op:'data'});B=JSON.parse(r.text);}catch(e){toast('드라이브 가져오기 실패: '+e.message);return;}
+  if(!B||!Array.isArray(B.files)){toast('전력앱 데이터 묶음이 아닙니다');return;}
+  const cur=await dbGet('meta','driveseed');window._driveB=B;
+  openModal(`<h3>☁️ 드라이브 데이터</h3>
+    <div class="kv"><span class="k">묶음 만든 때</span><span>${esc(B.stamp||'-')}</span>
+      <span class="k">파일</span><span>${B.files.length}개</span>
+      <span class="k">이 기기</span><span>${cur?esc(cur.v)+' 받음'+(cur.v===B.stamp?' (같은 묶음)':''):'처음'}</span></div>
+    <div class="section-note">설비·법정검사는 병합(이 기기에서 적은 위치·메모·수검 이력 유지), 체크리스트·현안·할 일은 없는 것만 추가, 계통·로직 카드·도면 색인 등은 새것으로 바꿉니다.</div>
+    <div class="row" style="margin-top:12px"><div class="grow"></div>
+      <button class="btn ghost sm" onclick="closeModal()">취소</button><button class="btn sm" onclick="driveSeedApply()">가져오기</button></div>`);
+}
+async function driveSeedApply(){
+  const B=window._driveB;if(!B)return;closeModal();toast('넣는 중… (잠시 기다려 주세요)');
+  try{
+    const kinds=B.files.map(f=>_sniffJson(f.d));
+    if(kinds.includes('로직카드'))for(const c of await dbAll('logic'))await dbDel('logic',c.id);
+    let n=0;for(let i=0;i<B.files.length;i++){if(kinds[i]==='알수없음'||kinds[i]==='백업')continue;await _applyJson(kinds[i],B.files[i].d);n++;}
+    await dbPut('meta',{id:'driveseed',v:B.stamp||''});
+    await loadAll();render();toast(`드라이브 데이터 반영 완료 — ${n}개 파일`);
+  }catch(e){console.error('driveSeedApply',e);toast('반영 실패: '+e.message+' — 다시 가져오기를 누르면 이어서 맞춰집니다');}
 }
 (async function init(){
   try{
