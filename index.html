@@ -366,6 +366,10 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 .tkid-ic{font-size:15px;flex:none}
 .tkid-nm{font-size:14px;flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
 .tkid-arr{color:var(--dim);font-size:16px;flex:none}
+.tkid.sel{border-color:var(--accent)}
+.dvwhy{font-style:normal;color:var(--accent);font-size:11px}
+.dvchips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+@media(min-width:900px){.tkid-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px}}
 .tdia-box{position:relative;width:100%;height:62vh;min-height:360px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;overflow:hidden;touch-action:none}
 #tdia-svg{width:100%;height:100%;display:block;cursor:grab}
 .tdia-mini{position:absolute;right:8px;bottom:8px;width:118px;height:92px;background:var(--panel);border:1px solid var(--line);border-radius:8px;opacity:.95}
@@ -431,7 +435,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v127'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v128'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -7590,43 +7594,125 @@ function openDevice(v){
   if(r.n)openCard(r.n.id);else if(r.e)openEquip(r.e.id,1);else openHub(r.c.tag);
   return true;
 }
-/* 통합 검색: 계통 노드·설비 마스터·로직 태그를 한 목록으로(계통과 연결된 설비·로직은 노드 한 줄로 합침) */
-function devSearch(q){
-  const k=_normTag(q),lo=String(q||'').trim().toLowerCase();if(k.length<2)return [];
-  const out=[],seen=new Set(),eqN=new Map();
+/* v128 통합 검색(설비 찾기) — 계통 노드·설비 마스터·로직 태그를 한 목록으로(계통과 연결된 설비·로직은 노드 한 줄로 합침).
+   여러 단어는 모두 맞아야(AND, 공백·쉼표 구분) · 한글 초성(ㅅㅍㄱ→송풍기) · 이름·판넬 말고 비고·상위 회로·분류까지 · 점수순 정렬 ·
+   종류/구역 칩 · 일치 글자 강조 · PC 방향키+Enter. 데이터·저장 형식은 그대로(검색 코드만 바뀜). */
+const _CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const _cho=s=>String(s||'').replace(/[가-힣]/g,c=>_CHO[Math.floor((c.charCodeAt(0)-44032)/588)]);
+const _dvToks=q=>String(q||'').trim().split(/[\s,]+/).filter(Boolean);
+const _dvOk=q=>{const t=_dvToks(q);return t.length>0&&(_normTag(t.join('')).length>=2||/[가-힣]/.test(q));};
+/* 한글↔영문 짝(현장 이름은 영어가 섞여 있음: 팬=FAN) — 3글자 이상 영문만 써서 잡음을 줄인다. 양방향으로 펼친다. */
+const _DVSYN=(()=>{const m={},base={팬:['FAN'],송풍기:['FAN','BLOWER'],펌프:['PUMP'],변압기:['TRANSFORMER'],차단기:['BREAKER'],크레인:['CRANE'],냉각탑:['COOLING TOWER'],
+  압축기:['COMPRESSOR'],컴프레서:['COMPRESSOR'],보일러:['BOILER'],분전반:['PDP','PANEL'],배전반:['SWITCHGEAR','SWGR'],히터:['HEATER'],모터:['MOTOR'],전동기:['MOTOR'],
+  발전기:['GENERATOR'],인버터:['INVERTER'],밸브:['VALVE'],조명:['LIGHTING'],정류기:['RECTIFIER'],충전기:['CHARGER'],축전지:['BATTERY'],배터리:['BATTERY'],컨베이어:['CONVEYOR'],엘리베이터:['ELEVATOR'],승강기:['ELEVATOR']};
+  const add=(k,v)=>{k=k.toUpperCase();(m[k]=m[k]||[]).includes(v)||m[k].push(v);};
+  for(const k in base)for(const v of base[k]){add(k,v);add(v,k);}return m;})();
+const _dvCol=new Intl.Collator('ko',{numeric:true});
+const _dvEsc=c=>c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+/* 단어 → {cho(초성 여부), alts:[{raw, n(정규화), re(독립 단어로 맞는지)}]} — 동의어는 OR */
+function _dvPrep(toks){
+  return toks.map(t=>{const cho=/^[ㄱ-ㅎ]+$/.test(t),raws=cho?[t]:[t,...(_DVSYN[t.toUpperCase()]||[])];
+    return {cho,alts:raws.map(r=>({raw:r,n:cho?r:_normTag(r),re:cho?null:new RegExp('(^|[^0-9A-Za-z가-힣])'+r.replace(/[-_.\s]/g,'').split('').map(_dvEsc).join('[-_.\\s]*')+'($|[^0-9A-Za-z가-힣])','i')}))};});
+}
+/* fields: [[라벨, 원문, 가중치]] — 단어마다 가장 높은 일치 점수(독립된 단어로 맞으면 가산). 맞은 단어가 minHit 미만이면 null. */
+function _dvScore(P,fields,minHit){
+  let sc=0,hit=0;const why=new Set();
+  for(const t of P){
+    let best=0,bl='';
+    for(const f of fields){const raw=f[1];if(!raw)continue;
+      const s=t.cho?_cho(raw):_normTag(raw);
+      for(const a of t.alts){const p=s.indexOf(a.n);if(p<0)continue;
+        const v=f[2]+(s===a.n?6:p===0?2:0)+(a.re&&a.re.test(raw)?3:0)-(t.cho?1:0);if(v>best){best=v;bl=f[0];}}}
+    if(best){hit++;sc+=best;if(bl!=='이름'&&bl!=='태그')why.add(bl);}
+  }
+  if(!hit||hit<minHit)return null;
+  return {sc:sc-(hit<P.length?20:0),why:[...why].join('·')};
+}
+function devSearch(q,o){
+  o=o||{};const toks=_dvToks(q);if(!_dvOk(q))return [];
+  const minHit=o.loose?Math.max(1,toks.length-1):toks.length,P=_dvPrep(toks);
+  const byId=new Map(S.tree.map(n=>[n.id,n])),eqN=new Map(),res=new Map();
   S.tree.forEach(n=>{if(n.equipId&&n.type!=='bus'&&n.type!=='source')eqN.set(n.equipId,n);});
-  const addN=n=>{if(seen.has(n.id))return;seen.add(n.id);const p=n.parentId&&nodeById(n.parentId);
-    out.push({ref:n.id,nid:n.id,lt:n.type==='load'||n.type==='breaker',ic:(NODE_TYPES[n.type]||['·'])[0],t:n.name,d:[n.voltage,n.panelNo&&'판넬 '+n.panelNo,p&&_kdShort(p.name,24)].filter(Boolean).join(' · ')});};
-  for(const c of S.logic||[])if(_normTag(c.tag).includes(k)){const n=_nodeForCard(c);if(n)addN(n);else if(!seen.has('L'+c.tag)){seen.add('L'+c.tag);out.push({ref:c.tag,ic:'⚡',t:c.tag,d:c.name||'로직 카드'});}}
-  for(const n of S.tree){if(out.length>=40)break;if(_normTag(n.name).includes(k)||_normTag(n.panelNo).includes(k))addN(n);}
-  for(const e of S.equipment){if(out.length>=60)break;
-    if(!(((e.name||'')+' '+(e.group||'')).toLowerCase().includes(lo)||_normTag(e.tagNo).includes(k)))continue;
-    const n=eqN.get(e.id);if(n){addN(n);continue;}
-    out.push({ref:e.id,ic:'🧾',t:e.name,d:[e.tagNo,e.plant,e.category].filter(Boolean).join(' · ')});}
-  return out;
+  /* 구역(PB/DH)·로직 카드의 노드 찾기는 원래 함수(_plantPfx·_nodeForCard)가 노드마다 트리를 다시 훑어 느리므로 여기서 한 번만 계산 */
+  const plM=new Map(),plOf=n0=>{if(plM.has(n0.id))return plM.get(n0.id);let x=n0,v='PB';for(let i=0;x&&i<40;i++){if(!x.parentId){v=x.id==='TN910'?'DH':'PB';break;}x=byId.get(x.parentId);}plM.set(n0.id,v);return v;};
+  let nn=null;
+  const cardNode=c=>{if(!nn)nn=S.tree.map(x=>[x,_normTag(x.name),_normTag(x.panelNo)]);
+    if(c.kind==='dcs'){const k=_normTag(c.tag);if(!k)return null;const h=nn.find(r=>r[2]===k)||nn.find(r=>r[1].indexOf(k)>=0);return h?h[0]:null;}
+    const want=_cardPlant(c)==='DH'?'DH':'PB',t=_normTag(c.tag).replace(/^DH/,'');
+    const h=nn.find(r=>plOf(r[0])===want&&(r[2]===t||r[1].indexOf(t)>=0));return h?h[0]:null;};
+  const KIND={load:'부하',breaker:'차단기',bus:'모선',source:'전원'};
+  const put=(key,r)=>{const c=res.get(key);if(!c||r.s>c.s)res.set(key,r);};
+  const nodeRow=(n,m)=>{const p=n.parentId&&byId.get(n.parentId);
+    return {ref:n.id,nid:n.id,lt:n.type==='load'||n.type==='breaker',ic:(NODE_TYPES[n.type]||['·'])[0],t:n.name,k:KIND[n.type]||'계통',
+      d:[n.voltage,n.panelNo&&'판넬 '+n.panelNo,p&&_kdShort(p.name,24)].filter(Boolean).join(' · '),s:m.sc,why:m.why,_n:n};};
+  for(const c of S.logic||[]){
+    const m=_dvScore(P,[['태그',c.tag,6],['이름',c.name,4]],minHit);if(!m)continue;
+    const n=cardNode(c);
+    if(n)put(n.id,nodeRow(n,m));else put('L'+c.tag,{ref:c.tag,ic:'⚡',t:c.tag,k:'로직',d:c.name||'로직 카드',s:m.sc,why:m.why});}
+  for(const n of S.tree){
+    const p=n.parentId&&byId.get(n.parentId),g=p&&p.parentId&&byId.get(p.parentId);
+    const m=_dvScore(P,[['이름',n.name,6],['판넬',n.panelNo,5],['비고',n.note,2],['상위',p&&p.name,2],['상위',g&&g.name,1],['전압',n.voltage,1]],minHit);
+    if(m)put(n.id,nodeRow(n,m));}
+  for(const e of S.equipment){
+    const m=_dvScore(P,[['이름',e.name,6],['태그',e.tagNo,6],['분류',e.group,3],['구분',e.category,3],['사양',e.spec,2],['비고',e.remark,1],['구역',e.plant,1]],minHit);
+    if(!m)continue;const n=eqN.get(e.id);
+    if(n)put(n.id,nodeRow(n,m));
+    else put('E'+e.id,{ref:e.id,ic:'🧾',t:e.name,k:'설비',d:[e.tagNo,e.plant,e.category,e.group].filter(Boolean).join(' · '),s:m.sc,why:m.why,pl:e.plant==='DH'?'DH':'PB'});}
+  const arr=[...res.values()].sort((a,b)=>b.s-a.s||_dvCol.compare(String(a.t),String(b.t))).slice(0,o.max||300);
+  arr.forEach(r=>{if(r._n){r.pl=plOf(r._n);delete r._n;}else if(!r.pl)r.pl='';});
+  return arr;
 }
-function devRowsHtml(q,act){
-  if(String(q||'').trim().length<2)return '';
-  const r=devSearch(q),sq=esc(String(q).replace(/['"\\]/g,''));
-  const more=`<div class="muted" style="margin:4px 2px 8px">${r.length?'탭 = '+(act==='loto'?'LOTO 격리 계획':'설비 카드')+' · ':'이름·판넬에 일치 없음 — '}<a href="#" style="color:var(--accent)" onclick="event.preventDefault();devDeep('${sq}')">도면 세부내용까지 검색 ›</a></div>`;
-  return r.slice(0,30).map(h=>`<div class="tkid" onclick="${act==='loto'&&h.lt?`startLoto('${h.nid}')`:`openDevice('${esc(h.ref)}')`}"><span class="tkid-ic">${h.ic}</span>
-    <span class="tkid-nm">${esc(h.t)}${h.d?`<span class="tpath-meta">${esc(h.d)}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')
-    +(r.length>30?`<div class="muted" style="margin:4px 2px">… 외 ${r.length-30}건 — 더 길게 입력하세요</div>`:'')+more;
+/* 검색어 글자를 <mark>로 강조 — 하이픈·공백이 있어도 맞춘다(AB123 → AB-123) */
+function _dvHlRe(toks){
+  const ts=_dvPrep(toks).filter(t=>!t.cho).flatMap(t=>t.alts.map(a=>a.raw)).map(t=>t.replace(/[-_.\s]/g,'').split('').map(_dvEsc).join('[-_.\\s]*')).filter(Boolean);
+  return ts.length?new RegExp('('+ts.sort((a,b)=>b.length-a.length).join('|')+')','gi'):null;
 }
-function devLive(q,id,act){const el=document.getElementById(id);if(el)el.innerHTML=devRowsHtml(q,act);}
+function _dvHl(s,re){
+  s=String(s||'');if(!re)return esc(s);
+  return s.split(re).map((p,i)=>i%2?'<mark>'+esc(p)+'</mark>':esc(p)).join('');
+}
+function devRowsHtml(q,act,id){
+  if(!_dvOk(q))return '';
+  const toks=_dvToks(q),hre=_dvHlRe(toks),sq=esc(String(q).replace(/['"\\]/g,'')),a=act||'';
+  let r=devSearch(q),loose=false;
+  if(!r.length&&toks.length>1){r=devSearch(q,{loose:1});loose=r.length>0;}
+  const kc={},pc={};r.forEach(h=>{kc[h.k]=(kc[h.k]||0)+1;if(h.pl)pc[h.pl]=(pc[h.pl]||0)+1;});
+  const fk=S._dvKind&&kc[S._dvKind]?S._dvKind:'',fp=S._dvPl&&pc[S._dvPl]?S._dvPl:'';
+  const vis=r.filter(h=>(!fk||h.k===fk)&&(!fp||h.pl===fp)),mx=S._dvMax||30;
+  const chip=(key,val,n,on)=>`<button class="chip${on?' on':''}" onclick="devFilt('${id}','${a}','${key}','${val}')">${val} ${n}</button>`;
+  const chips=r.length>=8&&(Object.keys(kc).length>1||Object.keys(pc).length>1)?`<div class="dvchips">${Object.keys(kc).map(k=>chip('k',k,kc[k],fk===k)).join('')}${Object.keys(pc).length>1?Object.keys(pc).map(k=>chip('p',k,pc[k],fp===k)).join(''):''}</div>`:'';
+  const info=`<div class="muted" style="margin:4px 2px 8px">${vis.length?`${r.length>vis.length?vis.length+'/':''}${r.length}건 · 탭 = ${a==='loto'?'LOTO 격리 계획':'설비 카드'} · PC: ↑↓ 선택, Enter 열기 · `:'일치 없음 — 단어를 줄이거나 초성(ㅅㅍㄱ)으로 찾아보세요 · '}${loose?'모든 단어가 맞는 결과가 없어 일부 단어만 맞는 결과입니다 · ':''}<a href="#" style="color:var(--accent)" onclick="event.preventDefault();devDeep('${sq}')">도면 세부내용까지 검색 ›</a></div>`;
+  const row=(h,i)=>`<div class="tkid${i===0?' sel':''}" onclick="${a==='loto'&&h.lt?`startLoto('${h.nid}')`:`openDevice('${esc(h.ref)}')`}"><span class="tkid-ic">${h.ic}</span>
+    <span class="tkid-nm"><span>${_dvHl(h.t,hre)}</span>${h.d||h.why?`<span class="tpath-meta">${_dvHl(h.d,hre)}${h.why?` <i class="dvwhy">${esc(h.why)} 일치</i>`:''}</span>`:''}</span><span class="tkid-arr">›</span></div>`;
+  return chips+info+`<div class="tkid-list">${vis.slice(0,mx).map(row).join('')}</div>`
+    +(vis.length>mx?`<button class="btn ghost sm full" onclick="S._dvMax=${mx+50};devLive(S['_q_${id}'],'${id}','${a}')">더 보기 (${mx}/${vis.length})</button>`:'');
+}
+function devLive(q,id,act){const el=document.getElementById(id);if(el)el.innerHTML=devRowsHtml(q,act,id);}
+function devFilt(id,act,key,val){const f=key==='k'?'_dvKind':'_dvPl';S[f]=S[f]===val?'':val;devLive(S['_q_'+id],id,act);}
 function devDeep(q){S._treeSubTab='drill';go('tree');const i=$('#tree-find');if(i){i.value=q;treeFind();}}
+/* 검색 칸 키: ↑↓ = 결과 선택, Enter = 선택(없으면 맨 위) 열기, Esc = 지우기 */
+function devKey(ev,id){
+  const el=document.getElementById(id);if(!el)return;const rows=[...el.querySelectorAll('.tkid')];
+  if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){
+    if(!rows.length)return;ev.preventDefault();
+    let i=rows.findIndex(r=>r.classList.contains('sel'));i=Math.max(0,Math.min(rows.length-1,(i<0?0:i)+(ev.key==='ArrowDown'?1:-1)));
+    rows.forEach((r,j)=>r.classList.toggle('sel',j===i));rows[i].scrollIntoView({block:'nearest'});
+  }else if(ev.key==='Enter'){const r=rows.find(r=>r.classList.contains('sel'))||rows[0];if(r){ev.preventDefault();r.click();}}
+  else if(ev.key==='Escape'){ev.target.value='';S['_q_'+id]='';el.innerHTML='';}
+}
 function devSearchBox(id,act,ph){
   const v=S['_q_'+id]||'';
-  return `<div class="row" style="gap:6px;margin-bottom:6px"><input id="${id}-q" placeholder="${ph||'설비 이름·태그·판넬 (예: VCB-501, 송풍기)'}" style="flex:1;min-width:0" autocomplete="off" value="${esc(v)}"
-    oninput="S['_q_${id}']=this.value;devLive(this.value,'${id}','${act||''}')" onkeydown="if(event.key==='Enter'){const h=devSearch(this.value);if(h.length===1)openDevice(h[0].ref)}">
-    </div><div id="${id}">${devRowsHtml(v,act)}</div>`;
+  return `<div class="row" style="gap:6px;margin-bottom:6px"><input id="${id}-q" placeholder="${ph||'이름·태그·판넬·위치 (예: 전기실 팬, ACB-101, ㅅㅍㄱ)'}" style="flex:1;min-width:0" autocomplete="off" value="${esc(v)}"
+    oninput="S['_q_${id}']=this.value;S._dvMax=30;devLive(this.value,'${id}','${act||''}')" onkeydown="devKey(event,'${id}')">
+    </div><div id="${id}">${devRowsHtml(v,act,id)}</div>`;
 }
 function vFind(){
+  if(innerWidth>=900)setTimeout(()=>{const i=document.getElementById('find-sr-q');if(i)i.focus()},60);
   const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
   const grp=pl=>{const L=Z.filter(z=>(z.plant||'PB')===pl);return L.length?`<div class="muted" style="margin:8px 0 4px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div><div class="chips" style="flex-wrap:wrap">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
   const fav=S._fav||[],rec=[...fav.map(x=>({...x,f:1})),...(_rec().hubs||[]).filter(h=>!fav.some(f=>f.key===h.key))].slice(0,10);
   return `<div class="card"><h2>🔍 설비 찾기</h2>${devSearchBox('find-sr')}
-    <div class="muted">계통 노드·설비 마스터·로직 태그를 한 번에 찾습니다. 같은 설비는 한 줄.</div></div>
+    <div class="muted">계통 노드·설비 마스터·로직 태그를 한 번에 찾습니다. 단어를 띄어 쓰면 모두 맞는 것만(예: 전기실 팬 급기), 초성(ㅅㅍㄱ)도 됩니다. 같은 설비는 한 줄.</div></div>
   ${rec.length?`<div class="card"><h2>최근·즐겨찾기</h2>${rec.map(h=>`<div class="tkid" onclick="openDevice('${esc(h.key)}')"><span class="tkid-ic">${h.f?'★':'🕘'}</span><span class="tkid-nm">${esc(h.label)}</span><span class="tkid-arr">›</span></div>`).join('')}</div>`:''}
   ${Z.length?`<div class="card"><h2>🏢 건물로 둘러보기</h2>${grp('PB')}${grp('DH')}</div>`:''}
   <div class="card"><h2>다른 방법</h2><div class="row" style="gap:6px;flex-wrap:wrap">
