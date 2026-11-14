@@ -23,7 +23,49 @@
     }
   ],
   "shortcuts": [
-    { "name": "할 일 추가", "short_name": "할 일", "url": "./index.html?do=todo", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
-    { "name": "현장 문서", "short_name": "현장 문서", "url": "./index.html?do=fdoc", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+    {
+      "name": "할 일 추가",
+      "short_name": "할 일",
+      "url": "./index.html?do=todo",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "점검보고서 작성",
+      "short_name": "점검보고서",
+      "url": "./index.html?do=insp",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "조치매뉴얼 작성",
+      "short_name": "조치매뉴얼",
+      "url": "./index.html?do=man",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "현장 문서",
+      "short_name": "현장 문서",
+      "url": "./index.html?do=fdoc",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }
