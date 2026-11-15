@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v132'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v134'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -508,6 +508,11 @@ async function loadAll(){
   try{S._gcCfg=await dbGet('meta','gcCfg')||null;}catch(e){S._gcCfg=null;}
   try{const u=await dbGet('meta','usage');S._use=u&&u.v||null;}catch(e){S._use=null;}
   try{const fm=await dbGet('meta','fieldMode');S._fieldMode=fm?fm.v:true;}catch(e){S._fieldMode=true;}
+  // v134: 삭제 표시(deleted) 기록은 화면용 S에서 뺀다. 90일 지난 표시는 실제로 지운다(로그인 중이면 서버에서도)
+  for(const s of V2_SYNC){
+    for(const x of (S[s]||[]).filter(x=>x.deleted&&_v2Old(x))){try{await dbDel(s,x.id);fbRemove(s,x.id);}catch(e){}}
+    S[s]=(S[s]||[]).filter(x=>!x.deleted);
+  }
 }
 /* v97 현장 모드(기본 켬): 더보기 › 분석 메뉴를 숨기고 설비 카드를 현장 질문 순서로. 사내망 PC 화면(html.pc)에서는 늘 꺼짐 */
 const fieldOn=()=>S._fieldMode!==false&&!document.documentElement.classList.contains('pc');
@@ -540,6 +545,102 @@ function cycleMonths(c){
   const m=c.match(/([\d.]+)\s*년/);
   return m?Math.round(parseFloat(m[1])*12):null;
 }
+/*V2-BEGIN ===== v133: v2 준비 — 레코드 정리·병합 (문서/DATA_CONTRACT.md §3·§4, 시험 문서/TEST_PLAN.md) =====
+   순수 함수다. 아직 저장 경로 어디에서도 부르지 않는다(V2_ROADMAP §3 순위 2부터 saveRec이 쓴다). */
+const V2_SYNC=['todos','issues','inspections','checklists','checklogs']; // FB_SYNC_STORES와 같은 목록(선언 순서 때문에 따로 둠, 자가진단이 같은지 확인)
+const V2_NUM_KEYS={measurements:['value'],inspections:['lengthM','builtYear']};
+// 날짜를 'YYYY-MM-DD'로. ''·null은 그대로, 2026.1.5 · 2026/01/05 · 2026-1-5 는 고치고, 못 읽으면 오류
+function normDate(v){
+  if(v===''||v==null)return v;
+  const m=String(v).trim().match(/^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})\.?$/);
+  if(m){const y=+m[1],mo=+m[2],d=+m[3],t=new Date(y,mo-1,d);
+    if(t.getFullYear()===y&&t.getMonth()===mo-1&&t.getDate()===d)return m[1]+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
+  throw new Error('날짜 형식이 아닙니다: '+v);
+}
+// 값 하나를 깊이 정리: undefined 키 삭제, 문자열 앞뒤 공백 제거, NaN·Infinity·배열 안 배열·(동기화 스토어의) dataURL은 오류
+function _v2Clean(v,path,sync,inArr){
+  if(typeof v==='string'){
+    if(sync&&v.length>1000&&v.startsWith('data:'))throw new Error(path+': 동기화 기록에 사진·파일 데이터를 넣을 수 없습니다');
+    return v.trim();
+  }
+  if(typeof v==='number'){if(!isFinite(v))throw new Error(path+': 숫자가 아닙니다');return v;}
+  if(Array.isArray(v)){
+    if(inArr)throw new Error(path+': 배열 안에 배열을 넣을 수 없습니다');
+    return v.filter(x=>x!==undefined).map((x,i)=>_v2Clean(x,path+'['+i+']',sync,true));
+  }
+  if(v&&typeof v==='object'){
+    const o={};for(const k of Object.keys(v)){if(v[k]!==undefined)o[k]=_v2Clean(v[k],path+'.'+k,sync,false);}
+    return o;
+  }
+  return v; // boolean·null
+}
+// 저장 전 정리. 새 객체를 돌려준다(원본은 안 건드림). 규격에 어긋나 고칠 수 없으면 오류
+function normalizeRec(store,obj){
+  if(!obj||typeof obj!=='object'||obj.id===undefined||obj.id===null||obj.id==='')throw new Error(store+': id 없는 기록');
+  const o=_v2Clean(obj,store,V2_SYNC.includes(store),false);
+  o.id=String(o.id);
+  ['date','due','nextDue'].forEach(k=>{if(k in o)o[k]=normDate(o[k]);});
+  if(Array.isArray(o.history))o.history.forEach(h=>{if(h&&typeof h==='object'&&'date' in h)h.date=normDate(h.date);});
+  (V2_NUM_KEYS[store]||[]).forEach(k=>{
+    if(!(k in o)||o[k]===''||o[k]===null||typeof o[k]==='number')return;
+    const n=Number(o[k]);if(typeof o[k]!=='string'||!isFinite(n))throw new Error(store+'.'+k+': 숫자가 아닙니다 ('+o[k]+')');
+    o[k]=n;
+  });
+  return o;
+}
+// 검사 이력 합치기: 날짜+결과가 같으면 하나, 날짜순 (_applyJson 'seed'와 같은 규칙)
+function mergeHistory(a,b){
+  const seen=new Set();
+  return [...(a||[]),...(b||[])].filter(r=>{const k=r.date+'|'+r.result;return seen.has(k)?false:seen.add(k);})
+    .sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+}
+// 같은 id의 두 기록 중 남길 것. updatedAt이 큰 쪽(같으면 로컬). 삭제 표시도 '수정'의 하나로 본다.
+// 법정검사만 이력 합집합·다음 기한은 더 늦은 쪽. 바뀐 게 없으면 받은 객체를 그대로 돌려준다(=== 로 '유지' 판별)
+function mergeRec(local,remote,store,now){
+  if(!local)return remote||null;
+  if(!remote)return local;
+  now=now||Date.now();
+  const t=x=>{const u=Number(x.updatedAt)||0;return u>now+864e5?now:u;}; // 시계가 하루 넘게 앞선 기기는 지금으로 깎음
+  const win=t(remote)>t(local)?remote:local,lose=win===local?remote:local;
+  if(store!=='inspections')return win;
+  const o={...win,nextDue:(local.nextDue||'')>(remote.nextDue||'')?local.nextDue:(remote.nextDue||''),equipId:win.equipId||lose.equipId||''};
+  if(local.history||remote.history)o.history=mergeHistory(win.history,lose.history);
+  return o;
+}
+// 자가진단용 예방 케이스(과거 버그 재현이 아님). 번호는 TEST_PLAN.md. 돌려주는 값 = [{id,pass,detail}]
+function v2SelfCases(){
+  const R=[],J=JSON.stringify;
+  const ok=(id,pass,detail)=>R.push({id,pass:!!pass,detail:detail||''});
+  const thr=f=>{try{f();return false;}catch(e){return true;}};
+  const T=(id,f)=>{try{f();}catch(e){ok(id,false,e.message);}};
+  T('A-01',()=>ok('A-01',normalizeRec('todos',{id:123,date:'2026-01-05'}).id==='123'));
+  T('A-02',()=>ok('A-02',['2026.1.5','2026/01/05','2026-1-5','2026. 1. 5.'].every(d=>normDate(d)==='2026-01-05')&&normDate('')===''));
+  T('A-03',()=>ok('A-03',thr(()=>normDate('내년 봄'))&&thr(()=>normDate('2026-02-30'))&&thr(()=>normalizeRec('todos',{id:'a',date:'2026-13-01'}))));
+  T('A-04',()=>ok('A-04',normalizeRec('measurements',{id:'m',value:'12.50'}).value===12.5&&normalizeRec('measurements',{id:'m',value:''}).value===''));
+  T('A-05',()=>{const d=new Date(todayStr()+'T00:00:00'),n=new Date();ok('A-05',d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate());});
+  T('A-06',()=>ok('A-06',cycleMonths('3.5년')===42&&cycleMonths('매년')===12&&cycleMonths('2 년')===24&&cycleMonths('')===null));
+  T('B-01',()=>ok('B-01',[0.1,1234.5678,1e-3].every(v=>JSON.parse(J(normalizeRec('measurements',{id:'m',value:v}))).value===v)));
+  T('B-05',()=>ok('B-05',thr(()=>normalizeRec('measurements',{id:'m',value:'abc'}))&&thr(()=>normalizeRec('measurements',{id:'m',value:'1,234'}))&&thr(()=>normalizeRec('measurements',{id:'m',value:NaN}))));
+  T('B-07',()=>{const o=normalizeRec('inspections',{id:'i',lengthM:'30',builtYear:'2015'});ok('B-07',o.lengthM===30&&o.builtYear===2015);});
+  T('C-01',()=>{const o=normalizeRec('issues',{id:'x',title:' 가 ',due:undefined});ok('C-01',!('due' in o)&&o.title==='가');});
+  T('C-02',()=>{const o=normalizeRec('inspections',{id:'i',history:[{date:'2026.3.1',result:'적합',note:undefined}]});ok('C-02',!('note' in o.history[0])&&o.history[0].date==='2026-03-01');});
+  T('C-03',()=>ok('C-03',thr(()=>normalizeRec('checklists',{id:'c',x:[[1,2],[3]]}))));
+  T('C-04',()=>{const src={id:'t',date:'2026-01-05',title:'가',done:false,lawRef:{n:'법',a:'1조'},history:[{date:'2026-01-01',result:'적합'}]},o=normalizeRec('inspections',src);
+    ok('C-04',J(JSON.parse(J(o)))===J(o)&&J(o)===J(src)&&o!==src);});
+  T('C-08',()=>{const h=mergeHistory([{date:'2026-03-01',result:'적합'},{date:'2025-01-01',result:'적합'}],[{date:'2026-03-01',result:'적합',note:'중복'}]);
+    ok('C-08',h.length===2&&h[0].date==='2025-01-01');});
+  T('C-10',()=>ok('C-10',thr(()=>normalizeRec('todos',{id:'t',note:'data:image/png;base64,'+'A'.repeat(2000)}))&&!thr(()=>normalizeRec('notes',{id:'n',img:'data:image/png;base64,'+'A'.repeat(2000)}))));
+  T('C-12',()=>ok('C-12',thr(()=>normalizeRec('todos',{title:'id 없음'}))&&thr(()=>normalizeRec('todos',null))));
+  T('M-02',()=>{const l={id:'a',title:'옛'},r={id:'a',title:'새',updatedAt:5};ok('M-02',mergeRec(l,r,'todos')===r&&mergeRec(l,{id:'a'},'todos')===l&&mergeRec(null,r,'todos')===r&&mergeRec(l,null,'todos')===l);});
+  T('S-04',()=>{const l={id:'a',updatedAt:9},r={id:'a',updatedAt:5};ok('S-04',mergeRec(l,r,'todos')===l&&mergeRec(r,l,'todos')===l);});
+  T('S-06',()=>{const live={id:'a',updatedAt:5},del={id:'a',deleted:true,updatedAt:9};ok('S-06',mergeRec(live,del,'todos').deleted===true&&mergeRec(del,live,'todos').deleted===true);});
+  T('S-08',()=>{const a={id:'i',updatedAt:5,nextDue:'2028-01-01',equipId:'E1',history:[{date:'2026-01-01',result:'적합'}]},
+      b={id:'i',updatedAt:9,nextDue:'2027-01-01',equipId:'',history:[{date:'2026-02-01',result:'부적합'}]},m=mergeRec(a,b,'inspections');
+    ok('S-08',m.history.length===2&&m.nextDue==='2028-01-01'&&m.equipId==='E1'&&m.updatedAt===9);});
+  T('S-13',()=>{const now=1e12,l={id:'a',updatedAt:now-1},r={id:'a',updatedAt:now+9e8};ok('S-13',mergeRec(l,r,'todos',now)===r&&mergeRec({id:'a',updatedAt:now+5},r,'todos',now)!==r);});
+  return R;
+}
+/*V2-END*/
 function addMonths(dateStr,mo){
   const d=new Date(dateStr+'T00:00:00');d.setMonth(d.getMonth()+mo);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -616,6 +717,7 @@ async function _applyJson(kind,d){
     const keep=['location','feeder','spare','memo','voltLine','usage'];
     const eq=(d.equipment||[]).map(e=>{const x=exE.get(e.id)||{},o={...x,...e};keep.forEach(k=>{o[k]=x[k]||e[k]||'';});return o;});
     const ins=(d.inspections||[]).map(i=>{const x=exI.get(i.id);if(!x)return {...i,history:i.history||[]};
+      if(x.deleted)return x; // v134: 이 기기에서 지운 검사는 되살리지 않는다(체크리스트·현안·할 일은 아래 has()가 같은 일을 함)
       const h=[...(i.history||[]),...(x.history||[])],seen=new Set();
       return {...x,...i,history:h.filter(r=>{const k=r.date+'|'+r.result;return seen.has(k)?false:seen.add(k);}).sort((a,b)=>(a.date||'').localeCompare(b.date||'')),
         nextDue:(x.nextDue||'')>(i.nextDue||'')?x.nextDue:i.nextDue,equipId:x.equipId||i.equipId||''};});
@@ -883,6 +985,10 @@ function fbStartSync(){
           await dbDel(store,ch.doc.id);S[store]=S[store].filter(x=>x.id!==ch.doc.id);
         }else{
           const data=ch.doc.data();
+          if(data.deleted){ // v134: 다른 기기가 지운 기록 — 표시만 보관하고 화면에서는 뺀다(90일 지났으면 서버·기기에서 실제 삭제)
+            if(_v2Old(data)){fbRemove(store,data.id);await dbDel(store,data.id);}else await dbPut(store,data);
+            S[store]=S[store].filter(x=>x.id!==data.id);return;
+          }
           await dbPut(store,data);
           const i=S[store].findIndex(x=>x.id===data.id);
           if(i>=0)S[store][i]=data;else S[store].push(data);
@@ -903,6 +1009,25 @@ function fbRemove(store,id){
   if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
   fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(id)).delete().catch(e=>console.warn('fbRemove',e));
 }
+/* v134: 쓰기 관문 (문서/V2_ARCHITECTURE.md §3-1) — 동기화 5개 스토어(V2_SYNC)의 저장·삭제는 여기로만. 화면 코드는 dbPut·fbPush를 직접 부르지 않는다.
+   saveRec: 규격 정리(normalizeRec) → updatedAt → DB → S(없으면 추가) → Firebase(+캘린더). 규격에 어긋나면 알리고 저장하지 않으며,
+            오류를 다시 던져 호출한 화면(모달)이 닫히지 않게 한다. obj는 같은 객체를 유지한다(화면 코드가 S 안의 객체를 직접 고쳐 넘기므로).
+   removeRec: 지우지 않고 삭제 표시({id,deleted,updatedAt})만 남긴다 — 다른 기기·파일 병합이 삭제를 알아야 해서. S에서는 빼고, 90일 뒤 실제로 지운다(loadAll). */
+async function saveRec(store,obj,noGc){
+  let o;try{o=normalizeRec(store,obj);}catch(e){toast('저장 실패: '+e.message);throw e;}
+  for(const k of Object.keys(obj))if(!(k in o))delete obj[k];
+  Object.assign(obj,o,{updatedAt:Date.now()});
+  await dbPut(store,obj);
+  const L=S[store],i=L.findIndex(x=>x.id===obj.id);
+  if(i<0)L.push(obj);else L[i]=obj;
+  fbPush(store,obj,noGc);
+}
+async function removeRec(store,id){
+  S[store]=S[store].filter(x=>x.id!==id);
+  const t={id:String(id),deleted:true,updatedAt:Date.now()};
+  await dbPut(store,t);fbPush(store,t,true);
+}
+const _v2Old=x=>Date.now()-(Number(x.updatedAt)||0)>90*864e5; // 삭제 표시를 실제로 지울 때
 function fbConfigHtml(){
   if(fbUser){
     return `<div class="item"><div class="t"><div class="n">✅ ${esc(fbUser.displayName||fbUser.email||'연결됨')}</div>
@@ -1009,7 +1134,7 @@ async function gcSync(store,obj,del){
   if(!gcOn())return;
   const day=del?null:store==='todos'?obj.date:store==='issues'?obj.due:obj.nextDue; // 법정검사(v103)는 다음 기한
   if(!day&&!obj.gcalId)return;
-  const save=async()=>{if(!del){await dbPut(store,obj);fbPush(store,obj,true);}};
+  const save=async()=>{if(!del&&S[store].some(x=>x.id===obj.id))await saveRec(store,obj,true);}; // 그 사이 지운 기록은 되살리지 않는다
   try{
     if(!day){await gcCall({op:'delete',id:obj.gcalId});delete obj.gcalId;await save();return;}
     const e=new Date(day+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정 끝날 = 다음 날(제외)
@@ -1299,23 +1424,23 @@ async function toggleChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
   const pk=periodKey(c.cycle);
   const log={id:uid(),chkId:id,period:pk,date:todayStr(),name:c.name,cycle:c.cycle};
-  await dbPut('checklogs',log);S.checklogs.push(log);fbPush('checklogs',log);
+  await saveRec('checklogs',log);
   toast(`완료: ${c.name}`);render();
 }
 async function doneIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
   i.done=true;i.doneDate=todayStr();
-  await dbPut('issues',i);fbPush('issues',i);toast('현안 완료 처리');render();
+  await saveRec('issues',i);toast('현안 완료 처리');render();
 }
 async function reopenIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
   i.done=false;delete i.doneDate;
-  await dbPut('issues',i);fbPush('issues',i);toast('진행중으로 되돌림');render();
+  await saveRec('issues',i);toast('진행중으로 되돌림');render();
 }
 async function delIssueHome(id){
   if(!(await confirmModal('이 완료 현안을 삭제할까요? (이력에서도 사라집니다)')))return;
   gcDel('issues',id);
-  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);render();
+  await removeRec('issues',id);render();
 }
 function promoteIssue(id){
   const i=S.issues.find(x=>x.id===id);if(!i)return;
@@ -1348,7 +1473,7 @@ async function savePromoteIssue(id){
     blockRange:$('#pi-block').value.trim(),cost:$('#pi-cost').value.trim(),note:$('#pi-note').value.trim(),
     fromIssue:id};
   await dbPut('faults',obj);S.faults.push(obj);
-  i.promotedFaultId=obj.id;await dbPut('issues',i);fbPush('issues',i);
+  i.promotedFaultId=obj.id;await saveRec('issues',i);
   closeModal();toast('정비이력으로 저장됨 — 설비 카드에서 확인');render();
 }
 /* v127: 관련 조문 링크(국가법령정보센터) — 서버·키 없이 주소만 만든다. 법령 추가 = 아래 LAWS에 한 줄.
@@ -1395,14 +1520,13 @@ async function saveIssue(id){
   const obj=id?S.issues.find(x=>x.id===id):{id:uid(),date:todayStr(),done:false};
   obj.title=t;obj.note=$('#is-n').value.trim();lawRead('is',obj);
   if(S._dp&&S._dp.a)obj.due=S._dp.a;else delete obj.due;
-  await dbPut('issues',obj);fbPush('issues',obj);
-  if(!id)S.issues.push(obj);
+  await saveRec('issues',obj);
   closeModal();render();
 }
 async function delIssue(id){
   if(!(await confirmModal('이 현안을 삭제할까요?')))return;
   gcDel('issues',id);
-  await dbDel('issues',id);S.issues=S.issues.filter(x=>x.id!==id);fbRemove('issues',id);
+  await removeRec('issues',id);
   closeModal();render();
 }
 
@@ -1466,7 +1590,7 @@ function todoTodayHtml(){
 async function delTodoHome(id){
   if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
   gcDel('todos',id);
-  await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);render();
+  await removeRec('todos',id);render();
 }
 function openDay(date){
   const td=S.todos.filter(t=>t.date===date).sort((a,b)=>(a.done?1:0)-(b.done?1:0));
@@ -1485,7 +1609,7 @@ function openDay(date){
 async function quickAddTodo(date){
   const el=document.getElementById('qt');const t=el?el.value.trim():'';if(!t){toast('내용을 입력하세요');return;}
   const obj={id:'TD'+uid(),date,title:t,done:false,note:''};
-  await dbPut('todos',obj);S.todos.push(obj);fbPush('todos',obj);render();openDay(date);
+  await saveRec('todos',obj);render();openDay(date);
 }
 /* v90: 작은 월 달력 날짜 선택 — 수정 창 안에서 날짜 입력칸 대신 사용. S._dp={ym,a,b,range,opt}
    range=true: 시작일→종료일 두 번 탭(여러 날), opt=true: 같은 날짜를 다시 탭하면 '날짜 없음' */
@@ -1542,7 +1666,7 @@ async function saveTodo(id){
   if(id){
     const obj=S.todos.find(x=>x.id===id);
     obj.date=startDate;obj.title=title;obj.note=note;
-    await dbPut('todos',obj);fbPush('todos',obj);
+    await saveRec('todos',obj);
     render();openDay(obj.date);
     return;
   }
@@ -1553,13 +1677,13 @@ async function saveTodo(id){
   else{while(cur<=end){dates.push(cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0')+'-'+String(cur.getDate()).padStart(2,'0'));cur.setDate(cur.getDate()+1);}}
   for(const d of dates){
     const obj={id:'TD'+uid(),date:d,title,note,done:false};
-    await dbPut('todos',obj);S.todos.push(obj);fbPush('todos',obj);
+    await saveRec('todos',obj);
   }
   render();openDay(dates[0]);
   if(dates.length>1)toast(`${dates.length}일 간 할 일이 추가됐어요`);
 }
 async function toggleTodo(id,reopen){
-  const t=S.todos.find(x=>x.id===id);if(!t)return;t.done=!t.done;await dbPut('todos',t);fbPush('todos',t);
+  const t=S.todos.find(x=>x.id===id);if(!t)return;t.done=!t.done;await saveRec('todos',t);
   render();
   if(reopen)openDay(t.date);
 }
@@ -1567,7 +1691,7 @@ async function delTodo(id,date){
   if(!(await confirmModal('이 할 일을 삭제할까요?')))return;
   const t=S.todos.find(x=>x.id===id);
   gcDel('todos',id);
-  await dbDel('todos',id);S.todos=S.todos.filter(x=>x.id!==id);fbRemove('todos',id);
+  await removeRec('todos',id);
   render();openDay(date||(t&&t.date)||todayStr());
 }
 
@@ -3833,7 +3957,7 @@ async function cableSave(id){
   i.history=i.history||[];
   i.history.push({date:c.d,result:c.r,note:[c.m,$('#cb-n').value.trim(),c.warn].filter(Boolean).join(' · ')});
   i.nextDue=c.due;
-  await dbPut('inspections',i);fbPush('inspections',i);
+  await saveRec('inspections',i);
   closeModal();render();toast('진단 결과 저장 — 다음 기한 '+c.due);
 }
 function completeInsp(id){
@@ -3855,7 +3979,7 @@ async function confirmInsp(id){
   i.history=i.history||[];
   i.history.push({date:todayStr(),result,note:note||('예정일 '+(i.nextDue||'-')+' 수검')});
   i.nextDue=mo?addMonths(base,mo):'';
-  await dbPut('inspections',i);fbPush('inspections',i);
+  await saveRec('inspections',i);
   closeModal();render();toast('수검 완료 — 다음 일정 갱신');
 }
 function editInsp(id){
@@ -3884,14 +4008,13 @@ async function saveInsp(id){
   Object.assign(obj,{name,target:$('#in-target').value.trim(),equipId:$('#in-equip').value||'',cycle:$('#in-cycle').value.trim(),
     nextDue:$('#in-due').value,law:$('#in-law').value.trim(),note:$('#in-note').value.trim()});
   lawRead('in',obj);
-  await dbPut('inspections',obj);fbPush('inspections',obj);
-  if(!id)S.inspections.push(obj);
+  await saveRec('inspections',obj);
   closeModal();render();toast('저장 완료');
 }
 async function delInsp(id){
   if(!(await confirmModal('이 검사를 삭제할까요?')))return;
   gcDel('inspections',id);
-  await dbDel('inspections',id);S.inspections=S.inspections.filter(x=>x.id!==id);fbRemove('inspections',id);
+  await removeRec('inspections',id);
   closeModal();render();
 }
 
@@ -3922,7 +4045,7 @@ async function undoChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
   const pk=periodKey(c.cycle);
   const log=S.checklogs.find(l=>l.chkId===id&&l.period===pk);
-  if(log){await dbDel('checklogs',log.id);S.checklogs=S.checklogs.filter(l=>l.id!==log.id);fbRemove('checklogs',log.id);render()}
+  if(log){await removeRec('checklogs',log.id);render()}
 }
 function editChk(){
   openModal(`<h3>주기 업무 추가</h3>
@@ -3941,7 +4064,7 @@ async function saveChk(){
   const name=$('#ck-name').value.trim();if(!name){toast('업무명을 입력하세요');return}
   const obj={id:'UC'+uid(),name,cycle:$('#ck-cycle').value,detail:$('#ck-detail').value.trim()};
   lawRead('ck',obj);
-  await dbPut('checklists',obj);S.checklists.push(obj);fbPush('checklists',obj);
+  await saveRec('checklists',obj);
   closeModal();render();
 }
 
@@ -4627,7 +4750,7 @@ function openCheckResult(logId){
 }
 async function saveCheckNote(logId){
   const l=S.checklogs.find(x=>x.id===logId);if(!l)return;
-  l.note=$('#cr-n').value.trim();await dbPut('checklogs',l);fbPush('checklogs',l);
+  l.note=$('#cr-n').value.trim();await saveRec('checklogs',l);
   openCheckResult(logId);toast('점검 결과 저장');
 }
 function similarFaults(text,excludeId){
@@ -7295,6 +7418,19 @@ async function selfTest(){
     ok('정비지침 JSON 인식',_sniffJson({schema:'pwr-guide-v1',rules:[]})==='정비지침');
     ok('케이블 진단 기한 규칙',a.due==='2027-12-18'&&b.due==='2028-12-03'&&c.due==='2026-12-18'&&/3회 연속/.test(c.warn)&&/30m 미만/.test(c.warn)&&d.due==='2028-12-03'&&!a.warn,
       [a.due,b.due,c.due,d.due].join(' / ')); }
+  { let vc=[];try{vc=v2SelfCases();}catch(e){vc=[{id:'실행',pass:false,detail:e.message}];} // v133: v2 예방 케이스(문서/TEST_PLAN.md 번호)
+    const bad=vc.filter(c=>!c.pass);
+    ok('v2 기록 정리·병합 규칙 ('+vc.length+'개)',!bad.length&&String(V2_SYNC)===String(FB_SYNC_STORES),bad.length?'실패: '+bad.map(c=>c.id+(c.detail?'('+c.detail+')':'')).join(', '):'형식·숫자·직렬화·병합 예방 케이스 통과'); }
+  try{ // v134: 쓰기 관문 왕복 — 임시 할 일을 저장·삭제하고 흔적을 지운다(캘린더로는 안 보냄)
+    const tid='__selftest_'+Date.now(),o={id:tid,date:'2026.1.5',title:' 자가진단 ',done:false,x:undefined};
+    await saveRec('todos',o,true);const g=await dbGet('todos',tid);
+    const a=g&&g.date==='2026-01-05'&&g.title==='자가진단'&&g.updatedAt>0&&!('x' in g)&&S.todos.filter(x=>x.id===tid).length===1&&S.todos.find(x=>x.id===tid)===o;
+    await removeRec('todos',tid);const d=await dbGet('todos',tid);
+    const b=d&&d.deleted===true&&!S.todos.some(x=>x.id===tid);
+    let c=false;try{await saveRec('todos',{id:tid+'b',date:'없는 날짜',title:'x'},true);}catch(e){c=!(await dbGet('todos',tid+'b'))&&!S.todos.some(x=>x.id===tid+'b');}
+    await dbDel('todos',tid);fbRemove('todos',tid);
+    ok('v2 쓰기 관문 저장·삭제 표시',a&&b&&c,a&&b&&c?'정리·시각 기록·삭제 표시·잘못된 날짜 거부 정상':'저장 '+!!a+' · 삭제 '+!!b+' · 거부 '+c);
+  }catch(e){ok('v2 쓰기 관문 저장·삭제 표시',false,e.message);}
   ok('데이터 요약',true,`설비 ${S.equipment.length}·검사 ${S.inspections.length}·체크 ${S.checklists.length}·도면 ${S.docs.length}·측정 ${S.measurements.length}·예비품 ${S.spares.length}·할일 ${S.todos.length}·허가 ${S.permits.length}`);
   if(S.equipment.length){const un=S.equipment.filter(e=>voltLine(e)==='미분류').length;ok('전압선 자동분류',true,`${S.equipment.length-un}/${S.equipment.length} 분류 (미분류 ${un})`);}
   else ok('전압선 자동분류',true,'설비 없음 → 초기 데이터(seed) 먼저 가져오기');
