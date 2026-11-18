@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v134'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v135'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -705,6 +705,7 @@ function _sniffJson(d){
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(d.schema==='pwr-guide-v1'&&Array.isArray(d.rules))return '정비지침'; // v120: 운영지침 52200 기준표
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
+  if(Array.isArray(d.checklists)&&d.checklists.length&&!d.tree)return 'seed'; // v135: 주기업무만 든 파일(설비 없음)도 seed 경로 — id가 없는 체크리스트만 추가
   if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
   if(Array.isArray(d)&&d.length&&d[0].tag)return '로직카드';
   return '알수없음';
