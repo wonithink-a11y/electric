@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v135'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v136'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1382,6 +1382,30 @@ function chkEnd(cy){
   else d=new Date(y+1,0,0);
   return _dstr(d);
 }
+/* v136: 월별 업무 — checklists의 months[1..12](evenOdd 'odd'|'even'이면 그 해만)로 '○월 업무' 카드. 완료는 period '연-Mmm' 체크로그.
+   months가 있는 항목은 일반 주기 목록(연간 등)에서 빼고 이 카드로만 보인다 */
+function planItems(m,y){return S.checklists.filter(c=>Array.isArray(c.months)&&c.months.includes(m)&&(!c.evenOdd||(c.evenOdd==='odd')===(y%2===1)));}
+function _planPk(m){return `${new Date().getFullYear()}-M${String(m).padStart(2,'0')}`;}
+function monthPlanCard(){
+  const m=S._planMonth||new Date().getMonth()+1,pk=_planPk(m),y=new Date().getFullYear();
+  const it=planItems(m,y),lg=c=>S.checklogs.find(x=>x.chkId===c.id&&x.period===pk);
+  const left=it.filter(c=>!lg(c)).length;
+  const row=c=>{const l=lg(c);return `<div class="item"><div class="chk ${l?'done':''}" onclick="togglePlan('${c.id}',${m})">${l?'✓':''}</div>
+    <div class="t"><div class="n" style="${l?'text-decoration:line-through;color:var(--dim)':''}">${esc(c.name)}</div><div class="d">${esc(c.detail||'')}</div></div></div>`;};
+  return `<div class="card"><h2>🗓️ ${m}월 업무 <span class="cnt">남은 ${left}/${it.length}</span></h2>
+    <div class="row" style="margin-bottom:6px"><button class="btn ghost sm" onclick="planMonth(-1)">◀ ${(m+10)%12+1}월</button><div class="grow"></div>
+      ${S._planMonth&&S._planMonth!==new Date().getMonth()+1?`<button class="btn ghost sm" onclick="S._planMonth=0;render()">이번달</button>`:''}<div class="grow"></div>
+      <button class="btn ghost sm" onclick="planMonth(1)">${m%12+1}월 ▶</button></div>
+    ${it.map(row).join('')||'<div class="empty">이 달에 정해진 업무 없음</div>'}
+    <div class="section-note">매년 이 달에 해 온 업무 (문서등록대장 2023~2026 기준) — 발주·착공·준공 달이 모두 들어 있어요</div></div>`;
+}
+function planMonth(d){S._planMonth=((S._planMonth||new Date().getMonth()+1)-1+d+12)%12+1;render();}
+async function togglePlan(id,m){
+  const c=S.checklists.find(x=>x.id===id);if(!c)return;const pk=_planPk(m),l=S.checklogs.find(x=>x.chkId===id&&x.period===pk);
+  if(l)await removeRec('checklogs',l.id);
+  else{await saveRec('checklogs',{id:uid(),chkId:id,period:pk,date:todayStr(),name:c.name,cycle:c.cycle});toast(`완료: ${c.name}`);}
+  render();
+}
 function homeTodoTab(){
   const [ws,we,ts]=_weekRange();const m=ts.slice(0,7);
   const wk=S.todos.filter(x=>!x.done&&x.date<=we).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1391,6 +1415,7 @@ function homeTodoTab(){
   <div class="card"><h2>📌 이번주 할 일 <span class="cnt">${wk.length}건</span></h2>
     ${wk.slice(0,20).map(x=>_todoRow(x,ts)).join('')||'<div class="empty">이번주 할 일 없음 👍</div>'}
     <button class="btn ghost sm full" onclick="openDay('${ts}')">＋ 오늘 할 일 추가</button></div>
+  ${monthPlanCard()}
   <div class="card"><h2>🗓️ 이번달 할 일 <span class="cnt">${mo.length}건</span></h2>
     ${mo.slice(0,20).map(x=>_todoRow(x,ts)).join('')||'<div class="empty">이번주 이후 이번달 할 일 없음</div>'}
     ${done.length?`<details class="donebox"><summary>✅ 이번 달 완료 ${done.length}건 (펼치기)</summary>
@@ -4023,8 +4048,8 @@ async function delInsp(id){
 function vChk(){
   const groups=['weekly','monthly','halfyear','yearly'];
   const recent=S.checklogs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
-  return groups.map(g=>{
-    const items=S.checklists.filter(c=>c.cycle===g);
+  return monthPlanCard()+groups.map(g=>{
+    const items=S.checklists.filter(c=>c.cycle===g&&!c.months);
     if(!items.length)return '';
     return `<div class="card"><h2>${CYCLE_KO[g]} <span class="cnt">${periodKey(g)}</span></h2>
       ${items.map(c=>{
@@ -6977,7 +7002,7 @@ const CHK_TIER={daily:'A',weekly:'A',monthly:'B',quarterly:'B',halfyear:'B',year
 function mdShort(ds){const p=(ds||'').split('-');return p.length>=3?(parseInt(p[1],10)+'/'+parseInt(p[2],10)):(ds||'');}
 function chkLog(c){const pk=periodKey(c.cycle);return S.checklogs.find(l=>l.chkId===c.id&&l.period===pk);}
 function chkCardHtml(){
-  const items=S.checklists;
+  const items=S.checklists.filter(c=>!c.months);
   const tier=t=>items.filter(c=>(CHK_TIER[c.cycle]||'B')===t);
   const A=tier('A'),B=tier('B'),C=tier('C');
   const rowU=c=>`<div class="item"><div class="chk" onclick="toggleChk('${c.id}')"></div>
