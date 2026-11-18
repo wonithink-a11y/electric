@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v136'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v137'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -506,6 +506,7 @@ async function loadAll(){
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
   try{S._gcCfg=await dbGet('meta','gcCfg')||null;}catch(e){S._gcCfg=null;}
+  try{const dp=await dbGet('meta','dept');S._dept=dp&&dp.v&&DEPTS[dp.v]?dp.v:'전력계통과';}catch(e){S._dept='전력계통과';}
   try{const u=await dbGet('meta','usage');S._use=u&&u.v||null;}catch(e){S._use=null;}
   try{const fm=await dbGet('meta','fieldMode');S._fieldMode=fm?fm.v:true;}catch(e){S._fieldMode=true;}
   // v134: 삭제 표시(deleted) 기록은 화면용 S에서 뺀다. 90일 지난 표시는 실제로 지운다(로그인 중이면 서버에서도)
@@ -724,8 +725,9 @@ async function _applyJson(kind,d){
         nextDue:(x.nextDue||'')>(i.nextDue||'')?x.nextDue:i.nextDue,equipId:x.equipId||i.equipId||''};});
     // v116: 체크리스트·현안·할 일은 기기에서 고치는 것이라 이 기기에 없는 id만 넣는다(드라이브에서 여러 번 받아도 안 덮어씀)
     const has=async s=>new Set((await dbAll(s)).map(x=>x.id));
-    const hc=await has('checklists'),hi=await has('issues'),ht=await has('todos');
-    const chk=(d.checklists||[]).filter(c=>!hc.has(c.id)).map(c=>({...c}));
+    const exC=new Map((await dbAll('checklists')).map(x=>[x.id,x])),hi=await has('issues'),ht=await has('todos');
+    // v137: 새 id는 추가, 이미 있는 id는 depts(과 구분)만 없을 때 채움 — 기기에서 고친 나머지는 그대로
+    const chk=(d.checklists||[]).filter(c=>!exC.has(c.id)||(c.depts&&!exC.get(c.id).depts)).map(c=>exC.has(c.id)?{...exC.get(c.id),depts:c.depts}:{...c});
     if([...eq,...ins,...chk].some(x=>x.id===undefined||x.id===null))throw new Error('id 없는 항목이 있습니다');
     await dbBulkPut('equipment',eq);await dbBulkPut('inspections',ins);if(chk.length)await dbBulkPut('checklists',chk);
     const iss=(d.issues||[]).filter(x=>x.id&&!hi.has(x.id)),tds=(d.todos||[]).filter(x=>x.id&&!ht.has(x.id)),trn=(d.tree||[]).filter(x=>x.id);
@@ -1384,7 +1386,15 @@ function chkEnd(cy){
 }
 /* v136: 월별 업무 — checklists의 months[1..12](evenOdd 'odd'|'even'이면 그 해만)로 '○월 업무' 카드. 완료는 period '연-Mmm' 체크로그.
    months가 있는 항목은 일반 주기 목록(연간 등)에서 빼고 이 카드로만 보인다 */
-function planItems(m,y){return S.checklists.filter(c=>Array.isArray(c.months)&&c.months.includes(m)&&(!c.evenOdd||(c.evenOdd==='odd')===(y%2===1)));}
+/* v137: 소속 과(더보기 › 데이터·설정 › 소속 과). 기본 전력계통과. 업무는 depts(생략=['elec'])로 과 그룹에 묶음 — 전력계통·전력설비 = elec, 제어·전산 = ctrl */
+const DEPTS={'전력계통과':'elec','전력설비과':'elec','제어과':'ctrl','전산과':'ctrl'};
+function planItems(m,y){const g=DEPTS[S._dept]||'elec';return S.checklists.filter(c=>Array.isArray(c.months)&&c.months.includes(m)&&(c.depts||['elec']).includes(g)&&(!c.evenOdd||(c.evenOdd==='odd')===(y%2===1)));}
+function setDept(){
+  openModal(`<h3>🏭 소속 과</h3><div class="muted">월별 업무 카드에 이 과의 업무가 나옵니다. (전력계통과·전력설비과는 같은 업무, 제어과·전산과는 같은 업무)</div>
+    ${Object.keys(DEPTS).map(d=>`<button class="btn ${d===(S._dept||'전력계통과')?'':'ghost'} full" style="margin-top:8px" onclick="pickDept('${d}')">${d}${d===(S._dept||'전력계통과')?' ✓':''}</button>`).join('')}
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);
+}
+async function pickDept(d){await dbPut('meta',{id:'dept',v:d});S._dept=d;closeModal();toast('소속 과: '+d);render();}
 function _planPk(m){return `${new Date().getFullYear()}-M${String(m).padStart(2,'0')}`;}
 function monthPlanCard(){
   const m=S._planMonth||new Date().getMonth()+1,pk=_planPk(m),y=new Date().getFullYear();
@@ -1392,7 +1402,7 @@ function monthPlanCard(){
   const left=it.filter(c=>!lg(c)).length;
   const row=c=>{const l=lg(c);return `<div class="item"><div class="chk ${l?'done':''}" onclick="togglePlan('${c.id}',${m})">${l?'✓':''}</div>
     <div class="t"><div class="n" style="${l?'text-decoration:line-through;color:var(--dim)':''}">${esc(c.name)}</div><div class="d">${esc(c.detail||'')}</div></div></div>`;};
-  return `<div class="card"><h2>🗓️ ${m}월 업무 <span class="cnt">남은 ${left}/${it.length}</span></h2>
+  return `<div class="card"><h2>🗓️ ${m}월 업무${DEPTS[S._dept]==='ctrl'?` · ${esc(S._dept)}`:''} <span class="cnt">남은 ${left}/${it.length}</span></h2>
     <div class="row" style="margin-bottom:6px"><button class="btn ghost sm" onclick="planMonth(-1)">◀ ${(m+10)%12+1}월</button><div class="grow"></div>
       ${S._planMonth&&S._planMonth!==new Date().getMonth()+1?`<button class="btn ghost sm" onclick="S._planMonth=0;render()">이번달</button>`:''}<div class="grow"></div>
       <button class="btn ghost sm" onclick="planMonth(1)">${m%12+1}월 ▶</button></div>
@@ -4125,7 +4135,7 @@ function vMore(){
       ["go('equip')",'🏭','설비 목록','설비 마스터 목록 · 계통도',cnt('equipment')],["go('docfind')",'📐','도면 찾기','도면 찾기 · 둘러보기',cnt('docs')],
       ["moreLogicSheet()",'⚡','로직 카드','로직 카드 목록 (투입조건·트립·회선)',cnt('logic')],["S._quiz=null;S._qi=0;S._qok=0;S._qrv=0;go('study')",'🎴','계통 학습','계통 학습','']]],
     ['데이터·설정',[["go('vault')",'🔐','보안 금고','보안 금고',vb],["moreDataSheet()",'💾','백업·동기화','백업·복원·동기화',''],
-      ["moreSetupSheet()",'🩺','자가진단·초기데이터','자가진단·초기데이터',''],["moreInfoSheet()",'🗺️','로드맵·초기화','로드맵·데이터 초기화','']]]];
+      ["setDept()",'🏭','소속 과','소속 과 선택',S._dept||'전력계통과'],["moreSetupSheet()",'🩺','자가진단·초기데이터','자가진단·초기데이터',''],["moreInfoSheet()",'🗺️','로드맵·초기화','로드맵·데이터 초기화','']]]];
   const tile=([oc,ic,t,k,bd])=>{(S._menuAll||(S._menuAll=new Set())).add(k);
     return `<button class="mt" onclick="useHit('메뉴:${k}');${oc}"><span class="mt-i">${icx(ic)}</span><span class="mt-t">${t}</span>${bd?`<span class="mt-n">${bd}</span>`:''}</button>`;};
   const used=(S._use&&S._use.n)||{},all=M.flatMap(s=>s[1]),fav=all.filter(x=>(used['메뉴:'+x[3]]||0)>=3).sort((a,b)=>used['메뉴:'+b[3]]-used['메뉴:'+a[3]]).slice(0,4);
