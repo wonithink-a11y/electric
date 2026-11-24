@@ -417,6 +417,7 @@ mark{background:var(--warn);color:#111;border-radius:3px;padding:0 1px}
 #pe .btn.ghost{background:#2a2a2a;color:#eee;border-color:#444}
 .pe-colors{display:flex;justify-content:center;gap:14px;margin-bottom:8px}
 .pe-c{width:30px;height:30px;border-radius:50%;border:2px solid #555;cursor:pointer;padding:0}
+.pe-lw{display:flex;gap:6px;margin:6px 0}.pe-lw .btn{flex:1;padding-left:2px;padding-right:2px}
 .pe-c.on{outline:3px solid #fff;outline-offset:2px}
 .pe-tip{text-align:center;font-size:12px;color:#aaa;margin-top:6px}
 .photostrip .pe-no{position:absolute;left:3px;top:3px;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;font-size:11px;padding:0 6px}
@@ -454,7 +455,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v143'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v144'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5935,13 +5936,14 @@ async function fdMove(phId,d){ // 사진 순서 바꾸기 — photos.ord(없으�
 /* ── 사진 편집기(v98): 펜·형광펜·네모·동그라미·선·화살표·텍스트·번호(①②③)·자르기·회전, 5색, 되돌리기·전체 지우기.
    그린 것은 ops 목록으로 두고 매번 다시 그림(되돌리기 = 목록에서 빼기). 자르기·회전은 그때까지를 새 바탕으로 굳힘(hist — 되돌리기로 이전 바탕).
    저장하면 photos.dataUrl을 바꾸고 맨 처음 원본은 p.orig에 한 번만 보관 → [원본] 버튼. 선 굵기·글자 크기는 사진 크기에 비례 ── */
-const PE_TOOLS=[['pen','펜'],['hl','형광펜'],['rect','네모'],['circle','동그라미'],['line','선'],['arrow','화살표'],['text','텍스트'],['num','번호'],['crop','자르기'],['rot','↻ 회전']];
+const PE_TOOLS=[['sel','이동'],['pen','펜'],['hl','형광펜'],['rect','네모'],['circle','동그라미'],['line','선'],['arrow','화살표'],['text','텍스트'],['num','번호'],['crop','자르기'],['rot','↻ 회전']];
+const PE_LW=[[.5,'가늘게'],[1,'보통'],[2,'굵게'],[3.5,'아주 굵게']]; // v144: 선 굵기 배율(펜·형광펜·네모·동그라미·선·화살표). 글자·번호 크기는 그대로
 const PE_COLORS=['#e53935','#fdd835','#43a047','#1e88e5','#111111'];
 let _pe=null;
 function photoEdit(id){
   const p=S.photos.find(x=>x.id===id);if(!p)return;
   const img=new Image();
-  img.onload=()=>{_pe={p,img,ops:[],hist:[],tool:'circle',color:PE_COLORS[0],fs:1,cur:null,txt:null,crop:null};peOpen();};
+  img.onload=()=>{_pe={p,img,ops:[],hist:[],tool:'circle',color:PE_COLORS[0],fs:1,lw:1,sel:null,drag:null,cur:null,txt:null,crop:null};peOpen();};
   img.src=p.dataUrl;
 }
 function peOpen(){
@@ -5964,49 +5966,81 @@ function peFit(){
 }
 function peBar(){
   const b=document.getElementById('pe-bar');if(!b)return;const P=_pe;
-  const tip={text:'글자 넣을 곳을 누르세요',num:'누를 때마다 ① ② ③ …',crop:'남길 부분을 손가락으로 끌어 고르세요'}[P.tool]||'손가락으로 사진 위에 그리세요';
+  const tip={sel:P.sel!=null?'끌어서 옮기고, 색·굵기를 바꾸거나 [선택 삭제]':'옮길 도형을 누르세요',text:'글자 넣을 곳을 누르세요',num:'누를 때마다 ① ② ③ …',crop:'남길 부분을 손가락으로 끌어 고르세요'}[P.tool]||'손가락으로 사진 위에 그리세요';
   b.innerHTML=`<div class="pe-tools">${PE_TOOLS.map(([k,l])=>`<button class="btn sm${P.tool===k?'':' ghost'}" onclick="peTool('${k}')">${l}</button>`).join('')}</div>
     <div class="pe-colors">${PE_COLORS.map(c=>`<button class="pe-c${P.color===c?' on':''}" style="background:${c}" onclick="peColor('${c}')"></button>`).join('')}</div>
+    ${!P.txt&&!P.crop&&P.tool!=='text'&&P.tool!=='num'?`<div class="pe-lw">${PE_LW.map(([k,l])=>`<button class="btn sm${(P.sel!=null&&P.ops[P.sel]&&!['text','num'].includes(P.ops[P.sel].t)?(P.ops[P.sel].k||1):P.lw)===k?'':' ghost'}" onclick="peLw(${k})">${l}</button>`).join('')}</div>`:''}
     ${P.txt?`<div class="row"><input id="pe-tx" value="${esc(P.txt.txt)}" placeholder="표시할 글자" oninput="_pe.txt.txt=this.value;peDraw()" style="flex:1;margin:0">
         <button class="btn ghost sm" onclick="peFs(-1)">A-</button><button class="btn ghost sm" onclick="peFs(1)">A+</button></div>
       <div class="row" style="margin-top:6px"><button class="btn ghost sm grow" onclick="_pe.txt=null;peBar();peDraw()">취소</button><button class="btn sm grow" onclick="peTxtOk()">적용</button></div>`
     :P.crop?`<div class="row"><button class="btn ghost sm grow" onclick="_pe.crop=null;peBar();peDraw()">취소</button><button class="btn sm grow" onclick="peCropOk()">자르기 적용</button></div>`
-    :`<div class="row"><button class="btn ghost sm grow" onclick="peUndo()">되돌리기</button><button class="btn ghost sm grow" onclick="_pe.ops=[];peDraw()">전체 지우기</button></div>
+    :`<div class="row"><button class="btn ghost sm grow" onclick="peUndo()">되돌리기</button><button class="btn ghost sm grow" onclick="_pe.ops=[];_pe.sel=null;peDraw()">전체 지우기</button>${P.sel!=null?'<button class="btn danger sm grow" onclick="peDelSel()">선택 삭제</button>':''}</div>
       <div class="pe-tip">${tip}</div>`}`;
 }
 function peTool(k){
   if(k==='rot')return peRotate();
-  Object.assign(_pe,{tool:k,txt:null,crop:null});peBar();peDraw();
+  Object.assign(_pe,{tool:k,txt:null,crop:null,sel:k==='sel'?_pe.sel:null,drag:null});peBar();peDraw();
 }
-function peColor(c){_pe.color=c;if(_pe.txt)_pe.txt.c=c;peBar();peDraw();}
+function peLw(k){const P=_pe,o=P.sel!=null&&P.ops[P.sel];if(o&&!['text','num'].includes(o.t))o.k=k;else P.lw=k;peBar();peDraw();}
+function peDelSel(){const P=_pe;if(P.sel==null)return;P.ops.splice(P.sel,1);P.sel=null;peBar();peDraw();}
+function peColor(c){_pe.color=c;if(_pe.txt)_pe.txt.c=c;if(_pe.sel!=null&&_pe.ops[_pe.sel])_pe.ops[_pe.sel].c=c;peBar();peDraw();}
 function peFs(d){_pe.fs=Math.max(-2,Math.min(6,_pe.fs+d));if(_pe.txt)_pe.txt.s=_pe.fs;peDraw();}
 function peTxtOk(){const t=_pe.txt;if(t&&t.txt.trim())_pe.ops.push(t);_pe.txt=null;peBar();peDraw();}
 function pePt(e){const cv=e.currentTarget,r=cv.getBoundingClientRect();return [(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];}
 const peW=()=>Math.max(3,Math.round(Math.max(_pe.img.naturalWidth,_pe.img.naturalHeight)/220));
 const peBox=o=>[Math.min(o.x1,o.x2),Math.min(o.y1,o.y2),Math.abs(o.x2-o.x1),Math.abs(o.y2-o.y1)];
+// v144: 도형 선택·이동 — 맨 위(나중에 그린 것)부터 눌린 도형을 찾는다. 속이 빈 네모·동그라미도 안쪽을 눌러 잡을 수 있다
+function peOpBox(o){
+  const w=peW()*(o.k||1);
+  if(o.pts){const xs=o.pts.map(q=>q[0]),ys=o.pts.map(q=>q[1]),m=o.t==='hl'?w*2.5:w/2;return [Math.min(...xs)-m,Math.min(...ys)-m,Math.max(...xs)-Math.min(...xs)+2*m,Math.max(...ys)-Math.min(...ys)+2*m];}
+  if(o.t==='num'){const r=peW()*7;return [o.x-r,o.y-r,2*r,2*r];}
+  if(o.t==='text'){const fs=Math.round(peW()*10*Math.pow(1.25,o.s-1)),g=document.getElementById('pe-cv').getContext('2d');g.save();g.font=`bold ${fs}px 'Malgun Gothic',sans-serif`;const tw=g.measureText(o.txt||'글자').width;g.restore();return [o.x,o.y-fs/2,tw,fs];}
+  const [x,y,bw,bh]=peBox(o);return [x-w/2,y-w/2,bw+w,bh+w];
+}
+function peHit(o,x,y){
+  const tol=Math.max(peW()*2.5,14),w=peW()*(o.k||1);
+  const seg=(ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,L=dx*dx+dy*dy,t=L?Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/L)):0;return Math.hypot(x-(ax+t*dx),y-(ay+t*dy));};
+  if(o.pts){const pp=o.pts;if(pp.length===1)return Math.hypot(x-pp[0][0],y-pp[0][1])<=tol;for(let i=1;i<pp.length;i++)if(seg(pp[i-1][0],pp[i-1][1],pp[i][0],pp[i][1])<=tol+(o.t==='hl'?w*2.5:0))return true;return false;}
+  if(o.t==='line'||o.t==='arrow')return seg(o.x1,o.y1,o.x2,o.y2)<=tol;
+  if(o.t==='circle'){const [bx,by,bw,bh]=peBox(o),a=bw/2+tol,b=bh/2+tol,cx=bx+bw/2,cy=by+bh/2;return ((x-cx)/a)**2+((y-cy)/b)**2<=1;}
+  const [bx,by,bw,bh]=peOpBox(o);return x>=bx-tol/2&&x<=bx+bw+tol/2&&y>=by-tol/2&&y<=by+bh+tol/2; // 네모·글자·번호
+}
+function peMoveOp(o,dx,dy){
+  if(o.pts)o.pts=o.pts.map(q=>[q[0]+dx,q[1]+dy]);
+  else if(o.x1!==undefined){o.x1+=dx;o.x2+=dx;o.y1+=dy;o.y2+=dy;}
+  else{o.x+=dx;o.y+=dy;}
+}
 function peDown(e){
   const P=_pe,[x,y]=pePt(e);
+  if(P.tool==='sel'){
+    let hit=null;for(let i=P.ops.length-1;i>=0;i--)if(peHit(P.ops[i],x,y)){hit=i;break;}
+    P.sel=hit;P.drag=hit==null?null:{x,y};
+    if(hit!=null){try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}}
+    peBar();return peDraw();
+  }
   if(P.tool==='text'){ // 누른 곳에 글자 자리 — 이미 쓰는 중이면 자리만 옮김
     if(P.txt)Object.assign(P.txt,{x,y});else{P.txt={t:'text',c:P.color,s:P.fs,x,y,txt:''};peBar();setTimeout(()=>document.getElementById('pe-tx')?.focus(),0);}
     return peDraw();
   }
   if(P.tool==='num'){P.ops.push({t:'num',c:P.color,x,y,n:P.ops.filter(o=>o.t==='num').length+1});return peDraw();}
   try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} // 손가락이 사진 밖으로 나가도 계속 그리게
-  P.cur=P.tool==='pen'||P.tool==='hl'?{t:P.tool,c:P.color,pts:[[x,y]]}:{t:P.tool,c:P.color,x1:x,y1:y,x2:x,y2:y};
+  P.cur=P.tool==='pen'||P.tool==='hl'?{t:P.tool,c:P.color,k:P.lw,pts:[[x,y]]}:{t:P.tool,c:P.color,k:P.lw,x1:x,y1:y,x2:x,y2:y};
 }
 function peMove(e){
+  const P=_pe;if(P&&P.drag&&P.sel!=null&&P.ops[P.sel]){const [x,y]=pePt(e);peMoveOp(P.ops[P.sel],x-P.drag.x,y-P.drag.y);P.drag={x,y};return peDraw();}
   const o=_pe&&_pe.cur;if(!o)return;const [x,y]=pePt(e);
   if(o.pts)o.pts.push([x,y]);else{o.x2=x;o.y2=y;}
   peDraw();
 }
 function peUp(){
+  if(_pe&&_pe.drag){_pe.drag=null;return;}
   const P=_pe,o=P&&P.cur;if(!o)return;P.cur=null;
   const big=o.pts||Math.hypot(o.x2-o.x1,o.y2-o.y1)>peW()*3; // 그냥 톡 누른 건 무시
   if(o.t==='crop'){if(big)P.crop=o;peBar();}else if(big)P.ops.push(o);
   peDraw();
 }
 function peOp(g,o){
-  const w=peW();g.save();g.strokeStyle=g.fillStyle=o.c;g.lineWidth=w;g.lineCap=g.lineJoin='round';
+  const bw0=peW(),w=bw0*(o.k||1);g.save();g.strokeStyle=g.fillStyle=o.c;g.lineWidth=w;g.lineCap=g.lineJoin='round';
   if(o.pts){
     if(o.t==='hl'){g.globalAlpha=.35;g.lineWidth=w*5;g.lineCap='butt';}
     g.beginPath();o.pts.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));if(o.pts.length===1)g.lineTo(o.pts[0][0]+.1,o.pts[0][1]);g.stroke();
@@ -6017,10 +6051,10 @@ function peOp(g,o){
     if(o.t==='arrow'){const a=Math.atan2(o.y2-o.y1,o.x2-o.x1),L=w*5;g.beginPath();g.moveTo(o.x2,o.y2);
       g.lineTo(o.x2-L*Math.cos(a-.45),o.y2-L*Math.sin(a-.45));g.lineTo(o.x2-L*Math.cos(a+.45),o.y2-L*Math.sin(a+.45));g.closePath();g.fill();}
   }else if(o.t==='text'){ // 흰 테두리 글자 — 어느 바탕에서도 보이게
-    const fs=Math.round(w*10*Math.pow(1.25,o.s-1));g.font=`bold ${fs}px 'Malgun Gothic',sans-serif`;g.textBaseline='middle';
+    const fs=Math.round(bw0*10*Math.pow(1.25,o.s-1));g.font=`bold ${fs}px 'Malgun Gothic',sans-serif`;g.textBaseline='middle';
     g.lineWidth=fs/5;g.strokeStyle='#fff';g.strokeText(o.txt||'글자',o.x,o.y);g.globalAlpha=o.txt?1:.4;g.fillText(o.txt||'글자',o.x,o.y);
   }else if(o.t==='num'){
-    const r=w*7;g.beginPath();g.arc(o.x,o.y,r,0,Math.PI*2);g.fillStyle='#fff';g.fill();g.stroke();
+    const r=bw0*7;g.beginPath();g.arc(o.x,o.y,r,0,Math.PI*2);g.fillStyle='#fff';g.fill();g.stroke();
     g.fillStyle=o.c;g.font=`bold ${Math.round(r*1.25)}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(o.n,o.x,o.y+r*.06);
   }
   g.restore();
@@ -6029,20 +6063,21 @@ function peDraw(){
   const cv=document.getElementById('pe-cv');if(!cv||!_pe)return;const g=cv.getContext('2d'),P=_pe,W=cv.width,H=cv.height;
   g.drawImage(P.img,0,0);
   [...P.ops,P.cur&&P.cur.t!=='crop'?P.cur:null,P.txt].forEach(o=>o&&peOp(g,o));
+  if(P.sel!=null&&P.ops[P.sel]){const [x,y,bw,bh]=peOpBox(P.ops[P.sel]),m=peW()*1.5;g.save();g.setLineDash([peW()*2,peW()*1.5]);g.lineWidth=Math.max(2,peW()*.6);g.strokeStyle='#00e5ff';g.strokeRect(x-m,y-m,bw+2*m,bh+2*m);g.restore();} // 선택 표시 — 저장·굳힘 전에 sel을 비움
   const c=P.crop||(P.cur&&P.cur.t==='crop'?P.cur:null);
   if(c){const [x,y,bw,bh]=peBox(c);g.fillStyle='rgba(0,0,0,.55)';
     g.fillRect(0,0,W,y);g.fillRect(0,y+bh,W,H-y-bh);g.fillRect(0,y,x,bh);g.fillRect(x+bw,y,W-x-bw,bh);
     g.save();g.setLineDash([peW()*3,peW()*2]);g.lineWidth=peW();g.strokeStyle='#fff';g.strokeRect(x,y,bw,bh);g.restore();}
 }
 function peBake(w,h,draw){ // 지금까지(바탕+그림)를 새 바탕으로 굳힘 — 자르기·회전
-  const P=_pe,src=document.getElementById('pe-cv');P.crop=null;P.txt=null;peDraw();
+  const P=_pe,src=document.getElementById('pe-cv');P.crop=null;P.txt=null;P.sel=null;peDraw();
   const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),src);
   const img=new Image();img.onload=()=>{P.hist.push({img:P.img,ops:P.ops});P.img=img;P.ops=[];peBar();peFit();};img.src=c.toDataURL('image/jpeg',.92);
 }
 function peCropOk(){const [x,y,w,h]=peBox(_pe.crop).map(Math.round);peBake(w,h,(g,src)=>g.drawImage(src,x,y,w,h,0,0,w,h));}
 function peRotate(){const s=document.getElementById('pe-cv');peBake(s.height,s.width,(g,src)=>{g.translate(src.height,0);g.rotate(Math.PI/2);g.drawImage(src,0,0);});}
 function peUndo(){
-  const P=_pe;if(P.ops.length){P.ops.pop();return peDraw();}
+  const P=_pe;P.sel=null;if(P.ops.length){P.ops.pop();return peDraw();}
   if(P.hist.length){const h=P.hist.pop();P.img=h.img;P.ops=h.ops;peFit();}
 }
 function peOrig(){
@@ -6051,7 +6086,7 @@ function peOrig(){
   img.src=P.p.orig;
 }
 async function peSave(){
-  const P=_pe,p=P.p;peTxtOk();P.crop=null;peDraw();
+  const P=_pe,p=P.p;peTxtOk();P.crop=null;P.sel=null;P.drag=null;peDraw();
   if(!p.orig)p.orig=p.dataUrl;
   p.dataUrl=document.getElementById('pe-cv').toDataURL('image/jpeg',.88);
   await dbPut('photos',p);peClose(true);toast('사진 저장 (원본은 따로 보관)');
