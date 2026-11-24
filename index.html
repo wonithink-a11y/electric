@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v137'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v138'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -934,7 +934,7 @@ function importEncrypted(){
    (이 기기 IndexedDB + 암호화 Drive 백업만). Firebase로는 할일·현안·법정검사 일정·
    체크리스트 정의·완료이력(checklogs) 5개 스토어만 실시간 동기화(PC↔모바일, 기존 앱 패턴).
    config(JSON)는 사용자가 앱 UI에서 직접 입력 — GitHub 소스에 하드코딩하지 않음. */
-let fbApp=null, fbAuthObj=null, fbDB=null, fbUser=null, fbUnsubs=[];
+let fbApp=null, fbAuthObj=null, fbDB=null, fbUser=null, fbUnsubs=[], _fbNoUp=false; // _fbNoUp: 계정이 바뀌어 올리기를 거절한 세션(v138)
 const FB_SYNC_STORES=['todos','issues','inspections','checklists','checklogs'];
 function loadFirebase(){
   if(window.firebase&&window.firebase.apps)return Promise.resolve(window.firebase);
@@ -954,9 +954,18 @@ async function fbEnsureInit(){
     fbApp=(firebase.apps&&firebase.apps.length)?firebase.app():firebase.initializeApp(S._fbCfg);
     fbAuthObj=firebase.auth();fbDB=firebase.firestore();
     try{await fbDB.enablePersistence({synchronizeTabs:true});}catch(e){}
-    fbAuthObj.onAuthStateChanged(u=>{
+    fbAuthObj.onAuthStateChanged(async u=>{
       fbUser=u;
-      if(u){fbStartSync();toast('Firebase 연결됨: '+(u.displayName||u.email||''));}
+      if(u){
+        // v138: 마지막으로 연결한 계정(uid)이 바뀌면 이 기기 기록을 새 계정으로 올릴지 묻는다(S-11). 거절하면 받기만 한다.
+        _fbNoUp=false;
+        try{
+          const last=await dbGet('meta','fbLastUid');
+          if(last&&last.uid&&last.uid!==u.uid)_fbNoUp=!(await confirmModal('이전과 다른 Google 계정입니다.\n이 기기의 기록을 이 계정 서버로 올릴까요?\n(취소하면 서버 기록을 받기만 합니다)'));
+          await dbPut('meta',{id:'fbLastUid',uid:u.uid});
+        }catch(e){}
+        fbStartSync();toast('Firebase 연결됨: '+(u.displayName||u.email||''));
+      }
       else{fbStopSync();}
       render();
     });
@@ -982,35 +991,53 @@ function fbStartSync(){
   fbStopSync();
   const base=fbDB.collection('elecApp').doc(fbUser.uid);
   FB_SYNC_STORES.forEach(store=>{
-    const unsub=base.collection(store).onSnapshot(snap=>{
-      snap.docChanges().forEach(async ch=>{
-        if(ch.type==='removed'){
-          await dbDel(store,ch.doc.id);S[store]=S[store].filter(x=>x.id!==ch.doc.id);
-        }else{
-          const data=ch.doc.data();
-          if(data.deleted){ // v134: 다른 기기가 지운 기록 — 표시만 보관하고 화면에서는 뺀다(90일 지났으면 서버·기기에서 실제 삭제)
-            if(_v2Old(data)){fbRemove(store,data.id);await dbDel(store,data.id);}else await dbPut(store,data);
-            S[store]=S[store].filter(x=>x.id!==data.id);return;
-          }
-          await dbPut(store,data);
-          const i=S[store].findIndex(x=>x.id===data.id);
-          if(i>=0)S[store][i]=data;else S[store].push(data);
+    let first=true;
+    const unsub=base.collection(store).onSnapshot(async snap=>{
+      try{
+        const isFirst=first;first=false;
+        const dbRows=await dbAll(store); // 삭제 표시 포함(S에는 삭제 안 된 것만 있음)
+        const local=new Map(dbRows.map(x=>[x.id,x]));
+        // v138: 변경을 모두 처리한 뒤 render 1회(D-01). 서버 값과 로컬 값은 mergeRec(updatedAt이 큰 쪽)으로 합친다(S-02~04·08).
+        await Promise.all(snap.docChanges().map(async ch=>{
+          const id=ch.doc.id;
+          if(ch.type==='removed'){await dbDel(store,id);local.delete(id);S[store]=S[store].filter(x=>x.id!==id);return;}
+          const remote=ch.doc.data(),mine=local.get(id);
+          const win=mergeRec(mine,remote,store);
+          if(win.deleted&&_v2Old(win)){fbRemove(store,id);await dbDel(store,id);local.delete(id);S[store]=S[store].filter(x=>x.id!==id);return;} // 90일 지난 삭제 표시 정리
+          if(win!==mine){await dbPut(store,win);local.set(id,win);}
+          // 로컬이 더 새것(또는 합쳐진 새 객체)이면 서버로 되올림. 같으면 올리지 않아 서로 주고받는 고리가 안 된다.
+          if(!_fbNoUp&&mine&&win!==remote&&JSON.stringify(win)!==JSON.stringify(remote))fbPush(store,win,true);
+          S[store]=S[store].filter(x=>x.id!==id);
+          if(!win.deleted)S[store].push(win);
+        }));
+        // v138: 로그인 직후 첫 스냅샷 — 서버에 없는 로컬 기록(로그아웃 상태에서 만든 것 포함)을 올린다(S-01)
+        if(isFirst&&!_fbNoUp){
+          const onServer=new Set(snap.docs.map(d=>d.id));
+          local.forEach((r,id)=>{if(!onServer.has(id)&&!(r.deleted&&_v2Old(r)))fbPush(store,r,true);});
         }
-      });
+      }catch(e){fbErr('수신 '+store,e);}
       render();
-    },err=>console.warn('sync:'+store,err));
+    },err=>fbErr('수신 '+store,err));
     fbUnsubs.push(unsub);
   });
+}
+// v138: 동기화 오류를 조용히 삼키지 않는다 — 알림 + 더보기 동기화 설정에 마지막 오류 한 줄(S-07)
+function fbErr(where,e){
+  const msg=(e&&e.message)||String(e);
+  console.warn('fb',where,e);
+  const first=!S._fbErr;
+  S._fbErr={t:new Date().toLocaleString('ko-KR'),where,msg};
+  if(first)toast('동기화 오류('+where+'): '+msg);
 }
 function fbStopSync(){fbUnsubs.forEach(u=>{try{u();}catch(e){}});fbUnsubs=[];}
 function fbPush(store,obj,noGc){ // 할 일·현안 저장은 모두 여기를 지나므로 구글 캘린더 반영도 여기서(v101)
   if(!noGc&&(store==='todos'||store==='issues'||store==='inspections'))gcSync(store,obj);
   if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
-  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(obj.id)).set(obj).catch(e=>console.warn('fbPush',e));
+  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(obj.id)).set(obj).catch(e=>fbErr('저장 '+store,e));
 }
 function fbRemove(store,id){
   if(!fbUser||!fbDB||!FB_SYNC_STORES.includes(store))return;
-  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(id)).delete().catch(e=>console.warn('fbRemove',e));
+  fbDB.collection('elecApp').doc(fbUser.uid).collection(store).doc(String(id)).delete().catch(e=>fbErr('삭제 '+store,e));
 }
 /* v134: 쓰기 관문 (문서/V2_ARCHITECTURE.md §3-1) — 동기화 5개 스토어(V2_SYNC)의 저장·삭제는 여기로만. 화면 코드는 dbPut·fbPush를 직접 부르지 않는다.
    saveRec: 규격 정리(normalizeRec) → updatedAt → DB → S(없으면 추가) → Firebase(+캘린더). 규격에 어긋나면 알리고 저장하지 않으며,
@@ -1034,7 +1061,8 @@ const _v2Old=x=>Date.now()-(Number(x.updatedAt)||0)>90*864e5; // 삭제 표시�
 function fbConfigHtml(){
   if(fbUser){
     return `<div class="item"><div class="t"><div class="n">✅ ${esc(fbUser.displayName||fbUser.email||'연결됨')}</div>
-      <div class="d">실시간 동기화 중 — 할일·현안·법정검사·체크리스트</div></div>
+      <div class="d">실시간 동기화 중 — 할일·현안·법정검사·체크리스트</div>
+      ${S._fbErr?`<div class="d" style="color:var(--danger,#e55)">⚠ 마지막 오류 ${esc(S._fbErr.t)} · ${esc(S._fbErr.where)}: ${esc(S._fbErr.msg)}</div>`:''}</div>
       <button class="btn danger sm" onclick="fbLogout()">로그아웃</button></div>`;
   }
   if(S._fbCfg){
