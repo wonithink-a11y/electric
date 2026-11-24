@@ -489,7 +489,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v151'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v152'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1461,6 +1461,7 @@ function chkEnd(cy){
    months가 있는 항목은 일반 주기 목록(연간 등)에서 빼고 이 카드로만 보인다 */
 /* v137: 소속 과(더보기 › 데이터·설정 › 소속 과). 기본 전력계통과. 업무는 depts(생략=['elec'])로 과 그룹에 묶음 — 전력계통·전력설비 = elec, 제어·전산 = ctrl */
 const DEPTS={'전력계통과':'elec','전력설비과':'elec','제어과':'ctrl','전산과':'ctrl'};
+const deptName=()=>S._dept||'전력계통과'; // v152: 서류 속 부서 문구 = 소속 과
 function planItems(m,y){const g=DEPTS[S._dept]||'elec';return S.checklists.filter(c=>Array.isArray(c.months)&&c.months.includes(m)&&(c.depts||['elec']).includes(g)&&(!c.evenOdd||(c.evenOdd==='odd')===(y%2===1)));}
 function setDept(){
   openModal(`<h3>🏭 소속 과</h3><div class="muted">월별 업무 카드에 이 과의 업무가 나옵니다. (전력계통과·전력설비과는 같은 업무, 제어과·전산과는 같은 업무)</div>
@@ -4581,7 +4582,7 @@ function pickModal(title,rows,empty){
 function docSafetyDay(){
   const t=`[안전점검의 날 점검표]
 점검일자: ${todayStr()}
-점검부서: 전력계통과   점검자: 허남원
+점검부서: ${deptName()}   점검자: 허남원
 대상설비: (해당 동/판넬 기입)
 
 ■ 전기설비 안전 점검항목 (양호 ○ / 불량 × / 해당없음 -)
@@ -4675,7 +4676,7 @@ function rptFaultGen(id){
 7. 소요(시간/자재/비용): ${f.cost||''}
 8. 비고: ${f.note||''}
 
-작성일: ${todayStr()}   작성자: 허남원 (전력계통과)`;
+작성일: ${todayStr()}   작성자: 허남원 (${deptName()})`;
   closeModal(); openDoc('고장 조치 보고서',t);
 }
 function rptRepair(){
@@ -4704,7 +4705,7 @@ function rptRepairGen(equipId){
 9. 안전조치: 정전작업 절차서 별첨, 위험성평가·TBM 실시
 10. 작업 예정일:
 
-작성일: ${todayStr()}   작성자: 허남원 (전력계통과)`;
+작성일: ${todayStr()}   작성자: 허남원 (${deptName()})`;
   closeModal(); openDoc('수리계획_업무지시전',t);
 }
 function rptMonthly(){
@@ -4714,7 +4715,7 @@ function rptMonthly(){
   const flt=S.faults.filter(f=>inMonth(f.date)).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const insp=[...S.inspections].map(i=>({...i,dd:dday(i.nextDue)})).filter(i=>i.dd!=null&&i.dd<=60).sort((a,b)=>a.dd-b.dd);
   let t=`[${now.getFullYear()}년 ${now.getMonth()+1}월 전기설비 월간 점검정비 보고]
-부서: 전력계통과   작성자: 허남원   작성일: ${todayStr()}
+부서: ${deptName()}   작성자: 허남원   작성일: ${todayStr()}
 
 ■ 주기 점검·정비 실적 (${chk.length}건)
 ${chk.length?chk.map(l=>` - ${l.date}  ${l.name}`).join('\n'):' - (당월 완료 이력 없음)'}
@@ -4752,7 +4753,7 @@ function rptInspGen(id){
 10. 비고: ${i.note||''}
 
 ※ 검사 주기·기준은 개정 가능 — 수검 전 국가법령정보센터(law.go.kr)에서 원문 확인.
-작성일: ${todayStr()}   작성자: 허남원 (전력계통과)`;
+작성일: ${todayStr()}   작성자: 허남원 (${deptName()})`;
   closeModal(); openDoc('법정검사 수검 결과 보고',t);
 }
 
@@ -5060,7 +5061,7 @@ function buildMonthlyTokens(){
   const iss=(S.issues||[]).map(x=>x.title||x.name||x.content).filter(Boolean);
   const join=(a,def)=>a.length?a.join(' / '):def;
   return {
-    '년월':`${y}년 ${m}월`,'작성일':todayStr(),'작성자':'허남원','부서':'전력계통과',
+    '년월':`${y}년 ${m}월`,'작성일':todayStr(),'작성자':'허남원','부서':deptName(),
     '개요':`CFBC 보일러 전기설비 ${y}년 ${m}월 정기 점검·정비 결과 요약`,
     '점검결과':join(chk,'주기 점검 실시, 이상 없음'),
     '정비실적':join(flt,'특이 정비사항 없음'),
@@ -5717,7 +5718,7 @@ const FD_EQ_KINDS=[['회전기',['전동기','펌프','팬·송풍기']],['차�
   ['반·판넬',['MCC','배전반(SWGR)','분전반','현장 조작반(LCP)']],['전원·제어',['변압기','UPS','축전지·충전기','비상발전기','계장·제어전원']],
   ['배선·조명',['케이블·트레이','조명','접지·피뢰']],['크레인·소방',['크레인·호이스트','소방설비']],'기타'];
 const FDOC_TYPES={
-  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d',,,1],['writer','점검자','c','',['전력계통과','전력설비과'],1],
+  insp:{name:'현장 점검보고서',short:'점검보고서',ic:'🔎',f:[['date','점검일','d',,,1],['writer','점검자','c','',Object.keys(DEPTS),1],
     ['kind','점검 구분','c','세부 (예: 11월 정기)',['월간','순회','특별','기타']],
     ['place','설비 장소','c','세부 위치 (예: 2층 MCC실)','zones'],['equip','설비 품목','c','설비명·번호 (예: MCC-1 #3)',FD_EQ_KINDS],
     ['result','판정','r','',['양호','요주의','불량']],
@@ -5757,7 +5758,7 @@ function openFdoc(id,type,place){
   if(!d){ // 새 문서: 설비 카드에서 넘어온 이름은 점검보고서면 '설비 품목' 수기 칸에, 점검자·작성자는 지난 문서 값
     if(place){if(T.f.some(f=>f[0]==='equip'))v.equip_t=place;else v.place=place;}
     const wf=T.f.find(f=>f[0]==='writer');
-    if(wf&&wf[2]==='c')v.writer_s=wf[4][0]; // v110: 점검자 = 부서 선택, 기본 첫 항목(전력계통과)
+    if(wf&&wf[2]==='c')v.writer_s=wf[4].includes(S._dept)?S._dept:wf[4][0]; // v110: 점검자 = 부서 선택, 기본 첫 항목(전력계통과)
     else{const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;}
   }
   S._fdoc={id:d?d.id:'',type};
@@ -7423,7 +7424,7 @@ function annualReport(){
   const bY=S.budget.filter(b=>b.kind!=='필요'&&inY(b.date));const exec=bY.filter(b=>b.kind!=='계획').reduce((s,b)=>s+Number(b.amount||0),0);
   const mY=S.measurements.filter(m=>inY(m.date));const mW=mY.filter(m=>measJudge(m)==='주의').length;
   const t=`[${Y}년 전기설비 유지보수 실적 보고]
-부서: 전력계통과   작성자: 허남원   작성일: ${todayStr()}
+부서: ${deptName()}   작성자: 허남원   작성일: ${todayStr()}
 
 1. 고장·조치: 총 ${fY.length}건
    - 주요 원인: ${ctop||'-'}
@@ -7523,7 +7524,7 @@ async function applyUseSpare(backEquipId){
 function orderListDoc(){
   const low=S.spares.filter(_spLow);
   if(!low.length){toast('발주 필요(부족) 품목이 없습니다');return;}
-  const t=`[예비품 발주 요청 목록]   작성일 ${todayStr()}   전력계통과 허남원\n\n`+
+  const t=`[예비품 발주 요청 목록]   작성일 ${todayStr()}   ${deptName()} 허남원\n\n`+
     low.map((x,i)=>`${i+1}. ${x.name}${x.spec?' ('+x.spec+')':''} : 현재 ${x.qty??0}${x.unit||'EA'} / 최소 ${x.minQty}${x.location?' · 위치 '+x.location:''}`).join('\n')+
     `\n\n※ 최소수량 이하 품목 자동 취합. 소요·단가는 확인 후 기입.`;
   openDoc('예비품 발주 목록',t);
