@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v142'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v143'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -7696,7 +7696,8 @@ const ECMS_STEPS=[
    양식 파일(규정·성명 포함)은 코드에 없고 처음 한 번 고르면 이 기기 meta 'tripTpl'에만 저장(백업·동기화 안 감). 셀 위치는 2026-11 양식 기준(TRIP_CELLS).
    규칙: 일수=박수+1, 일비 전액, 식비는 100km 이상이라 1일분의 2/3(10원 미만 버림)·'식비 전액' 체크 시 전액, 숙박·교통 실비. 영수증은 칸 안에 비율 유지로 자동 배치(tripFit). */
 const TRIP_LIMITS={'서울(10만)':100000,'광역시(8만)':80000,'그 밖(7만)':70000};
-const TRIP_BOX={colW:80,rowH:18,cols:6,boxW:480,boxH:40*18+19,row0:2}; // 교통비 시트 그림 칸(A3:F43 가는 편, G3:L43 오는 편) — 원본 그림 앵커에서 역산한 px
+/* 교통비 시트 그림 칸(A3:F43 가는 편, G3:L43 오는 편). 칸 너비는 엑셀 기본 열 너비(글꼴에 따라 다름)라 코드에서 알 수 없어 기본 72px, 그림이 오른쪽/왼쪽으로 치우치면 화면의 '칸 너비 보정'으로 맞춘다(v143) */
+const tripBox=cfg=>{const colW=Math.min(120,Math.max(40,Number(cfg&&cfg.colW)||72));return {colW,rowH:18,boxW:6*colW,boxH:40*18+19,row0:2};};
 function tripCalc(t,cfg){
   const n=Number(t.nights)||0,days=n+1,daily=(Number(cfg.daily)||0)*days,unit=Number(cfg.meal)||0;
   const meal=t.mealFull?unit*days:Math.floor(unit*days*2/3/10)*10;
@@ -7770,10 +7771,11 @@ async function tripMake(){ // → {blob,name}
   ws.getCell('C17').value=c.days;ws.getCell('E17').value=n;ws.getCell('F17').value=c.lodging;ws.getCell('H17').value=c.days;ws.getCell('J17').value=c.transport;
   set('D17',c.daily,'B17*C17');set('I17',c.meal,t.mealFull?'G17*H17':'ROUNDDOWN(G17*H17*2/3,-1)');set('K17',c.transport,'J17');set('L17',c.total,'D17+F17+I17+K17');
   for(const r of [18,19]){set('D'+r,0,`B${r}*C${r}`);set('I'+r,0,`ROUNDDOWN(G${r}*H${r}*2/3,-1)`);set('K'+r,0,'J'+r);set('L'+r,0,`D${r}+F${r}+I${r}+K${r}`);}
+  for(const r of [17,18,19,20])ws.getCell('F'+r).numFmt=ws.getCell('D'+r).numFmt; // 숙박 소계에 천 단위 쉼표(양식의 F열은 서식이 없음)
   set('D20',c.daily,'SUM(D17:D19)');set('F20',c.lodging,'SUM(F17:F19)');set('I20',c.meal,'SUM(I17:I19)');set('K20',c.transport,'SUM(K17:K19)');set('L20',c.total,'SUM(L17:L19)');set('B14',c.total,'L20');
   // 교통비 증빙: 양식에 있던 옛 영수증을 지우고 가는 편(왼쪽)·오는 편(오른쪽) 칸에 새 영수증을 맞춰 넣는다
   wt._media=[];
-  const B=TRIP_BOX,EMU=9525;
+  const B=tripBox(cfg),EMU=9525;
   for(const [side,col0] of [['go',0],['back',6]]){
     const L=t[side];if(!L.length)continue;
     const imgs=[];for(const file of L)imgs.push(await tripImg(file));
@@ -7822,7 +7824,8 @@ function vTrip(){
     <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" ${t.mealFull?'checked':''} onchange="tripSet('mealFull',this.checked)" style="width:auto"> 식비 전액 지급(숙박 인정 시, 기본은 1일분의 2/3)</label></div>
   <div class="card"><h2>계산</h2><div id="trip-sum">${tripSumHtml()}</div></div>
   <div class="card"><h2>교통비 증빙 — 가는 편 칸</h2>${tripPhotosHtml('go')}
-    <div class="section-note">승차권·통행료 영수증 등 여러 장도 됩니다. 칸 안에 크기를 자동으로 맞춰 배치합니다.</div></div>
+    <div class="section-note">승차권·통행료 영수증 등 여러 장도 됩니다. 칸 안에 크기를 자동으로 맞춰 배치합니다.</div>
+    <label>칸 너비 보정(px) — 엑셀에서 그림이 오른쪽으로 치우치면 줄이고, 왼쪽이면 늘리세요</label><input type="number" inputmode="numeric" value="${esc(cfg.colW||72)}" onchange="tripCfgSet('colW',this.value)"></div>
   <div class="card"><h2>교통비 증빙 — 오는 편 칸</h2>${tripPhotosHtml('back')}</div>
   <div class="card"><div class="row"><button class="btn full" onclick="tripExport('dl')">📥 엑셀로 저장</button></div>
     <div class="row" style="margin-top:8px"><button class="btn ghost full" onclick="tripExport('share')">📤 공유·메일로 보내기</button></div>
