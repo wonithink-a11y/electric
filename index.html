@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v163'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v164'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -8540,13 +8540,15 @@ if('serviceWorker' in navigator){
 history.replaceState({t:'root'},'',location.href);
 history.pushState({t:'guard'},'',location.href);
 
-function _refillGuard(){ history.pushState({t:'guard'},'',location.href); }
-/* v163: 화면을 한 번도 안 만진 채 pushState로 만든 기록은 브라우저(크롬 '기록 조작 방지')가 뒤로가기에서 건너뛴다 →
-   앱 켜고 첫 뒤로가기가 종료창 없이 앱을 닫았다. 첫 터치·키 입력 뒤에 가드를 한 번 더 깔아 정상 기록으로 만든다 */
+/* v164: 터치 없이(뒤로가기 처리 안에서) pushState로 만든 기록은 브라우저(크롬 '기록 조작 방지')가 뒤로가기에서 건너뛴다 →
+   홈에서 뒤로가기가 종료창 없이 앱을 닫았다. 가드는 항상 '터치·키 입력 순간'에 3칸까지 미리 깔고(_g = 현재 기록 위치, root=0),
+   뒤로가기 처리 안에서는 pushState를 하지 않는다(_refillGuard는 다음 터치 때 채우라는 표시만) */
+let _g=1;
+function _topUp(){ while(_g<5){ history.pushState({t:'guard'},'',location.href); _g++; } }
+function _refillGuard(){}
 (function(){const ev=['pointerup','touchend','click','keydown'];
-  const arm=()=>{ if(navigator.userActivation&&!navigator.userActivation.hasBeenActive)return;
-    ev.forEach(e=>removeEventListener(e,arm,true)); if(_exiting!==2)_refillGuard(); };
-  ev.forEach(e=>addEventListener(e,arm,true)); })();
+  const fill=()=>{ if(_g>=5||_exiting===2)return; if(navigator.userActivation&&!navigator.userActivation.hasBeenActive)return; _topUp(); };
+  ev.forEach(e=>addEventListener(e,fill,true)); })();
 
 function showExitConfirm(){
   _refillGuard();
@@ -8564,7 +8566,7 @@ function showExitConfirm(){
   </div>`;
   document.body.appendChild(box);
   document.getElementById('exit-cancel').onclick=()=>box.remove();
-  document.getElementById('exit-ok').onclick=()=>{ box.remove(); _exiting=1; history.go(-1); setTimeout(_exitStep,600); }; // guard → root. 설치 앱은 앞 페이지가 없어 go(-2)가 안 먹었다(v162)
+  document.getElementById('exit-ok').onclick=()=>{ box.remove(); _exiting=1; history.go(-Math.max(1,_g)); setTimeout(_exitStep,600); }; // guard → root. 설치 앱은 앞 페이지가 없어 go(-2)가 안 먹었다(v162)
 }
 /* v162 종료: 맨 앞 기록(root)까지 돌아온 뒤 — 앞 페이지가 있으면(브라우저 탭) 그리로, 없으면 창 닫기를 시도하고 안 닫히면(설치 앱)
    가드 없이 두어 다음 뒤로가기가 OS 종료로 가게 한다. 화면을 다시 만지면 가드를 되살린다 */
@@ -8622,7 +8624,8 @@ function promptModal(msg,defVal){
   });
 }
 
-window.addEventListener('popstate',()=>{
+window.addEventListener('popstate',e=>{
+  _g=(e.state&&e.state.t==='root')?0:Math.max(0,_g-1); // v164: 한 칸 뒤로 = 가드 하나 소모
   if(_exiting===1){_exitStep();return;} if(_exiting===2)return; // v162 종료 진행 중
   const exitBox=document.getElementById('exit-confirm');
   if(exitBox){ exitBox.remove(); _refillGuard(); return; }
