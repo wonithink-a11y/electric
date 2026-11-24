@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v139'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v140'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -503,7 +503,7 @@ async function loadAll(){
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
   try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
-  try{const h=await dbGet('meta','ecmsHubs');S._ecms=h?{hubs:h.hubs||[],cases:h.cases||[]}:{hubs:[],cases:[]};}catch(e){S._ecms={hubs:[],cases:[]};} // v139: ECMS 허브 표(IP는 코드에 없고 JSON 주입)
+  try{const h=await dbGet('meta','ecmsHubs');S._ecms=h?{hubs:h.hubs||[],cases:h.cases||[],stepImgs:h.stepImgs||{}}:{hubs:[],cases:[],stepImgs:{}};}catch(e){S._ecms={hubs:[],cases:[],stepImgs:{}};} // v139: ECMS 허브 표(IP는 코드에 없고 JSON 주입)
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
   try{S._gcCfg=await dbGet('meta','gcCfg')||null;}catch(e){S._gcCfg=null;}
@@ -762,7 +762,7 @@ async function _applyJson(kind,d){
     return `로직 카드 ${n}장`;
   }
   if(kind==='ECMS허브'){ // v139: 허브 IP 대역·사례는 이 기기 meta에만
-    await dbPut('meta',{id:'ecmsHubs',hubs:d.hubs,cases:d.cases||[],added:todayStr()});S._ecms={hubs:d.hubs,cases:d.cases||[]};
+    await dbPut('meta',{id:'ecmsHubs',hubs:d.hubs,cases:d.cases||[],stepImgs:d.stepImgs||{},added:todayStr()});S._ecms={hubs:d.hubs,cases:d.cases||[],stepImgs:d.stepImgs||{}};
     return `ECMS 허브 ${d.hubs.length}개`;
   }
   if(kind==='정비지침'){ // v120: 사내 지침이라 코드엔 없고 이 기기 meta에만
@@ -7688,6 +7688,8 @@ const ECMS_STEPS=[
   ['IED 뒷면 광케이블 재결합','허브 설정 후에도 안 되면 IED 뒷면 광케이블을 뽑았다가 다시 꽂는다.'],
   ['IED 전원 재투입','변화가 없으면 IED 제어전원을 껐다가 켠다(차단기 상태·인터록을 확인한 뒤).'],
   ['ECMS 확인','ECMS에서 해당 칸의 알람 확인·리셋. 풀리지 않으면 ECMS 업체에 점 상태 확인 요청.']];
+function ecmsImg(i,j){const m=((S._ecms||{}).stepImgs||{})[i];if(!m||!m[j])return;
+  openModal(`<img src="${m[j].src}" alt="" style="width:100%;border-radius:8px"><div class="d" style="margin:6px 0 10px">${esc(m[j].cap||'')}</div><div class="row"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);}
 function vEcms(){
   const E=S._ecms||{hubs:[],cases:[]},hubs=E.hubs||[];
   const groups=[...new Set(hubs.map(h=>h.area||''))];
@@ -7701,7 +7703,8 @@ function vEcms(){
     <div class="d" style="line-height:1.6">릴레이(IED) 화면엔 86·트립이 없는데 <b>ECMS에만 86(보라색)</b>이 남아 있거나, ECMS의 <b>Device Connection Status가 ON/OFF를 반복</b>할 때.<br>
     이 경우 보호계전기가 아니라 <b>허브–IED 통신</b>을 의심한다. 한 허브에 물린 IED 여러 대가 같이 이상하면 허브 포트·허브 쪽이다.</div></div>
   <div class="card"><h2>점검 순서</h2>
-    ${ECMS_STEPS.map((s,i)=>`<div class="item" style="align-items:flex-start"><div class="t"><div class="n">${i+1}. ${esc(s[0])}</div><div class="d" style="white-space:normal">${esc(s[1])}</div></div></div>`).join('')}
+    ${ECMS_STEPS.map((s,i)=>`<div class="item" style="align-items:flex-start"><div class="t"><div class="n">${i+1}. ${esc(s[0])}</div><div class="d" style="white-space:normal">${esc(s[1])}</div>
+      ${((E.stepImgs||{})[i]||[]).map((m,j)=>`<figure style="margin:8px 0 0"><img src="${m.src}" alt="" style="width:100%;border-radius:8px;display:block" onclick="ecmsImg(${i},${j})"><figcaption class="d" style="margin-top:3px">${esc(m.cap||'')}</figcaption></figure>`).join('')}</div></div>`).join('')}
     <div class="section-note">허브 계정·비밀번호는 사내 해결법 문서 또는 🔐 보안 금고에서 확인하세요(앱에는 적지 않음). ECMS 표시가 틀려도 차단기 투입 전 현장 위치(SERVICE)·스프링·제어전원은 직접 확인한다.</div></div>
   <div class="card"><h2>허브 주소</h2>${tbl}</div>
   ${cases?`<div class="card"><h2>지난 사례</h2>${cases}</div>`:''}
