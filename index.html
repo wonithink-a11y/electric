@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v140'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v141'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -7697,14 +7697,14 @@ function vEcms(){
     <div class="item"><div class="t"><div class="n">${esc(h.name)}</div><div class="d">${esc(h.ip||'')}${h.note?' · '+esc(h.note):''}</div></div>
       <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${esc(h.ip||'')}').then(()=>toast('주소 복사됨'),()=>toast('복사 실패'))">복사</button></div>`).join('')).join('')
     :'<div class="muted">허브 표가 없습니다. 더보기 › 🩺 자가진단·초기데이터에서 <b>ecms_허브_v1.json</b>을 가져오세요.</div>';
-  const cases=(E.cases||[]).map(c=>`<div class="item"><div class="t"><div class="n">${esc(c.date||'')} · ${esc(c.title||'')}</div><div class="d">${esc(c.body||'')}</div></div></div>`).join('');
+  const cases=(E.cases||[]).map(c=>`<div class="item"><div class="t"><div class="n">${esc(c.date||'')} · ${esc(c.title||'')}</div><div class="d" style="white-space:normal;overflow:visible;text-overflow:clip">${esc(c.body||'')}</div></div></div>`).join('');
   return `
   <div class="card"><h2>🛠️ 이럴 때 쓰세요</h2>
     <div class="d" style="line-height:1.6">릴레이(IED) 화면엔 86·트립이 없는데 <b>ECMS에만 86(보라색)</b>이 남아 있거나, ECMS의 <b>Device Connection Status가 ON/OFF를 반복</b>할 때.<br>
     이 경우 보호계전기가 아니라 <b>허브–IED 통신</b>을 의심한다. 한 허브에 물린 IED 여러 대가 같이 이상하면 허브 포트·허브 쪽이다.</div></div>
   <div class="card"><h2>점검 순서</h2>
     ${ECMS_STEPS.map((s,i)=>`<div class="item" style="align-items:flex-start"><div class="t"><div class="n">${i+1}. ${esc(s[0])}</div><div class="d" style="white-space:normal">${esc(s[1])}</div>
-      ${((E.stepImgs||{})[i]||[]).map((m,j)=>`<figure style="margin:8px 0 0"><img src="${m.src}" alt="" style="width:100%;border-radius:8px;display:block" onclick="ecmsImg(${i},${j})"><figcaption class="d" style="margin-top:3px">${esc(m.cap||'')}</figcaption></figure>`).join('')}</div></div>`).join('')}
+      ${((E.stepImgs||{})[i]||[]).map((m,j)=>`<figure style="margin:8px 0 0"><img src="${m.src}" alt="" style="width:100%;border-radius:8px;display:block" onclick="ecmsImg(${i},${j})"><figcaption class="d" style="margin-top:3px;white-space:normal;overflow:visible;text-overflow:clip">${esc(m.cap||'')}</figcaption></figure>`).join('')}</div></div>`).join('')}
     <div class="section-note">허브 계정·비밀번호는 사내 해결법 문서 또는 🔐 보안 금고에서 확인하세요(앱에는 적지 않음). ECMS 표시가 틀려도 차단기 투입 전 현장 위치(SERVICE)·스프링·제어전원은 직접 확인한다.</div></div>
   <div class="card"><h2>허브 주소</h2>${tbl}</div>
   ${cases?`<div class="card"><h2>지난 사례</h2>${cases}</div>`:''}
