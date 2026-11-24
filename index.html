@@ -505,7 +505,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v157'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v158'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1232,7 +1232,7 @@ async function gcSync(store,obj,del){
   try{
     if(!day){await gcCall({op:'delete',id:obj.gcalId});delete obj.gcalId;await save();return;}
     const e=new Date(day+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정 끝날 = 다음 날(제외)
-    const ins=store==='inspections',tm=store==='todos'&&obj.time?obj.time:''; // v154: 시간 있는 할 일 → 그 시간에 끝나는 30분 일정(새 스크립트), 구 스크립트는 제목 '(HH:MM까지)'만 보이는 종일 일정
+    const ins=store==='inspections',tm=(store==='todos'||store==='issues')&&obj.time?obj.time:''; // v154: 시간 있는 할 일 → 그 시간에 끝나는 30분 일정(새 스크립트), 구 스크립트는 제목 '(HH:MM까지)'만 보이는 종일 일정
     const r=await gcCall({op:'upsert',id:obj.gcalId||'',
       title:ins?'[법정검사] '+obj.name:(obj.done?'✔ ':'')+(store==='issues'?'[현안] ':'')+obj.title+(tm?' ('+tm+'까지)':''),
       desc:ins?[obj.cycle,obj.law].filter(Boolean).join(' · '):obj.note||'',start:day,end:_dstr(e),time:tm});
@@ -1385,7 +1385,7 @@ function homeDayHtml(ds){
   const iss=S.issues.filter(i=>!i.done&&i.due===ds);
   return `<div class="card"><h2>🗓️ ${esc(ds)}${ds===todayStr()?' · 오늘':''}</h2>
     ${insp.map(_inspRow).join('')}
-    ${iss.map(i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div><div class="t click" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">현안 목표일${i.note?' · '+esc(i.note):''}</div></div><span class="badge b-red">현안</span></div>`).join('')}
+    ${iss.map(i=>`<div class="item"><div class="chk" onclick="doneIssue('${i.id}')"></div><div class="t click" onclick="editIssue('${i.id}')"><div class="n">${tdTitle(i)}</div><div class="d">현안 목표일${i.note?' · '+esc(i.note):''}</div></div><span class="badge b-red">현안</span></div>`).join('')}
     ${td.map(t=>`<div class="item"><div class="chk ${t.done?'done':''}" onclick="toggleTodo('${t.id}',0)">${t.done?'✓':''}</div>
       <div class="t click" onclick="editTodo('${t.id}','${ds}')"><div class="n" style="${t.done?'text-decoration:line-through;color:var(--dim)':''}">${tdTitle(t)}</div>${t.note?`<div class="d">${esc(t.note)}</div>`:''}</div></div>`).join('')}
     ${insp.length||td.length||iss.length?'':'<div class="empty">이 날 일정 없음</div>'}
@@ -1410,7 +1410,7 @@ function homeAllHtml(){
 }
 const _issCmp=(a,b)=>(a.due||'9999').localeCompare(b.due||'9999');
 const _issRow=i=>`<div class="item k k-iss"><div class="chk" onclick="doneIssue('${i.id}')"></div>
-  <div class="t" onclick="editIssue('${i.id}')"><div class="n">${esc(i.title)}</div><div class="d">${i.due?'목표 '+esc(mdShort(i.due))+' · ':''}${esc(i.date)} ${esc(i.note||'')} ${lawLinkHtml(i)}</div></div>${i.due?ddayBadge(dday(i.due)):'<span class="badge b-purple">진행중</span>'}</div>`;
+  <div class="t" onclick="editIssue('${i.id}')"><div class="n">${tdTitle(i)}</div><div class="d">${i.due?'목표 '+esc(mdShort(i.due))+' · ':''}${esc(i.date)} ${esc(i.note||'')} ${lawLinkHtml(i)}</div></div>${i.due?ddayBadge(dday(i.due)):'<span class="badge b-purple">진행중</span>'}</div>`;
 function homeIssuesCard(){
   const openIssues=S.issues.filter(i=>!i.done);
   const doneIssues=S.issues.filter(i=>i.done).sort((a,b)=>(b.doneDate||b.date||'').localeCompare(a.doneDate||a.date||''));
@@ -1643,6 +1643,8 @@ function editIssue(id){
     <label>제목</label><input id="is-t" value="${esc(i?.title||'')}">
     <label>목표일 <span class="muted" style="font-weight:400">(선택 — 안 고르면 기간 없는 현안)</span></label>
     <div class="dp" id="dp">${dpHtml()}</div>
+    <label>시간 <span class="muted" style="font-weight:400">(선택 · 목표일이 있을 때 · 비우면 하루 종일)</span></label>
+    ${tpHtml('is-time',i?.time)}
     <label>메모</label><textarea id="is-n" rows="2">${esc(i?.note||'')}</textarea>
     ${lawInputHtml('is',i)}${i?`<div style="margin-top:6px">${lawLinkHtml(i)}</div>`:''}
     <div class="row" style="margin-top:14px">
@@ -1658,6 +1660,7 @@ async function saveIssue(id){
   const obj=id?S.issues.find(x=>x.id===id):{id:uid(),date:todayStr(),done:false};
   obj.title=t;obj.note=$('#is-n').value.trim();lawRead('is',obj);
   if(S._dp&&S._dp.a)obj.due=S._dp.a;else delete obj.due;
+  const tm=tpVal('is-time');if(tm&&obj.due)obj.time=tm;else delete obj.time;
   await saveRec('issues',obj);
   closeModal();render();
 }
@@ -1778,6 +1781,13 @@ function dpHtml(){
 }
 /* v153: 할 일 시간(선택) — 비우면 하루 일과, 고르면 그 시간까지. 제목 옆에 'HH:MM까지' */
 const tdTitle=t=>esc(t.title)+(t.time?` <span class="tdt">${esc(t.time)}까지</span>`:'');
+/* v158: 시·분 선택(시계 대신 목록) — 시를 고르면 분은 00, 분은 따로 바꾼다. 할 일(td-time)·현안(is-time) 공용 */
+const tpHtml=(id,v)=>{const [h,m]=(v||'').split(':'),o=n=>[...Array(n).keys()].map(i=>String(i).padStart(2,'0'));
+  return `<div class="row"><select id="${id}-h" style="flex:1;min-width:0;width:auto" onchange="tpHour('${id}')"><option value="">시 --</option>${o(24).map(s=>`<option value="${s}"${s===h?' selected':''}>${s}시</option>`).join('')}</select>
+    <select id="${id}-m" style="flex:1;min-width:0;width:auto" ${h?'':'disabled'}>${o(60).map(s=>`<option value="${s}"${s===(m||'00')?' selected':''}>${s}분</option>`).join('')}</select>
+    <button class="btn ghost sm" type="button" style="flex:none;white-space:nowrap" onclick="$('#${id}-h').value='';tpHour('${id}')">지우기</button></div>`;};
+function tpHour(id){const h=$('#'+id+'-h').value,m=$('#'+id+'-m');if(!h){m.disabled=true;m.value='00';}else{if(m.disabled)m.value='00';m.disabled=false;}}
+const tpVal=id=>{const h=$('#'+id+'-h');return h&&h.value?h.value+':'+$('#'+id+'-m').value:'';};
 function editTodo(id,date){
   const t=id?S.todos.find(x=>x.id===id):null;
   dpOpen(t?.date||date||todayStr(),!t,false);
@@ -1786,7 +1796,7 @@ function editTodo(id,date){
     <label>날짜${t?'':' <span class="muted" style="font-weight:400">(2박3일 교육 등 여러 날이면 시작일→종료일 순서로 탭)</span>'}</label>
     <div class="dp" id="dp">${dpHtml()}</div>
     <label>시간 <span class="muted" style="font-weight:400">(선택 · 비우면 하루 일과)</span></label>
-    <div class="row"><input id="td-time" type="time" style="flex:1;min-width:0;width:auto" value="${esc(t?.time||'')}"><button class="btn ghost sm" type="button" style="flex:none;white-space:nowrap" onclick="$('#td-time').value=''">지우기</button></div>
+    ${tpHtml('td-time',t?.time)}
     <label>메모</label><textarea id="td-n" rows="2">${esc(t?.note||'')}</textarea>
     <div class="row" style="margin-top:12px">${t?`<button class="btn danger sm" onclick="delTodo('${t.id}','${t.date}')">삭제</button>`:''}${gcOn()?'':`<button class="btn ghost sm" onclick="calFrom('td')">📅 캘린더</button>`}<div class="grow"></div>
       <button class="btn ghost sm" onclick="openDay('${date||todayStr()}')">취소</button>
@@ -1799,14 +1809,14 @@ function calFrom(pfx){ // pfx: 'td' 할 일 · 'is' 현안 — 제목 #pfx-t, �
   if(!t||!a){toast(t?'날짜를 고르세요':'제목을 넣으세요');return;}
   const e=new Date((S._dp.b||a)+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정의 끝날은 다음 날(구글 규칙)
   const ymd=s=>s.replace(/-/g,'');
-  const tm=pfx==='td'&&!S._dp.b&&$('#td-time')?$('#td-time').value:''; // v154: 시간 있으면 그 시간에 끝나는 30분 일정
+  const tm=!S._dp.b&&$('#'+pfx+'-time-h')?tpVal(pfx+'-time'):''; // v154: 시간 있으면 그 시간에 끝나는 30분 일정
   let dates=ymd(a)+'/'+ymd(_dstr(e)),text=t;
   if(tm){const [h,m]=tm.split(':').map(Number),f=x=>ymd(a)+'T'+String(Math.floor(x/60)).padStart(2,'0')+String(x%60).padStart(2,'0')+'00',end=h*60+m;dates=f(Math.max(0,end-30))+'/'+f(end);text=t+' ('+tm+'까지)';}
   window.open('https://calendar.google.com/calendar/render?'+new URLSearchParams({action:'TEMPLATE',text,dates,details:n}),'_blank');
 }
 async function saveTodo(id){
   const title=$('#td-t').value.trim();if(!title){toast('할 일을 입력하세요');return;}
-  const note=$('#td-n').value.trim(),time=$('#td-time').value;
+  const note=$('#td-n').value.trim(),time=tpVal('td-time');
   const startDate=(S._dp&&S._dp.a)||todayStr();
   if(id){
     const obj=S.todos.find(x=>x.id===id);
