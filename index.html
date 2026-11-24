@@ -458,9 +458,13 @@ nav button.on::before{display:none}
 nav button .ic{width:52px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:14px}
 nav button.on .ic{transform:none;background:color-mix(in srgb,var(--accent) 16%,transparent)}
 b,strong,h1,h2,h3,th{font-weight:600}
-.wk-c{height:38px}
+.wk-c{height:auto;min-height:62px;justify-content:flex-start;padding:4px 1px 3px;gap:2px}
 .wk-c small{top:0;left:3px;font-size:11px;line-height:1.2}
-.wk-c:has(small){justify-content:flex-end;padding-bottom:1px}
+.wk-c:has(small){padding-top:12px}
+.wk-ms{display:flex;flex-direction:column;gap:1px;width:100%;align-items:center}
+.wk-m{display:flex;align-items:center;gap:2px;font-size:11px;font-weight:500;line-height:1.25;color:var(--dim);white-space:nowrap}
+.wk-m .dot{margin:0;flex:none}
+.wk-more{padding-left:2px}
 /* v155: 여백 축소 — 헤더 아래·타일·카드 사이 */
 header{padding:6px 16px 4px}
 main{padding-top:2px}
@@ -501,7 +505,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v156'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v157'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1317,6 +1321,16 @@ function quickBarHtml(){
   return `<div class="qk">${b('insp')}${b('man')}${b('photo')}<button class="btn ghost" onclick="go('work')">${icx('🗂️')}<span>문서 목록</span></button></div>`;
 }
 /* v132 달력 기본 = 2주(이번 주부터 14일). ◀▶ = 한 주씩, '한 달 ▾' = 기존 한 달 보기(S._calMonth), 거기서 '2주 ▴'로 돌아옴. 고른 값은 앱을 다시 열면 2주로 돌아감 */
+/* v157: 홈 달력 칸 — 점 + 내용 앞 2글자(최대 2줄, 넘치면 첫 줄 + '+N') */
+function wkMarks(ds){
+  const two=s=>esc(Array.from(String(s||'').replace(/^\[[^\]]*\]\s*/,'').trim()).slice(0,2).join(''));
+  const L=[...S.todos.filter(x=>x.date===ds&&!x.done).map(x=>['d-todo',x.title]),
+    ...S.inspections.filter(x=>x.nextDue===ds).map(x=>['d-insp',x.name]),
+    ...S.issues.filter(x=>!x.done&&x.due===ds).map(x=>['d-iss',x.title])];
+  if(!L.length)return '';
+  const row=([c,t])=>`<span class="wk-m"><span class="dot ${c}"></span>${two(t)}</span>`;
+  return `<span class="wk-ms">${L.length<=2?L.map(row).join(''):row(L[0])+`<span class="wk-m wk-more">+${L.length-1}</span>`}</span>`;
+}
 function twoWeekHtml(){
   const ts=todayStr(),sel=S._selDay,wk=S._cwk||0,t0=new Date();
   const st=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()-t0.getDay()+7*wk);
@@ -1325,7 +1339,7 @@ function twoWeekHtml(){
     const d=new Date(st.getFullYear(),st.getMonth(),st.getDate()+i),ds=_dstr(d);last=d;
     const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds),iss=S.issues.some(x=>!x.done&&x.due===ds);
     cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')">${d.getDate()===1||i===0?`<small>${d.getMonth()+1}월</small>`:''}<span>${d.getDate()}</span>
-      <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}${iss?'<span class="dot d-iss"></span>':''}</span></div>`;
+      ${wkMarks(ds)}</div>`;
   }
   return `<div class="card">
     <div class="cal-head"><button class="btn ghost sm" onclick="S._cwk=(S._cwk||0)-1;render()">◀</button>
@@ -1346,7 +1360,7 @@ function weekCalHtml(){ // v112: 2주 → 한 달 보기(점 표시), ◀▶ = �
     const ds=ym+'-'+String(n).padStart(2,'0');
     const todo=S.todos.some(x=>x.date===ds&&!x.done),insp=S.inspections.some(x=>x.nextDue===ds),iss=S.issues.some(x=>!x.done&&x.due===ds);
     cells+=`<div class="wk-c${ds===ts?' today':''}${ds===sel?' sel':''}" onclick="selDay('${ds}')"><span>${n}</span>
-      <span class="wk-dots">${todo?'<span class="dot d-todo"></span>':''}${insp?'<span class="dot d-insp"></span>':''}${iss?'<span class="dot d-iss"></span>':''}</span></div>`;
+      ${wkMarks(ds)}</div>`;
   }
   return `<div class="card">
     <div class="cal-head"><button class="btn ghost sm" onclick="calNav(-1)">◀</button>
