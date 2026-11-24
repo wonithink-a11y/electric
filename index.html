@@ -505,7 +505,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v158'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v159'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1782,8 +1782,8 @@ function dpHtml(){
 /* v153: 할 일 시간(선택) — 비우면 하루 일과, 고르면 그 시간까지. 제목 옆에 'HH:MM까지' */
 const tdTitle=t=>esc(t.title)+(t.time?` <span class="tdt">${esc(t.time)}까지</span>`:'');
 /* v158: 시·분 선택(시계 대신 목록) — 시를 고르면 분은 00, 분은 따로 바꾼다. 할 일(td-time)·현안(is-time) 공용 */
-const tpHtml=(id,v)=>{const [h,m]=(v||'').split(':'),o=n=>[...Array(n).keys()].map(i=>String(i).padStart(2,'0'));
-  return `<div class="row"><select id="${id}-h" style="flex:1;min-width:0;width:auto" onchange="tpHour('${id}')"><option value="">시 --</option>${o(24).map(s=>`<option value="${s}"${s===h?' selected':''}>${s}시</option>`).join('')}</select>
+const tpHtml=(id,v)=>{const [h,m]=(v||'').split(':'),o=n=>[...Array(n).keys()].map(i=>String(i).padStart(2,'0')),hs=a=>a.map(s=>`<option value="${s}"${s===h?' selected':''}>${s}시</option>`).join(''); // 9~18시를 먼저
+  return `<div class="row"><select id="${id}-h" style="flex:1;min-width:0;width:auto" onchange="tpHour('${id}')"><option value="">시 --</option><optgroup label="업무 시간">${hs(o(24).slice(9,19))}</optgroup><optgroup label="그 외">${hs([...o(24).slice(0,9),...o(24).slice(19)])}</optgroup></select>
     <select id="${id}-m" style="flex:1;min-width:0;width:auto" ${h?'':'disabled'}>${o(60).map(s=>`<option value="${s}"${s===(m||'00')?' selected':''}>${s}분</option>`).join('')}</select>
     <button class="btn ghost sm" type="button" style="flex:none;white-space:nowrap" onclick="$('#${id}-h').value='';tpHour('${id}')">지우기</button></div>`;};
 function tpHour(id){const h=$('#'+id+'-h').value,m=$('#'+id+'-m');if(!h){m.disabled=true;m.value='00';}else{if(m.disabled)m.value='00';m.disabled=false;}}
