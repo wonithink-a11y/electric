@@ -461,6 +461,14 @@ b,strong,h1,h2,h3,th{font-weight:600}
 .wk-c{height:38px}
 .wk-c small{top:0;left:3px;font-size:11px;line-height:1.2}
 .wk-c:has(small){justify-content:flex-end;padding-bottom:1px}
+/* v155: 여백 축소 — 헤더 아래·타일·카드 사이 */
+header{padding:8px 16px 6px}
+main{padding-top:4px}
+.hs{margin-bottom:6px}.hs-p{padding:8px 2px 6px;gap:2px}
+.qk{margin-bottom:6px}.qk .btn{padding:8px 2px}
+.card{padding:14px;margin-bottom:8px}
+.cal-legend{margin-top:8px}
+.chips{padding:0 0 6px}
 .ixi{margin-right:.3em}
 .tdt{font-size:11px;color:var(--accent);font-weight:600;margin-left:6px;white-space:nowrap}
 .edot{display:inline-block;width:.6em;height:.6em;border-radius:50%;margin-right:.4em;vertical-align:.02em}
@@ -490,7 +498,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v154'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v155'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
