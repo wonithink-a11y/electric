@@ -454,7 +454,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v138'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v139'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -503,6 +503,7 @@ async function loadAll(){
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
   try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
+  try{const h=await dbGet('meta','ecmsHubs');S._ecms=h?{hubs:h.hubs||[],cases:h.cases||[]}:{hubs:[],cases:[]};}catch(e){S._ecms={hubs:[],cases:[]};} // v139: ECMS 허브 표(IP는 코드에 없고 JSON 주입)
   try{const l=await dbGet('meta','lclinks');S._lcLinks=(l&&l.map)||{};}catch(e){S._lcLinks={};}
   try{const row=await dbGet('meta','fbConfig');if(row&&row.json)S._fbCfg=JSON.parse(row.json);}catch(e){S._fbCfg=null;}
   try{S._gcCfg=await dbGet('meta','gcCfg')||null;}catch(e){S._gcCfg=null;}
@@ -705,6 +706,7 @@ function _sniffJson(d){
   if(Array.isArray(d.links)&&d.links.length&&d.links[0].tag&&d.links[0].node)return '로직연결';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(d.schema==='pwr-guide-v1'&&Array.isArray(d.rules))return '정비지침'; // v120: 운영지침 52200 기준표
+  if(d.schema==='pwr-ecms-v1'&&Array.isArray(d.hubs))return 'ECMS허브'; // v139
   if(Array.isArray(d.equipment)&&d.equipment.length)return 'seed';
   if(Array.isArray(d.checklists)&&d.checklists.length&&!d.tree)return 'seed'; // v135: 주기업무만 든 파일(설비 없음)도 seed 경로 — id가 없는 체크리스트만 추가
   if(Array.isArray(d.tree)&&d.tree.length)return '계통트리';
@@ -758,6 +760,10 @@ async function _applyJson(kind,d){
       await dbPut('logic',rec);if(!ex)cur.push(rec);n++;
     }
     return `로직 카드 ${n}장`;
+  }
+  if(kind==='ECMS허브'){ // v139: 허브 IP 대역·사례는 이 기기 meta에만
+    await dbPut('meta',{id:'ecmsHubs',hubs:d.hubs,cases:d.cases||[],added:todayStr()});S._ecms={hubs:d.hubs,cases:d.cases||[]};
+    return `ECMS 허브 ${d.hubs.length}개`;
   }
   if(kind==='정비지침'){ // v120: 사내 지침이라 코드엔 없고 이 기기 meta에만
     await dbPut('meta',{id:'guide',source:d.source||'',grades:d.grades||{},rules:d.rules,added:todayStr()});S._guide=null;
@@ -818,7 +824,7 @@ function importAll(){
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
     // seed → 계통트리 → 로직카드 → 해석노트 순서. 타이보정이 seed 뒤에 와야 덮어쓰기가 유지된다.
-    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6,'재물조사':7,'정비지침':8};
+    const order={'seed':0,'계통트리':1,'로직카드':2,'해석노트':3,'도면색인':4,'설비동':5,'로직연결':6,'재물조사':7,'정비지침':8,'ECMS허브':9};
     /* v64: 같은 종류 안에서는 파일명 '자연 정렬'(v2<v3<…<v10<v11<v12). 폰 파일선택기는 선택 순서·사전순(v10이 v2보다 앞)으로
        넘겨 줄 수 있어, 그대로 두면 나중 버전(v12 삭제·v11 보정)이 옛 버전(v3)에 다시 덮어써진다. */
     usable.sort((a,b)=>(order[a.kind]-order[b.kind])||a.name.localeCompare(b.name,'en',{numeric:true}));
@@ -4152,7 +4158,7 @@ function vMore(){
   const M=[
     ['업무',[["go('insp')",'📋','법정검사·정비','법정검사',cnt('inspections')],["go('chk')",'✅','주기 체크','주기 체크리스트',cnt('checklists')],
       ["go('spare')",'🧰','예비품','예비품 재고',cnt('spares')],["go('budget')",'💰','예산','예산 집계',cnt('budget')],["go('stats')",'📈','실적 요약','실적 요약',''],
-      ["go('notes')",'🗒️','업무 메모','업무 메모',cnt('notes')]]],
+      ["go('notes')",'🗒️','업무 메모','업무 메모',cnt('notes')],["go('ecms')",'🛠️','ECMS 점검','ECMS 통신 점검','']]],
     ['문서·보고',[["moreDocsSheet()",'🗂️','도면·문서','도면·문서 관리',cnt('docs')],["driveFiles('')",'☁️','드라이브 파일','드라이브 파일',''],
       ["go('proc')",'📑','매뉴얼 진행','매뉴얼 진행 추적',''],["moreReportSheet()",'📝','보고서','보고서 생성',''],["moreHwpxSheet()",'📄','hwpx 양식','hwpx 양식 생성','']]],
     ['안전·법령',[["go('work')",'🔒','작업·LOTO','작업 서류·LOTO (작업 탭)',''],["go('law')",'📖','법령','법령 내비게이터',cnt('laws')],
@@ -7674,6 +7680,33 @@ async function vaultLoadCache(){
   out.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ko'));
   _vaultCache=out;
 }
+/* ================= v139: ECMS 통신 점검 카드 — 릴레이(IED)는 정상인데 ECMS에만 86·보라색이 남을 때의 점검 순서.
+   순서는 사내 'ECMS 통신오류 해결법' 문서 기준. 허브 IP·사례는 코드에 없고 JSON(pwr-ecms-v1) 주입 → meta 'ecmsHubs'. 허브 계정·비번은 문서/🔐 보안 금고에서 본다(앱에 안 적음). */
+const ECMS_STEPS=[
+  ['허브 포트 확인','해당 IED 광케이블이 꽂힌 허브 포트의 LED가 켜지고 깜박이는지 본다. 꺼져 있거나 불량이면 가까운 빈 포트로 옮겨 꽂고, 허브 번호와 포트 번호를 적어 둔다.'],
+  ['허브 설정에서 포트 열기','아래 표의 허브 IP로 브라우저 접속(인증서 경고는 계속 진행) → 관리자 로그인 → 좌측 Basic Settings › System에서 포트 상태 확인 → Basic Settings › Port Configuration에서 쓰려는 포트의 Port on 체크(안 쓰는 포트는 해제) → 화면 아래 Set → Reload.'],
+  ['IED 뒷면 광케이블 재결합','허브 설정 후에도 안 되면 IED 뒷면 광케이블을 뽑았다가 다시 꽂는다.'],
+  ['IED 전원 재투입','변화가 없으면 IED 제어전원을 껐다가 켠다(차단기 상태·인터록을 확인한 뒤).'],
+  ['ECMS 확인','ECMS에서 해당 칸의 알람 확인·리셋. 풀리지 않으면 ECMS 업체에 점 상태 확인 요청.']];
+function vEcms(){
+  const E=S._ecms||{hubs:[],cases:[]},hubs=E.hubs||[];
+  const groups=[...new Set(hubs.map(h=>h.area||''))];
+  const tbl=hubs.length?groups.map(g=>`<h3 style="margin:10px 0 4px">${esc(g||'허브')}</h3>`+hubs.filter(h=>(h.area||'')===g).map(h=>`
+    <div class="item"><div class="t"><div class="n">${esc(h.name)}</div><div class="d">${esc(h.ip||'')}${h.note?' · '+esc(h.note):''}</div></div>
+      <button class="btn ghost sm" onclick="navigator.clipboard.writeText('${esc(h.ip||'')}').then(()=>toast('주소 복사됨'),()=>toast('복사 실패'))">복사</button></div>`).join('')).join('')
+    :'<div class="muted">허브 표가 없습니다. 더보기 › 🩺 자가진단·초기데이터에서 <b>ecms_허브_v1.json</b>을 가져오세요.</div>';
+  const cases=(E.cases||[]).map(c=>`<div class="item"><div class="t"><div class="n">${esc(c.date||'')} · ${esc(c.title||'')}</div><div class="d">${esc(c.body||'')}</div></div></div>`).join('');
+  return `
+  <div class="card"><h2>🛠️ 이럴 때 쓰세요</h2>
+    <div class="d" style="line-height:1.6">릴레이(IED) 화면엔 86·트립이 없는데 <b>ECMS에만 86(보라색)</b>이 남아 있거나, ECMS의 <b>Device Connection Status가 ON/OFF를 반복</b>할 때.<br>
+    이 경우 보호계전기가 아니라 <b>허브–IED 통신</b>을 의심한다. 한 허브에 물린 IED 여러 대가 같이 이상하면 허브 포트·허브 쪽이다.</div></div>
+  <div class="card"><h2>점검 순서</h2>
+    ${ECMS_STEPS.map((s,i)=>`<div class="item" style="align-items:flex-start"><div class="t"><div class="n">${i+1}. ${esc(s[0])}</div><div class="d" style="white-space:normal">${esc(s[1])}</div></div></div>`).join('')}
+    <div class="section-note">허브 계정·비밀번호는 사내 해결법 문서 또는 🔐 보안 금고에서 확인하세요(앱에는 적지 않음). ECMS 표시가 틀려도 차단기 투입 전 현장 위치(SERVICE)·스프링·제어전원은 직접 확인한다.</div></div>
+  <div class="card"><h2>허브 주소</h2>${tbl}</div>
+  ${cases?`<div class="card"><h2>지난 사례</h2>${cases}</div>`:''}
+  <div class="botpad"></div>`;
+}
 function vVault(){
   if(!S._vaultKdf){
     return `<div class="card"><h2>🔐 보안 금고</h2>
@@ -8033,8 +8066,8 @@ function qrOpen(raw){
   if(!openDevice(ref)){S['_q_find-sr']=ref;go('find');toast('QR: '+ref+' — 목록에서 고르세요');}
 }
 const _navOf=v=>v==='tree'&&S._treeSubTab==='zone'?'find':({tree:'more',equip:'more',docfind:'more',insp:'home',chk:'home'})[v]||v;
-const VIEWS={find:vFind,work:vWork,home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault};
-const TITLES={find:'설비 찾기',work:'작업 — 현장 문서·LOTO',home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고'};
+const VIEWS={find:vFind,work:vWork,home:vHome,equip:vEquip,tree:vTree,insp:vInsp,chk:vChk,docfind:vDocFind,more:vMore,spare:vSpare,budget:vBudget,stats:vStats,study:vStudy,law:vLaw,proc:vProc,notes:vNotes,vault:vVault,ecms:vEcms};
+const TITLES={find:'설비 찾기',work:'작업 — 현장 문서·LOTO',home:'전력계통과 업무',docfind:'도면 찾기',equip:'설비 마스터',tree:'전원계통·차단범위',insp:'법정검사',chk:'주기 체크리스트',more:'더보기',spare:'예비품 재고',budget:'예산 집계',stats:'실적 요약',study:'계통 학습',law:'법령 내비게이터',proc:'매뉴얼 진행 추적',notes:'업무 메모',vault:'🔐 보안 금고',ecms:'ECMS 통신 점검'};
 /* v104 메뉴 사용 기록 — 이 기기 meta 'usage'에만(서버로 안 보냄). 2주쯤 쓴 뒤 안 쓰는 메뉴를 고르는 근거. 더보기 › 자가진단 › 📊 */
 function useHit(k){
   const u=S._use||(S._use={since:todayStr(),n:{}});u.n[k]=(u.n[k]||0)+1;
