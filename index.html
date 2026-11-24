@@ -489,7 +489,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v150'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v151'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -8342,9 +8342,9 @@ function go(v){
 }
 function render(){
   $('#app').innerHTML=(VIEWS[S.view]||vHome)();
-  $('#hd-title').textContent=TITLES[S.view]||'';
+  $('#hd-title').textContent=S.view==='home'?'광주전남 '+(S._dept||'전력계통과'):(TITLES[S.view]||''); // v151: 소속 과 선택과 연동
   $('#hd-sub').textContent=todayStr()+' ('+'일월화수목금토'[new Date().getDay()]+')';
-  const tg=$('#hd-tag');if(tg)tg.textContent=S.view==='home'?'발전소 전기설비 유지보수 업무지원':''; // v106 (사내망 PC 헤더엔 없을 수 있음)
+  const tg=$('#hd-tag');if(tg)tg.textContent=''; // v151: 부제 삭제(v106 '발전소 전기설비 유지보수 업무지원')
   const nb=[...document.querySelectorAll('#nav button')],on=nb.some(b=>b.dataset.v===S.view)?S.view:_navOf(S.view);
   nb.forEach(b=>b.classList.toggle('on',b.dataset.v===on));
   if(S.view==='tree'&&(S._treeSubTab||'path')==='diagram')requestAnimationFrame(setupTreeDiagram);
