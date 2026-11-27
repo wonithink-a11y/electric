@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v204'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v205'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1309,19 +1309,27 @@ async function gcCall(q){
   return j;
 }
 // store 'todos'|'issues' 레코드를 캘린더에 맞춘다. del=true면 일정 삭제(레코드는 호출한 쪽이 지움)
-async function gcSync(store,obj,del){
+/* v205(v2 순위 11): 같은 기록의 캘린더 반영은 하나씩 순서대로(기록 id별 줄) — 첫 반영이 끝나 gcalId 가 붙기 전에 두 번째가 시작되어
+   일정이 두 개 생기는 것(S-10) 방지. 앞 반영이 받은 일정 id 는 기록이 다른 객체로 바뀌어도 쓰도록 키별로 기억. */
+const _gcQ=new Map(),_gcIds={};
+function gcSync(store,obj,del){
+  const k=store+'|'+obj.id,p=(_gcQ.get(k)||Promise.resolve()).catch(()=>{}).then(()=>_gcSync(store,obj,del,k));
+  _gcQ.set(k,p);p.catch(()=>{}).then(()=>{if(_gcQ.get(k)===p)_gcQ.delete(k);});return p;
+}
+async function _gcSync(store,obj,del,k){
   if(!gcOn())return;
+  if(!obj.gcalId&&_gcIds[k])obj.gcalId=_gcIds[k];
   const day=del?null:store==='todos'?obj.date:store==='issues'?obj.due:obj.nextDue; // 법정검사(v103)는 다음 기한
   if(!day&&!obj.gcalId)return;
   const save=async()=>{if(!del&&S[store].some(x=>x.id===obj.id))await saveRec(store,obj,true);}; // 그 사이 지운 기록은 되살리지 않는다
   try{
-    if(!day){await gcCall({op:'delete',id:obj.gcalId});delete obj.gcalId;await save();return;}
+    if(!day){await gcCall({op:'delete',id:obj.gcalId});delete obj.gcalId;delete _gcIds[k];await save();return;}
     const e=new Date(day+'T00:00:00');e.setDate(e.getDate()+1); // 종일 일정 끝날 = 다음 날(제외)
     const ins=store==='inspections',tm=(store==='todos'||store==='issues')&&obj.time?obj.time:''; // v154: 시간 있는 할 일 → 그 시간에 끝나는 30분 일정(새 스크립트), 구 스크립트는 제목 '(HH:MM까지)'만 보이는 종일 일정
     const r=await gcCall({op:'upsert',id:obj.gcalId||'',
       title:ins?'[법정검사] '+obj.name:(obj.done?'✔ ':'')+(store==='issues'?'[현안] ':'')+obj.title+(tm?' ('+tm+'까지)':''),
       desc:ins?[obj.cycle,obj.law].filter(Boolean).join(' · '):obj.note||'',start:day,end:_dstr(e),time:tm});
-    if(r.id!==obj.gcalId){obj.gcalId=r.id;await save();}
+    _gcIds[k]=r.id;if(r.id!==obj.gcalId){obj.gcalId=r.id;await save();}
   }catch(er){toast('구글 캘린더 반영 실패: '+er.message);}
 }
 function gcDel(store,id){const o=S[store].find(x=>x.id===id);if(o)gcSync(store,o,true);} // S에서 빼기 전에 부를 것
