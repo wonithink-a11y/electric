@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v205'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v207'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -533,7 +533,12 @@ function openDB(){
 function tx(store,mode='readonly'){return db.transaction(store,mode).objectStore(store)}
 function dbAll(store){return new Promise((res,rej)=>{const r=tx(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 function dbGet(store,id){return new Promise((res,rej)=>{const r=tx(store).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-function dbPut(store,obj){return new Promise((res,rej)=>{const r=tx(store,'readwrite').put(obj);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+function _dbPutRaw(store,obj){return new Promise((res,rej)=>{const r=tx(store,'readwrite').put(obj);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
+/* v207(v2 순위 12 경량판): 동기화 안 가는 9개 스토어는 저장할 때마다 한 곳(여기)에서 updatedAt 을 찍는다 → 교환 파일 병합(mergeRec)이
+   '더 최근에 고친 쪽'을 알 수 있음. 저장 함수 수십 곳을 saveRec 으로 바꾸지 않아도 되고, 화면 코드는 그대로. 삭제 표시는 아직 안 씀(교환 파일로는 삭제가 안 퍼짐).
+   교환 파일 병합·복원은 받은 updatedAt 을 지키려고 _dbPutRaw·dbBulkPut 을 직접 쓴다. */
+const _TS_STORES=new Set(['measurements','faults','lotologs','spares','budget','permits','procs','notes','dwgnotes']);
+function dbPut(store,obj){if(_TS_STORES.has(store)&&obj&&typeof obj==='object'&&!obj.deleted)obj.updatedAt=Date.now();return _dbPutRaw(store,obj);}
 function dbDel(store,id){return new Promise((res,rej)=>{const r=tx(store,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 function dbClear(store){return new Promise((res,rej)=>{const r=tx(store,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})}
 function dbBulkPut(store,arr){
@@ -793,7 +798,7 @@ async function mergeExchange(d){ // 반환 {add,upd,same,bad}
       if(!mine&&win.deleted&&_v2Old(win)){r.same++;continue;}
       if(mine&&_sj(win)===_sj(mine)){r.same++;continue;}
       mine?r.upd++:r.add++;
-      await dbPut(s,win);loc.set(win.id,win);
+      await _dbPutRaw(s,win);loc.set(win.id,win);
       if(V2_SYNC.includes(s))fbPush(s,win,true);
     }
   }
@@ -6781,10 +6786,11 @@ function editSpare(id){
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveSpare('${x?.id||''}')">저장</button></div>`);
 }
+const _r6=x=>Math.round(Number(x)*1e6)/1e6; // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
 async function saveSpare(id){
   const name=$('#sp-n').value.trim();if(!name){toast('품명을 입력하세요');return}
   const obj=id?S.spares.find(v=>v.id===id):{id:'SP'+uid()};
-  const num=v=>v===''?'':Number(v);
+  const num=v=>v===''?'':_r6(v);
   Object.assign(obj,{name,spec:$('#sp-s').value.trim(),qty:num($('#sp-q').value),unit:$('#sp-u').value.trim()||'EA',
     minQty:num($('#sp-m').value),location:$('#sp-l').value.trim(),equipName:$('#sp-e').value.trim(),
     note:$('#sp-note').value.trim(),updated:todayStr()});
@@ -6871,7 +6877,7 @@ function editInv(id){
 }
 async function saveInv(id){
   const matNo=$('#iv-m').value.trim();if(!matNo){toast('자재번호를 입력하세요');return}
-  const num=v=>v===''?'':Number(v);
+  const num=v=>v===''?'':_r6(v);
   const obj=id?S.spares.find(v=>v.id===id):{id:'IV'+uid(),src:'inv',sheet:S._invSheet||'본사',seq:999};
   Object.assign(obj,{matNo,name:$('#iv-n').value.trim(),assetNo:$('#iv-a').value.trim(),unit:$('#iv-u').value.trim()||'EA',
     qty:num($('#iv-q').value),real:num($('#iv-r').value),location:$('#iv-l').value.trim(),note:$('#iv-note').value.trim(),
@@ -7066,7 +7072,7 @@ async function saveSpareReal(id){
   const el=document.getElementById('rq_'+id);if(!el)return;
   const s=S.spares.find(x=>x.id===id);if(!s)return;
   const was=(s.real!=null&&s.real!=='');
-  s.real=(el.value===''?'':Number(el.value));s.updated=todayStr();
+  s.real=(el.value===''?'':_r6(el.value));s.updated=todayStr();
   await dbPut('spares',s);
   const chk=(s.real!==''&&s.real!=null);
   const row=document.getElementById('row_'+id);
@@ -7095,7 +7101,7 @@ async function clearSpareReal(id){
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
   const s=S.spares.find(x=>x.id===id);if(!s)return;
-  s.real=(v===''?'':Number(v));s.updated=todayStr();
+  s.real=(v===''?'':_r6(v));s.updated=todayStr();
   await dbPut('spares',s);
 }
 
@@ -7794,6 +7800,7 @@ const MEAS_TYPES=[
 function measType(k){return MEAS_TYPES.find(t=>t.k===k)||MEAS_TYPES[MEAS_TYPES.length-1];}
 function measJudge(m){
   const t=measType(m.type); if(t.warn==null||m.value===''||m.value==null)return '';
+  if(m.unit&&t.u&&m.unit!==t.u)return ''; // v206: 기본 단위와 다른 단위의 값은 판정하지 않음(변환 안 함)
   const v=Number(m.value);
   if(t.dir==='hi')return v<t.warn?'주의':'양호';
   if(t.dir==='lo')return v>t.warn?'주의':'양호';
@@ -7863,8 +7870,10 @@ function addMeas(equipId,type){
 }
 async function saveMeas(equipId){
   const v=$('#me-v').value;if(v===''){toast('값을 입력하세요');return;}
-  const type=$('#me-t').value;
-  const obj={id:'ME'+uid(),equipId,type,date:$('#me-d').value||todayStr(),value:Number(v),unit:$('#me-u').value.trim()||measType(type).u,note:$('#me-n').value.trim()};
+  const type=$('#me-t').value,du=measType(type).u,un=$('#me-u').value.trim()||du;
+  if(!isFinite(Number(v))){toast('숫자로 입력하세요');return;}
+  if(du&&un!==du&&!(await confirmModal('단위가 기본('+du+')과 다릅니다 ('+un+'). 값은 변환되지 않고, 양호·주의 판정에서 제외됩니다. 그대로 저장할까요?')))return;
+  const obj={id:'ME'+uid(),equipId,type,date:$('#me-d').value||todayStr(),value:_r6(v),unit:un,note:$('#me-n').value.trim()};
   await dbPut('measurements',obj);S.measurements.push(obj);
   openEquip(equipId);toast('측정값 저장');
 }
@@ -8079,7 +8088,7 @@ function useSpare(backEquipId){
 async function applyUseSpare(backEquipId){
   const sp=S.spares.find(x=>x.id===$('#us-s').value);if(!sp){toast('품목 선택');return;}
   const q=Number($('#us-q').value||0);if(!(q>0)){toast('수량을 확인하세요');return;}
-  sp.qty=Number(sp.qty||0)-q;
+  sp.qty=_r6(Number(sp.qty||0)-q);
   sp.hist=sp.hist||[];sp.hist.push({date:todayStr(),delta:-q,note:$('#us-n').value.trim()});
   sp.updated=todayStr();
   await dbPut('spares',sp);
