@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v177'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v178'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3878,6 +3878,7 @@ function nodeMenu(id){
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
+    ${n.type==='bus'?devSec(id,'',null):''}
     <div class="hubb">${n.type==='bus'||n.type==='source'?'':`<button class="btn" onclick="openCard('${id}')">🪪 설비 카드</button>`}<button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
       ${logicByTag(n)?`<button class="btn" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
       ${n.type==='load'||isBrk?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
@@ -8437,12 +8438,12 @@ function vFind(){
   const grp=pl=>{const L=Z.filter(z=>(z.plant||'PB')===pl);return L.length?`<div class="muted" style="margin:8px 0 4px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div><div class="chips" style="flex-wrap:wrap">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
   const recRow=h=>`<div class="tkid" onclick="openDevice('${esc(h.key)}')"><span class="tkid-ic">${h.f?'★':'🕘'}</span><span class="tkid-nm">${esc(h.label)}</span><span class="tkid-arr">›</span></div>`;
   const fav=S._fav||[],rec=[...fav.map(x=>({...x,f:1})),...(_rec().hubs||[]).filter(h=>!fav.some(f=>f.key===h.key))].slice(0,10);
-  const tab=S._findTab||'map',seg=[['map','건물 지도'],['tree','계통·설비동'],['dwg','도면']];
+  const tab=S._findTab||'map',seg=[['map','지도'],['tree','설비동'],['dwg','층 도면'],['rec','최근·★']];
   const panel=tab==='map'?(Z.length?smapCard(Z)||`<div class="card"><h2>🏢 건물로 둘러보기</h2>${grp('PB')}${grp('DH')}</div>`:''):
+    tab==='rec'?`<div class="card"><h2>최근·즐겨찾기</h2>${rec.length?rec.map(recRow).join(''):'<div class="empty">아직 없음</div>'}</div>`:
     tab==='tree'?`<div class="card"><h2>설비동</h2>${grp('PB')}${grp('DH')}<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" onclick="S._treeSubTab='path';go('tree')">🔌 계통 트리</button><button class="btn ghost sm" onclick="go('equip')">📋 설비 마스터 목록</button></div></div>`:
     `<div class="card"><h2>층 도면</h2>${bldFloorList()}<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" onclick="go('docfind')">📐 도면 찾기 (단선도·PDF)</button></div></div>`;
-  return `<div class="card"><h2>🔍 설비 찾기</h2>${devSearchBox('find-sr')}</div>
-  ${rec.length?`<div class="card"><h2>최근·즐겨찾기</h2>${rec.slice(0,3).map(recRow).join('')}${rec.length>3?`<details><summary class="muted" style="cursor:pointer;padding:6px 2px">더 보기 ${rec.length-3}</summary>${rec.slice(3).map(recRow).join('')}</details>`:''}</div>`:''}
+  return `<div class="card" style="padding:8px 10px">${devSearchBox('find-sr')}</div>
   <div class="row" style="gap:6px;margin:0 0 8px">${seg.map(([k,l])=>`<button class="btn ${tab===k?'':'ghost'} grow" onclick="S._findTab='${k}';render()">${l}</button>`).join('')}</div>
   ${panel}
   <div class="botpad"></div>`;
@@ -8456,23 +8457,23 @@ function bldOpenFl(b,f){S._bld=b;S._bldFl=f;S._bfZ=null;render();scrollTo(0,0);}
 function smapCard(Z){
   const M=S._sitemap;if(!M||!M.img)return '';
   const sat=S._smMode==='sat'&&M.sat,I=sat?M.sat:M,sp=(M.spots||[]).filter(t=>!t.zone||Z.some(z=>z.id===t.zone)),rest=Z.filter(z=>!sp.some(t=>t.zone===z.id));
-  const z=S._smZ||(innerWidth<700?(sat?0.7:0.5):(Math.min(innerWidth,1400)-48)/I.w),k=sat?0.75:1; // 위성 사진은 도면보다 작아서 글자·선을 줄임
+  const z=S._smZ||(innerWidth<700?(sat?0.42:0.3):(Math.min(innerWidth,1400)-48)/I.w),k=sat?0.75:1; // 위성 사진은 도면보다 작아서 글자·선을 줄임
   const g=sp.map(t=>{const P=sat?t.polys:t.rects.map(q=>[[q[0],q[1]],[q[0]+q[2],q[1]],[q[0]+q[2],q[1]+q[3]],[q[0],q[1]+q[3]]]);if(!P)return '';
     const fs=(t.fs||28)*k,on=!!(t.zone||t.bld),c=P[0].reduce((a,q)=>[a[0]+q[0]/4,a[1]+q[1]/4],[0,0]); // zone 없는 건물은 이름만 표시(누를 수 없음)
     return `<g${on?` class="pf-sh" onclick="mapGo('${esc(t.zone)}','${esc(t.flow||'')}','${esc(t.bld||'')}')"`:''}><title>${esc(t.name)}</title>${P.map(q=>`<polygon points="${q.map(v=>v.join(',')).join(' ')}" fill="${on?'rgba(31,111,255,.25)':'rgba(255,255,255,.10)'}" stroke="${on?'#1f6fff':(sat?'#ddd':'#8d949c')}" stroke-width="${(on?4:2)*k}"/>`).join('')}<text x="${c[0]}" y="${c[1]+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="${6*k}">${esc(t.name)}</text></g>`;}).join('');
-  return `<div class="card"><h2>🏢 건물로 둘러보기</h2><div class="row" style="gap:6px;margin:0 0 6px">${M.sat?`<button class="btn ${sat?'ghost':''} sm" onclick="S._smMode='plan';S._smZ=null;render()">도면</button><button class="btn ${sat?'':'ghost'} sm" onclick="S._smMode='sat';S._smZ=null;render()">위성</button>`:''}<div class="grow"></div><button class="btn ghost sm" onclick="smZoom(0.8)">−</button><button class="btn ghost sm" onclick="smZoom(1.25)">＋</button><button class="btn ghost sm" onclick="smZoom(0)">맞춤</button></div>
-    <div class="pf-cv"><svg id="sm-svg" data-w="${I.w}" viewBox="0 0 ${I.w} ${I.h}" style="width:${Math.round(I.w*z)}px"><image href="${I.img}" width="${I.w}" height="${I.h}"/>${g}</svg></div>
+  return `<div class="card" style="padding:8px 10px"><div class="row" style="gap:6px;margin:0 0 6px">${M.sat?`<button class="btn ${sat?'ghost':''} sm" onclick="S._smMode='plan';S._smZ=null;render()">도면</button><button class="btn ${sat?'':'ghost'} sm" onclick="S._smMode='sat';S._smZ=null;render()">위성</button>`:''}<div class="grow"></div><button class="btn ghost sm" onclick="smZoom(0.8)">−</button><button class="btn ghost sm" onclick="smZoom(1.25)">＋</button><button class="btn ghost sm" onclick="smZoom(0)">맞춤</button></div>
+    <div class="pf-cv" style="max-height:max(230px,calc(100vh - 300px))"><svg id="sm-svg" data-w="${I.w}" viewBox="0 0 ${I.w} ${I.h}" style="width:${Math.round(I.w*z)}px"><image href="${I.img}" width="${I.w}" height="${I.h}"/>${g}</svg></div>
     ${rest.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${rest.map(x=>`<button class="chip" onclick="findZone('${x.id}')">${esc(x.name)}</button>`).join('')}</div>`:''}</div>`;
 }
 /* v171: 건물·층 — 지도에서 건물(bld)을 누르면 층 목록, 층을 누르면 층 평면도(데이터/건물층_v1.json, build_bldg.py) */
 function mapGo(zone,flow,bld){if(bld&&_bld(bld))bldOpen(bld);else findZone(zone,flow||undefined);}
 function _bld(id){return ((S._bldg||{}).buildings||[]).find(b=>b.id===id);}
-function bldOpen(id){S._bld=id;S._bldFl=null;render();scrollTo(0,0);}
-function bldBack(){if(S._bldFl)S._bldFl=null;else S._bld=null;render();scrollTo(0,0);}
+function bldOpen(id){const b=_bld(id),f=b&&(b.floors.find(x=>x.id==='1F')||b.floors[0]);S._bld=id;S._bldFl=f?f.id:null;S._bfZ=null;render();scrollTo(0,0);} // 층 고르는 화면 없이 바로 평면도
+function bldBack(){S._bld=null;S._bldFl=null;render();scrollTo(0,0);}
 function bldView(){
   const b=_bld(S._bld),fl=b.floors.find(f=>f.id===S._bldFl),Zs=S._zones||[];
   const zc=ids=>{const L=Zs.filter(z=>(ids||[]).includes(z.id));return L.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
-  const head=`<div class="row" style="gap:6px;align-items:center;margin-bottom:8px"><button class="btn ghost sm" onclick="bldBack()">‹ 뒤로</button><b>${esc(b.name)}${fl?' · '+esc(fl.name):''}</b></div>`;
+  const head=`<div class="row" style="gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><button class="btn ghost sm" onclick="bldBack()">‹ 뒤로</button><b class="grow">${esc(b.name)}</b>${b.floors.length>1?b.floors.slice().reverse().map(f=>`<button class="btn ${f.id===S._bldFl?'':'ghost'} sm" onclick="S._bldFl='${f.id}';S._bfZ=null;render()">${esc(f.name)}</button>`).join(''):''}</div>`;
   if(!fl)return head+`<div class="card">${b.floors.map(f=>`<div class="tkid" onclick="S._bldFl='${f.id}';S._bfZ=null;render();scrollTo(0,0)"><span class="tkid-ic" style="font-weight:600;min-width:28px">${esc(f.id)}</span><span class="tkid-nm">${esc(f.name)}<span class="tpath-meta">${esc(f.spots.filter(s=>s.on).map(s=>s.name).join(' · '))}</span></span><span class="tkid-arr">›</span></div>`).join('')}</div>
     <div class="card"><h2>설비동</h2>${zc(b.zones)}</div><div class="botpad"></div>`;
   const z=S._bfZ||_bfFit(fl),idx=fl.spots.map((t,i)=>[t,i]);
@@ -8489,6 +8490,7 @@ function bfZoom(k){
 }
 function bldSpot(fid,i){
   const b=_bld(S._bld),f=b&&b.floors.find(x=>x.id===fid),t=f&&f.spots[i];if(!t)return;
+  if(t.dev&&!t.eq&&openDevice(t.dev))return; // 설비 카드가 정해져 있으면 바로 연다(창 없이)
   const rows=t.eq||[{no:t.no,name:t.name,spec:t.spec,q:t.q,dev:t.dev}];
   openModal(`<h3>${esc(t.name)}</h3><div class="muted">${esc(b.name)} · ${esc(f.name)}</div>
     ${rows.map(e=>`<div class="item"><div class="t"><div class="n" style="white-space:normal">${e.no?e.no+'. ':''}${esc(e.name)}</div><div class="d" style="white-space:normal">${esc(e.spec||'')}</div></div>${e.dev?`<button class="btn sm" onclick="closeModal();openDevice('${esc(e.dev)}')">설비 카드</button>`:''}${e.q?`<button class="btn ghost sm" onclick="bldFind('${esc(e.q)}')">찾기</button>`:''}</div>`).join('')}
@@ -8573,6 +8575,7 @@ function useSheet(){
 }
 function go(v){
   if(v!==S.view)useHit('화면:'+(TITLES[v]||v));
+  if(v==='find'&&S.view!=='find'){S._findTab='map';S._bld=null;S._bldFl=null;} // 설비 찾기를 열면 항상 위치 찾는 도면(건물 지도)부터
   const st=S._navStack=S._navStack||[];
   if(v!==S.view){
     if(v==='home') st.length=0;                          // 홈은 최상위 → 이력 초기화
