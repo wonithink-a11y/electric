@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v183'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v184'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -560,6 +560,7 @@ async function loadAll(){
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{S._bldg=await dbGet('meta','bldg');}catch(e){S._bldg=null;} // v171 건물·층 도면
+  try{S._fdcats=await dbGet('meta','fdcats');}catch(e){S._fdcats=null;} // v184 직접 만든 문서 분류
   try{S._devLinks=await dbGet('meta','devlinks');}catch(e){S._devLinks=null;} // v175 설비 카드 문서 연결
   try{S._sitemap=await dbGet('meta','sitemap');}catch(e){S._sitemap=null;} // v169 현장 배치도(설비 찾기 건물 지도)
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
@@ -5946,21 +5947,29 @@ function fdocCard(){
 }
 /* v182 문서 분류 — 설비(devKey) > 설비동(zoneId) > 미분류. 설비는 문서를 저장할 때 자동(카드에서 쓰면 그 설비, 아니면 '설비 품목·대상 설비' 글),
    설비동은 설비·'설비 장소' 글에서 알아냄. 자동으로 안 되면 문서 줄의 분류 칩을 눌러 직접 고른다(수동은 d.zoneSet·d.devSet 으로 기억). */
+const FD_XCATS=[['FGT동',/FGT|연소가스/i],['축열조',/축열조/],['DH 수전설비(UAT)',/UAT|수전설비/],['PB 송수전설비',/송수전|GST|SUT/],['비상발전기실·HVAC',/비상\s*발전|EDG|HVAC\s*ROOM/i],['냉각탑(ACC)',/냉각탑|\bACC\b/i],['통신·ECMS',/ECMS|통신/i],['공통·기타',null]];
+function fdCats(){ // 문서 분류 목록 [{id,name,re}] — 설비동 + 기본 추가 + 직접 추가한 분류(meta fdcats)
+  const base=(S._zones||[]).map(z=>({id:z.id,name:z.name})),ex=FD_XCATS.map(([n,re])=>({id:'X:'+n,name:n,re})),have=new Set(FD_XCATS.map(x=>x[0]));
+  const mine=((S._fdcats||{}).list||[]).filter(n=>!have.has(n)).map(n=>({id:'X:'+n,name:n}));
+  return [...base,...ex,...mine];
+}
 function fdZoneOf(d){
-  const Z=S._zones||[];
-  if(d.zoneSet&&Z.some(z=>z.id===d.zoneId))return d.zoneId;
+  const C=fdCats();
+  if(d.zoneSet&&C.some(z=>z.id===d.zoneId))return d.zoneId;
   if(d.devKey){const r=resolveDev(d.devKey),n=r&&(r.n||(r.e&&_eqNode(r.e))),zp=n&&_cardZone(n);if(zp)return zp.z.id;}
-  const v=d.v||{},t=(v.place||'')+' '+(v.place_s||'')+' '+(v.equip||'');
-  const z=Z.find(z=>t.includes(z.name));if(z)return z.id;
+  const v=d.v||{},t=(v.place||'')+' '+(v.place_s||'')+' '+(v.equip||'')+' '+(d.content||'');
+  const Z=C.filter(z=>!z.id.startsWith('X:')),z=Z.find(z=>t.includes(z.name));if(z)return z.id;
   const w=Z.filter(z=>{const k=z.name.replace(/^(PB|DH|SRF|ST)\s+/,'');return k.length>=3&&t.includes(k);});
-  return w.length===1?w[0].id:'';
+  if(w.length===1)return w[0].id;
+  const x=C.find(z=>z.id.startsWith('X:')&&(z.re?z.re.test(t):t.includes(z.name)));
+  return x?x.id:'';
 }
 function fdDevName(d){if(!d.devKey)return '';const r=resolveDev(d.devKey);return r?((r.n&&r.n.name)||(r.e&&r.e.name)||'').replace(/\s*\(.*$/,''):'';}
-function fdClsLabel(d){const z=(S._zones||[]).find(z=>z.id===fdZoneOf(d)),dn=fdDevName(d);return z?z.name+(dn?' › '+_kdShort(dn,16):''):(dn?_kdShort(dn,20):'미분류');}
+function fdClsLabel(d){const z=fdCats().find(z=>z.id===fdZoneOf(d)),dn=fdDevName(d);return z?z.name+(dn?' › '+_kdShort(dn,16):''):(dn?_kdShort(dn,20):'미분류');}
 function fdChipsHtml(){
   const all=S.notes.filter(x=>x.kind==='fdoc'),cnt={},f=S._fdz||'';let none=0;
   all.forEach(d=>{const z=fdZoneOf(d);if(z)cnt[z]=(cnt[z]||0)+1;else none++;});
-  const Z=(S._zones||[]).filter(z=>cnt[z.id]),chip=(k,l,n,hot)=>`<button class="chip${f===k?' on':''}" style="${hot?'border-color:var(--warn,#e0a030)':''}" onclick="S._fdz=S._fdz==='${k}'?'':'${k}';$('#fd-chips').innerHTML=fdChipsHtml();$('#fd-list').innerHTML=fdListHtml()">${l} ${n}</button>`;
+  const Z=fdCats().filter(z=>cnt[z.id]),chip=(k,l,n,hot)=>`<button class="chip${f===k?' on':''}" style="${hot?'border-color:var(--warn,#e0a030)':''}" onclick="S._fdz=S._fdz==='${k}'?'':'${k}';$('#fd-chips').innerHTML=fdChipsHtml();$('#fd-list').innerHTML=fdListHtml()">${l} ${n}</button>`;
   const ty=Object.entries(FDOC_TYPES).map(([k,t])=>{const n=all.filter(d=>d.type===k).length,on=S._fdt===k;return `<button class="chip${on?' on':''}" onclick="S._fdt=S._fdt==='${k}'?'':'${k}';$('#fd-chips').innerHTML=fdChipsHtml();$('#fd-list').innerHTML=fdListHtml()">${t.ic} ${t.short} <b>${n}</b></button>`;}).join('');
   return `<div class="chips" style="flex-wrap:wrap;margin-bottom:6px">${ty}</div><div class="chips" style="flex-wrap:wrap;margin-bottom:6px">${none?chip('_none','미분류',none,1):''}${Z.map(z=>chip(z.id,z.name,cnt[z.id])).join('')}</div>`;
 }
@@ -5983,7 +5992,8 @@ function fdClsPick(id,from){ // 문서 분류를 직접 고르는 창: 설비동
   openModal(`<h3>📍 문서 분류</h3><div class="muted" style="margin-bottom:6px">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
     <div class="muted">지금: ${esc(fdClsLabel(d))}${d.zoneSet||d.devSet?' (직접 지정)':''}</div>
     <div class="muted" style="margin-top:10px">설비동으로 분류</div>
-    <div class="chips" style="flex-wrap:wrap;margin-top:4px">${(S._zones||[]).map(z=>`<button class="chip${z.id===cur?' on':''}" onclick="fdClsZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>
+    <div class="chips" style="flex-wrap:wrap;margin-top:4px">${fdCats().map(z=>`<button class="chip${z.id===cur?' on':''}" onclick="fdClsZone('${esc(z.id)}')">${esc(z.name)}</button>`).join('')}</div>
+    <div class="row" style="gap:6px;margin-top:8px"><input id="fc-new" class="grow" placeholder="없는 분류는 새로 만들기 (예: 변전실)" autocomplete="off"><button class="btn ghost sm" onclick="fdClsNew()">＋ 만들기</button></div>
     <div class="muted" style="margin-top:10px">또는 설비로 지정</div>
     <input id="fc-q" placeholder="설비 이름·태그" style="width:100%;margin:4px 0" oninput="fdClsList()" autocomplete="off"><div id="fc-l"></div>
     <div class="row" style="margin-top:10px;gap:6px">${d.zoneSet||d.devSet?`<button class="btn ghost sm" onclick="fdClsReset()">자동으로 되돌리기</button>`:''}<div class="grow"></div><button class="btn sm" onclick="fdClsDone()">닫기</button></div>`);
@@ -5993,6 +6003,11 @@ function fdClsList(){
   document.getElementById('fc-l').innerHTML=L.map(h=>`<div class="item click" onclick="fdClsDev('${esc(h.ref)}')"><div class="t"><div class="n" style="white-space:normal">${esc(h.t)}</div>${h.d?`<div class="d">${esc(h.d)}</div>`:''}</div></div>`).join('');
 }
 async function _fdClsSave(fn){const [id]=window._fcp,d=S.notes.find(x=>x.id===id);if(!d)return;fn(d);await dbPut('notes',d);fdClsDone();}
+async function fdClsNew(){ // 새 분류를 만들어 이 문서에 바로 지정(다음부터 목록에 계속 나옴)
+  const n=(document.getElementById('fc-new').value||'').trim().replace(/[<>"']/g,'');if(!n){toast('분류 이름을 적으세요');return;}
+  const L=[...((S._fdcats||{}).list||[])];if(!L.includes(n)&&!FD_XCATS.some(x=>x[0]===n)&&!(S._zones||[]).some(z=>z.name===n)){L.push(n);S._fdcats={id:'fdcats',list:L};await dbPut('meta',S._fdcats);}
+  fdClsZone('X:'+n);
+}
 function fdClsZone(zid){_fdClsSave(d=>{d.zoneId=zid;d.zoneSet=true;});}
 function fdClsDev(ref){const k=_devKeyOfRes(resolveDev(ref));if(!k){toast('이 설비는 지정할 수 없습니다');return;}_fdClsSave(d=>{d.devKey=k;d.devSet=true;d.zoneSet=false;});}
 function fdClsReset(){_fdClsSave(d=>{d.zoneSet=false;d.zoneId='';if(d.devSet){d.devKey='';d.devSet=false;}});}
