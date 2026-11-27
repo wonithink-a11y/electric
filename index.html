@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v185'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v186'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2143,6 +2143,7 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
     ${measSummaryHtml(id)}
     <hr>
     <div class="muted">설비 사진 (명판·현장, 기기 로컬)</div>
+    ${devLoc('',id,null,{short:e.tagNo||e.name||''})}
     ${devSec('',id,null,{short:(e.tagNo||e.name||'').replace(/['"\\]/g,''),tk:_normTag(e.tagNo||e.name||'')})}
     <hr>
     <div class="row"><h3 style="font-size:14px" class="grow">고장·조치 이력 (${faults.length})</h3>
@@ -3719,6 +3720,23 @@ function _devKeyOfText(v){ // 문서의 대상 설비 글 → 설비 키(정확�
   for(const t of [v.equip_t,v.place_t,v.equip,v.place]){if(!t)continue;const k=_devKeyOfRes(resolveDev(t));if(k)return k;}
   return '';
 }
+/* v186 설비 카드 '📍 위치' 한 줄 — 층 도면에 이 설비가 연결돼 있으면 "건물 · 층 · 이름", 아니면 설비동. 누르면 지도·층 도면에서 그 자리를 주황색으로 보여 줌. */
+function devLoc(id,eid,load,opt){
+  const key=eid||(load&&load.id)||id,ids=new Set([..._devAlias(key,(opt||{}).short),id,eid,load&&load.id].filter(Boolean));
+  let hit=null;
+  for(const b of ((S._bldg||{}).buildings||[]))for(const f of b.floors)f.spots.forEach((sp,i)=>{if(!hit&&(sp.eq||[sp]).some(e=>e.dev&&ids.has(e.dev)))hit={b,f,sp,i};});
+  const n=(id&&nodeById(id))||(eid&&((S.equipment.find(e=>e.id===eid)&&_eqNode(S.equipment.find(e=>e.id===eid)))||null)),zp=n&&_cardZone(n);
+  if(!hit&&!zp)return '';
+  const txt=hit?`${hit.b.name} · ${hit.f.name}${hit.sp.name?' · '+hit.sp.name:''}`:zp.z.name,go=hit?`${hit.b.id}|${hit.f.id}|${hit.i}`:`z|${zp.z.id}`;
+  return `<div style="margin:6px 0"><button class="chip" onclick="devLocGo('${esc(go)}')">📍 ${esc(txt)}</button></div>`;
+}
+function devLocGo(a){
+  const [b,f,i]=a.split('|');closeModal();
+  if(b==='z'){findZone(f);return;}
+  S._findTab='map';if(S.view!=='find')go('find');
+  S._bld=b;S._bldFl=f;S._bfZ=null;S._hl={f,i:+i};render();scrollTo(0,0);
+  setTimeout(()=>{const r=document.querySelector('#bf-svg .hl-rect');if(r)r.scrollIntoView({block:'center',inline:'center'});},120);
+}
 function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[],o=opt||{};
@@ -3844,6 +3862,7 @@ function openCard(id){
       ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
       <button class="btn ghost sm" onclick="fdFor('${esc(short)}')">＋ 현장 문서</button>
       <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(short)}')">＋ 할 일</button></div>
+    ${devLoc(id,eid,load,{short})}
     ${devSec(id,eid,load,{short,tk})}
     ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
     ${sec('🔌 정전 영향',impH,false)}
@@ -3860,6 +3879,7 @@ function openCard(id){
       ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
       <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(_kdShort(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''))}')">＋ 할 일</button>
       <button class="btn ghost sm" onclick="closeModal();openHub('${id}')">📐 도면·로직</button></div>
+    ${devLoc(id,eid,load,{short})}
     ${devSec(id,eid,load,{short,tk})}
     ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
     ${sec('🔌 정전 영향',impH,true)}
@@ -3904,6 +3924,7 @@ function nodeMenu(id){
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
+    ${n.type==='bus'?devLoc(id,'',null,{short:(n.name||'').replace(/\s*\(.*$/,'')}):''}
     ${n.type==='bus'?devSec(id,'',null,{short:_kdShort((n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''),tk:_normTag((n.name||'').replace(/\s*\(.*$/,''))}):''}
     <div class="hubb">${n.type==='bus'||n.type==='source'?'':`<button class="btn" onclick="openCard('${id}')">🪪 설비 카드</button>`}<button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
       ${logicByTag(n)?`<button class="btn" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
@@ -8619,8 +8640,8 @@ function smapCard(Z){
 /* v171: 건물·층 — 지도에서 건물(bld)을 누르면 층 목록, 층을 누르면 층 평면도(데이터/건물층_v1.json, build_bldg.py) */
 function mapGo(zone,flow,bld){if(bld&&_bld(bld))bldOpen(bld);else findZone(zone,flow||undefined);}
 function _bld(id){return ((S._bldg||{}).buildings||[]).find(b=>b.id===id);}
-function bldOpen(id){const b=_bld(id),f=b&&(b.floors.find(x=>x.id==='1F')||b.floors[0]);S._bld=id;S._bldFl=f?f.id:null;S._bfZ=null;render();scrollTo(0,0);} // 층 고르는 화면 없이 바로 평면도
-function bldBack(){S._bld=null;S._bldFl=null;render();scrollTo(0,0);}
+function bldOpen(id){S._hl=null;const b=_bld(id),f=b&&(b.floors.find(x=>x.id==='1F')||b.floors[0]);S._bld=id;S._bldFl=f?f.id:null;S._bfZ=null;render();scrollTo(0,0);} // 층 고르는 화면 없이 바로 평면도
+function bldBack(){S._bld=null;S._bldFl=null;S._hl=null;render();scrollTo(0,0);}
 function bldView(){
   const b=_bld(S._bld),fl=b.floors.find(f=>f.id===S._bldFl),Zs=S._zones||[];
   const zc=ids=>{const L=Zs.filter(z=>(ids||[]).includes(z.id));return L.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
@@ -8629,7 +8650,7 @@ function bldView(){
     <div class="card"><h2>설비동</h2>${zc(b.zones)}</div><div class="botpad"></div>`;
   const z=S._bfZ||_bfFit(fl),idx=fl.spots.map((t,i)=>[t,i]);
   const g=idx.filter(([t])=>t.rects&&t.rects.length).map(([t,i])=>{const r=t.rects[0],fs=t.fs||24,on=!!t.on,tall=r[3]>r[2]*2.5,cx=r[0]+r[2]/2,cy=r[1]+r[3]/2;
-    return `<g${on?` class="pf-sh" onclick="bldSpot('${fl.id}',${i})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="${on?'rgba(31,111,255,.22)':'rgba(120,120,120,.10)'}" stroke="${on?'#1f6fff':'#8d949c'}" stroke-width="${on?3:2}"/>`).join('')}<text x="${cx}" y="${cy+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="5"${tall?` transform="rotate(-90 ${cx} ${cy})"`:''}>${esc(t.name)}</text></g>`;}).join('');
+    return `<g${on?` class="pf-sh" onclick="bldSpot('${fl.id}',${i})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>{const hl=S._hl&&S._hl.f===fl.id&&S._hl.i===i;return `<rect${hl?' class="hl-rect"':''} x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="${hl?'rgba(255,106,0,.35)':on?'rgba(31,111,255,.22)':'rgba(120,120,120,.10)'}" stroke="${hl?'#ff6a00':on?'#1f6fff':'#8d949c'}" stroke-width="${hl?7:on?3:2}"/>`;}).join('')}<text x="${cx}" y="${cy+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="5"${tall?` transform="rotate(-90 ${cx} ${cy})"`:''}>${esc(t.name)}</text></g>`;}).join('');
   return head+`<div class="card"><div class="row" style="gap:6px;margin:0 0 6px"><span class="muted">${esc(fl.dwg)}</span><div class="grow"></div><button class="btn ghost sm" onclick="bfZoom(0.8)">−</button><button class="btn ghost sm" onclick="bfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="bfZoom(0)">맞춤</button></div>
     <div class="pf-cv" style="width:fit-content;max-width:100%;margin:0 auto"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}</svg></div>${zc(fl.zones)}</div>
     <div class="card">${idx.filter(([t])=>t.on).map(([t,i])=>`<div class="tkid" onclick="bldSpot('${fl.id}',${i})"><span class="tkid-ic" style="min-width:24px">${t.no||''}</span><span class="tkid-nm">${esc(t.name)}${t.spec||t.eq?`<span class="tpath-meta">${esc(t.spec||t.eq.map(e=>e.name).join(' · '))}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')}</div><div class="botpad"></div>`;
