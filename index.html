@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v201'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v202'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1571,7 +1571,7 @@ function _inspRow(i){return `<div class="item click k k-insp" onclick="go('insp'
   <div class="t"><div class="n">${esc(i.name)}</div><div class="d">${esc(i.nextDue)}${i.target?' · '+esc(i.target):''}</div></div>${ddayBadge(i.dd)}</div>`;}
 function _todoRow(x,ts){return `<div class="item k k-todo"><div class="chk" onclick="toggleTodo('${x.id}',0)"></div>
   <div class="t click" onclick="openDay('${x.date}')"><div class="n">${tdTitle(x)}</div>
-  <div class="d">${esc(x.date)}${x.note?' · '+esc(x.note):''}</div></div>${x.date===ts?'<span class="badge b-blue">오늘</span>':x.date<ts?'<span class="badge b-red">지남</span>':`<span class="badge b-gray">${esc(mdShort(x.date))}</span>`}</div>`;}
+  <div class="d"${x.date<ts?' style="color:var(--danger)"':''}>${esc(x.date)}${x.note?' · '+esc(x.note):''}</div></div>${x.date===ts?'<span class="badge b-blue">오늘</span>':x.date<ts?'<span class="badge b-red">지남</span>':`<span class="badge b-gray">${esc(mdShort(x.date))}</span>`}</div>`;}
 function _chkRow(c){return `<div class="item k k-chk"><div class="chk" onclick="toggleChk('${c.id}')"></div>
   <div class="t"><div class="n">${esc(c.name)}</div><div class="d">주기업무${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
   <span class="badge b-gray">${CYCLE_KO[c.cycle]||''}</span></div>`;}
@@ -1744,7 +1744,7 @@ function todoTodayHtml(){
   return `<div class="card"><h2>📝 내 할 일 <span class="cnt">${list.length}건</span></h2>
     ${list.slice(0,10).map(x=>`<div class="item"><div class="chk" onclick="toggleTodo('${x.id}',0)">✓</div>
       <div class="t click" onclick="openDay('${x.date}')"><div class="n">${tdTitle(x)}</div>
-      <div class="d">${x.date===t?'오늘':esc(x.date)+(x.date<t?' · 지남':'')}</div></div></div>`).join('')||'<div class="empty">할 일 없음 — 위 달력 날짜를 눌러 추가</div>'}
+      <div class="d"${x.date<t?' style="color:var(--danger)"':''}>${x.date===t?'오늘':esc(x.date)+(x.date<t?' · 지남':'')}</div></div></div>`).join('')||'<div class="empty">할 일 없음 — 위 달력 날짜를 눌러 추가</div>'}
     <button class="btn ghost sm full" onclick="openDay('${t}')">＋ 오늘 할 일 추가</button>
     ${done.length?`<details class="donebox"><summary>✅ 이번 달 완료 ${done.length}건 (펼치기)</summary>
       ${done.map(x=>`<div class="item"><div class="chk done" onclick="toggleTodo('${x.id}',0)">✓</div>
@@ -3792,12 +3792,22 @@ async function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시) 
       if(ix)gcCall({op:'get',id:ix.id}).then(g=>{S._manIdx=JSON.parse(decodeURIComponent(escape(atob(g.b64))));save();}).catch(()=>{});}).catch(()=>{});
 }
 const _b64blob=(b64,mime)=>{const bin=atob(b64),u8=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u8[k]=bin.charCodeAt(k);return new Blob([u8],{type:mime||'application/octet-stream'});};
+async function manStoreInfo(){ // v202: 기기에 저장한 매뉴얼 PDF 개수·용량·모두 지우기
+  const el=document.getElementById('man-store');if(!el)return;
+  const A=(await dbAll('meta').catch(()=>[])).filter(x=>String(x.id).startsWith('man:')&&x.blob),sz=A.reduce((a,x)=>a+(x.size||x.blob.size||0),0);
+  el.innerHTML=A.length?`기기 저장 ${A.length}개 · ${_fsz(sz)} <button class="btn ghost sm" onclick="manStoreClear()">모두 지우기</button>`:'기기 저장 없음';
+}
+async function manStoreClear(){
+  if(!(await confirmModal('기기에 저장한 매뉴얼 PDF를 모두 지울까요?\n(드라이브 원본은 그대로 — 다시 열면 받습니다)')))return;
+  for(const x of (await dbAll('meta')).filter(x=>String(x.id).startsWith('man:')))await dbDel('meta',x.id);
+  toast('기기 저장 매뉴얼을 지웠습니다');manStoreInfo();
+}
 async function manSyncAll(){ // 드라이브 매뉴얼 PDF 전부 기기에 저장(이미 있고 크기 같으면 건너뜀)
   await manLoad();const L=manItems().map(x=>x.f).filter(f=>/\.pdf$/i.test(f.name)&&f.size<=30*1048576);let n=0,t=0;
   for(const f of L){const c=await dbGet('meta','man:'+f.name).catch(()=>null);if(c&&c.size===f.size&&c.blob)continue;
     t++;toast('매뉴얼 저장 중 '+t+'… '+f.name.slice(0,18));
     try{const r=await gcCall({op:'get',id:f.id});await dbPut('meta',{id:'man:'+f.name,size:f.size,blob:_b64blob(r.b64,'application/pdf')});n++;}catch(e){}}
-  toast(t?'매뉴얼 PDF '+n+'개 기기에 저장':'매뉴얼 PDF 모두 기기에 저장되어 있음');
+  toast(t?'매뉴얼 PDF '+n+'개 기기에 저장':'매뉴얼 PDF 모두 기기에 저장되어 있음');manStoreInfo();
 }
 const _manRow=(name,sub,click,unl)=>`<div class="item"><div class="t click" onclick="${click}"><div class="n" style="white-space:normal">${_manIc(name)} ${esc(name.replace(/\.[^.]+$/,''))}</div><div class="d">${esc(sub)}</div></div>${unl||''}</div>`;
 /* v190 운영업무지침서 연결 — 설비 카드 조치 매뉴얼 탭에 '정기점검보수 기준(50000 부록 52200)'의 그 설비 종류 쪽과 30000 절차 쪽을 바로 열기 행으로 보여 줌.
@@ -3840,9 +3850,9 @@ function manPickList(){
 }
 const MAN_CATS=[['지침','^\\d{5}'],['UPS','UPS|AVR|비상전원'],['인버터','인버터'],['소방','자동화재'],['조작·절차','조작 절차서|법정검사']];
 function manPanel(){
-  setTimeout(()=>{manList();manRestore().then(manList);manLoad().then(manList);},30);
+  setTimeout(()=>{manList();manRestore().then(manList);manLoad().then(manList);manStoreInfo();},30);
   return `<div class="card"><input id="man-q" placeholder="매뉴얼 검색 (예: UPS, 인버터)" style="width:100%" value="${esc(S._manQ||'')}" oninput="S._manQ=this.value;manList()" autocomplete="off">
-    <div class="chips" style="flex-wrap:wrap;margin:8px 0" id="man-cats"></div><div id="man-list"></div><button class="btn ghost sm full" style="margin-top:8px" onclick="manSyncAll()">📥 PDF 기기에 저장</button></div>`;
+    <div class="chips" style="flex-wrap:wrap;margin:8px 0" id="man-cats"></div><div id="man-list"></div><button class="btn ghost sm full" style="margin-top:8px" onclick="manSyncAll()">📥 PDF 기기에 저장</button><div class="muted" id="man-store" style="margin-top:6px;font-size:12px"></div></div>`;
 }
 function manList(){
   const el=document.getElementById('man-list');if(!el)return;const q=(S._manQ||'').toLowerCase().trim(),cat=S._manCat||'';
