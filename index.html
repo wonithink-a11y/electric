@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v200'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v201'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -8755,7 +8755,7 @@ function bldOpenFl(b,f){S._bld=b;S._bldFl=f;S._bfZ=null;render();scrollTo(0,0);}
 function smapCard(Z){
   const M=S._sitemap;if(!M||!M.img)return '';
   const sat=S._smMode==='sat'&&M.sat,I=sat?M.sat:M,sp=(M.spots||[]).filter(t=>!t.zone||Z.some(z=>z.id===t.zone)),rest=Z.filter(z=>!sp.some(t=>t.zone===z.id));
-  const z=S._smZ||(innerWidth<700?0.3:(Math.min(innerWidth,1400)-48)/I.w),k=1; // v200: 위성도 도면과 같은 크기·좌표로 돌려 저장 → 같은 배율
+  const z=S._smZ||(Math.min(innerWidth,1400)-52)/I.w,k=Math.max(1,0.28/z); // v201: 처음엔 한 폭에 맞춤(폰은 축소돼서 글자·선을 키움), ＋로 확대
   const g=sp.map(t=>{const P=sat?t.polys:t.rects.map(q=>[[q[0],q[1]],[q[0]+q[2],q[1]],[q[0]+q[2],q[1]+q[3]],[q[0],q[1]+q[3]]]);if(!P)return '';
     const fs=(t.fs||28)*k,on=!!(t.zone||t.bld),c=P[0].reduce((a,q)=>[a[0]+q[0]/4,a[1]+q[1]/4],[0,0]); // zone 없는 건물은 이름만 표시(누를 수 없음)
     return `<g${on?` class="pf-sh" onclick="mapGo('${esc(t.zone)}','${esc(t.flow||'')}','${esc(t.bld||'')}')"`:''}><title>${esc(t.name)}</title>${P.map(q=>`<polygon points="${q.map(v=>v.join(',')).join(' ')}" fill="${on?'rgba(31,111,255,.25)':'rgba(255,255,255,.10)'}" stroke="${on?'#1f6fff':(sat?'#ddd':'#8d949c')}" stroke-width="${(on?4:2)*k}"/>`).join('')}<text x="${c[0]}" y="${c[1]+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="${6*k}">${esc(t.name)}</text></g>`;}).join('');
@@ -8798,7 +8798,7 @@ function bldSpot(fid,i){
 function bldFind(q){closeModal();S._bld=null;S['_q_find-sr']=q;S._dvMax=30;go('find');}
 function smZoom(k){
   const sv=document.getElementById('sm-svg');if(!sv)return;const W=+sv.dataset.w,box=sv.parentElement.clientWidth-4;
-  S._smZ=k?Math.max(0.2,Math.min(2.5,(S._smZ||sv.clientWidth/W)*k)):box/W;sv.style.width=Math.round(W*S._smZ)+'px';
+  S._smZ=k?Math.max(0.1,Math.min(2.5,(S._smZ||sv.clientWidth/W)*k)):box/W;sv.style.width=Math.round(W*S._smZ)+'px';
 }
 function findZone(id,flow){S._flowSel=flow||null;S._zoneId=null;S._treeSubTab='zone';go('tree');zoneOpen(id);}
 function vWork(){
