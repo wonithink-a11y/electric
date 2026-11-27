@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v210'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v211'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -6767,16 +6767,15 @@ function spareListHtml(){
 }
 function filterSpare(v){S._spareQ=v;const el=document.getElementById('splist');if(el)el.innerHTML=spareListHtml();}
 function editSpare(id){
-  const x=id?S.spares.find(v=>v.id===id):null,dc=_isDec(x),st=dc?'0.1':'1',im=dc?'decimal':'numeric';
+  const x=id?S.spares.find(v=>v.id===id):null;
   openModal(`<h3>${x?'예비품 수정':'예비품 추가'}</h3>
     <label>품명 *</label><input id="sp-n" value="${esc(x?.name||'')}">
     <label>규격/사양</label><input id="sp-s" value="${esc(x?.spec||'')}">
     <div class="row">
-      <div class="grow"><label>수량</label><input id="sp-q" type="number" step="${st}" inputmode="${im}" value="${esc(String(x?.qty??''))}"></div>
+      <div class="grow"><label>수량</label><input id="sp-q" type="number" step="0.1" value="${esc(String(x?.qty??''))}"></div>
       <div class="grow"><label>단위</label><input id="sp-u" value="${esc(x?.unit||'EA')}"></div>
-      <div class="grow"><label>최소수량</label><input id="sp-m" type="number" step="${st}" inputmode="${im}" value="${esc(String(x?.minQty??''))}"></div>
+      <div class="grow"><label>최소수량</label><input id="sp-m" type="number" step="0.1" value="${esc(String(x?.minQty??''))}"></div>
     </div>
-    ${_decChk('sp-d',dc,['sp-q','sp-m'])}
     <label>보관 위치</label><input id="sp-l" value="${esc(x?.location||'')}">
     <label>연결 설비(선택)</label><input id="sp-e" list="eqnames" value="${esc(x?.equipName||'')}">
     <datalist id="eqnames">${S.equipment.slice(0,600).map(e=>`<option value="${esc(e.name)}">`).join('')}</datalist>
@@ -6788,17 +6787,14 @@ function editSpare(id){
       <button class="btn sm" onclick="saveSpare('${x?.id||''}')">저장</button></div>`);
 }
 const _r6=x=>Math.round(Number(x)*1e6)/1e6;
-/* v210: 예비품 수량 — 기본은 정수(입력칸 숫자 키패드·정수 반올림). 품목에 '소수점 수량'(dec)을 켠 것만 소수점 첫째 자리까지.
-   이미 소수 수량이 든 품목은 자동으로 dec 취급(값이 깎이지 않게). 단위(EA·M 등)와는 무관. */
-const _qn=(v,dec)=>dec?Math.round(Number(v)*10)/10:Math.round(Number(v));
-const _isDec=x=>!!x&&(!!x.dec||[x.qty,x.real,x.minQty].some(v=>v!==''&&v!=null&&!Number.isInteger(Number(v))));
-function spDec(cb,...ids){ids.forEach(i=>{const e=document.getElementById(i);if(e){e.step=cb.checked?'0.1':'1';e.inputMode=cb.checked?'decimal':'numeric';}});}
-const _decChk=(id,on,ids)=>`<label style="font-weight:400"><input id="${id}" type="checkbox" ${on?'checked':''} style="width:auto" onchange="spDec(this,${ids.map(i=>"'"+i+"'").join(',')})"> 소수점 수량 (0.5 같은 값이 필요한 품목만 켜세요)</label>`; // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
+/* v211: 예비품 수량 — 입력한 그대로(정수가 대부분) 두되 소수를 넣으면 첫째 자리까지만 반올림(0.5·2.5 가능). 체크칸 없음.
+   (v210 의 '소수점 수량' 체크는 자리만 차지해 뺌. 기록에 남은 dec 필드는 쓰지 않음) */
+const _qn=v=>Math.round(Number(v)*10)/10;
 async function saveSpare(id){
   const name=$('#sp-n').value.trim();if(!name){toast('품명을 입력하세요');return}
   const obj=id?S.spares.find(v=>v.id===id):{id:'SP'+uid()};
-  const un=$('#sp-u').value.trim()||'EA',dec=$('#sp-d').checked,num=v=>v===''?'':_qn(v,dec);
-  Object.assign(obj,{name,spec:$('#sp-s').value.trim(),qty:num($('#sp-q').value),unit:un,dec,
+  const un=$('#sp-u').value.trim()||'EA',num=v=>v===''?'':_qn(v);
+  Object.assign(obj,{name,spec:$('#sp-s').value.trim(),qty:num($('#sp-q').value),unit:un,
     minQty:num($('#sp-m').value),location:$('#sp-l').value.trim(),equipName:$('#sp-e').value.trim(),
     note:$('#sp-note').value.trim(),updated:todayStr()});
   await dbPut('spares',obj);if(!id)S.spares.push(obj);
@@ -6861,7 +6857,7 @@ async function invToggle(id){
   x.found=!x.found;x.updated=todayStr();await dbPut('spares',x);render();
 }
 function editInv(id){
-  const x=id?S.spares.find(v=>v.id===id):null,dc=_isDec(x),st=dc?'0.1':'1',im=dc?'decimal':'numeric';
+  const x=id?S.spares.find(v=>v.id===id):null;
   openModal(`<h3>${x?'재물조사 수정':'재물조사 추가'} (${esc(x?.sheet||S._invSheet||'본사')})</h3>
     <label>자재번호 *</label><input id="iv-m" value="${esc(x?.matNo||'')}">
     <label>자재내역</label><input id="iv-n" value="${esc(x?.name||'')}">
@@ -6870,10 +6866,9 @@ function editInv(id){
       <div class="grow"><label>단위</label><input id="iv-u" value="${esc(x?.unit||'EA')}"></div>
     </div>
     <div class="row">
-      <div class="grow"><label>장부수량</label><input id="iv-q" type="number" step="${st}" inputmode="${im}" value="${esc(String(x?.qty??''))}"></div>
-      <div class="grow"><label>실사수량</label><input id="iv-r" type="number" step="${st}" inputmode="${im}" value="${esc(String(x?.real??''))}"></div>
+      <div class="grow"><label>장부수량</label><input id="iv-q" type="number" step="0.1" value="${esc(String(x?.qty??''))}"></div>
+      <div class="grow"><label>실사수량</label><input id="iv-r" type="number" step="0.1" value="${esc(String(x?.real??''))}"></div>
     </div>
-    ${_decChk('iv-d',dc,['iv-q','iv-r'])}
     <label>보관 위치</label><input id="iv-l" value="${esc(x?.location||'')}">
     <label>비고</label><input id="iv-note" value="${esc(x?.note||'')}">
     <label><input id="iv-f" type="checkbox" ${x?.found?'checked':''} style="width:auto"> 재고 있음(노란색)</label>
@@ -6885,10 +6880,10 @@ function editInv(id){
 }
 async function saveInv(id){
   const matNo=$('#iv-m').value.trim();if(!matNo){toast('자재번호를 입력하세요');return}
-  const dec=$('#iv-d').checked,num=v=>v===''?'':_qn(v,dec);
+  const num=v=>v===''?'':_qn(v);
   const obj=id?S.spares.find(v=>v.id===id):{id:'IV'+uid(),src:'inv',sheet:S._invSheet||'본사',seq:999};
   Object.assign(obj,{matNo,name:$('#iv-n').value.trim(),assetNo:$('#iv-a').value.trim(),unit:$('#iv-u').value.trim()||'EA',
-    qty:num($('#iv-q').value),real:num($('#iv-r').value),dec,location:$('#iv-l').value.trim(),note:$('#iv-note').value.trim(),
+    qty:num($('#iv-q').value),real:num($('#iv-r').value),location:$('#iv-l').value.trim(),note:$('#iv-note').value.trim(),
     found:$('#iv-f').checked,updated:todayStr()});
   await dbPut('spares',obj);if(!id)S.spares.push(obj);
   closeModal();render();toast('저장 완료');
@@ -7067,7 +7062,7 @@ function spareInspBody(){
           <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
         </div>
         <div class="inspcol">
-          <input class="inspq" id="rq_${s.id}" type="number" step="${_isDec(s)?'0.1':'1'}" inputmode="${_isDec(s)?'decimal':'numeric'}" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
+          <input class="inspq" id="rq_${s.id}" type="number" step="0.1" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
           <button class="btn sm inspsave" onclick="saveSpareReal('${s.id}')">저장</button>
           <button class="btn ghost sm inspclear" onclick="clearSpareReal('${s.id}')">해제</button>
         </div>
@@ -7080,7 +7075,7 @@ async function saveSpareReal(id){
   const el=document.getElementById('rq_'+id);if(!el)return;
   const s=S.spares.find(x=>x.id===id);if(!s)return;
   const was=(s.real!=null&&s.real!=='');
-  s.real=(el.value===''?'':_qn(el.value,_isDec(s)));s.updated=todayStr();
+  s.real=(el.value===''?'':_qn(el.value));s.updated=todayStr();
   await dbPut('spares',s);
   const chk=(s.real!==''&&s.real!=null);
   const row=document.getElementById('row_'+id);
@@ -7109,7 +7104,7 @@ async function clearSpareReal(id){
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
   const s=S.spares.find(x=>x.id===id);if(!s)return;
-  s.real=(v===''?'':_qn(v,_isDec(s)));s.updated=todayStr();
+  s.real=(v===''?'':_qn(v));s.updated=todayStr();
   await dbPut('spares',s);
 }
 
@@ -8096,7 +8091,7 @@ function useSpare(backEquipId){
 async function applyUseSpare(backEquipId){
   const sp=S.spares.find(x=>x.id===$('#us-s').value);if(!sp){toast('품목 선택');return;}
   const q=Number($('#us-q').value||0);if(!(q>0)){toast('수량을 확인하세요');return;}
-  sp.qty=_qn(Number(sp.qty||0)-q,_isDec(sp));
+  sp.qty=_qn(Number(sp.qty||0)-q);
   sp.hist=sp.hist||[];sp.hist.push({date:todayStr(),delta:-q,note:$('#us-n').value.trim()});
   sp.updated=todayStr();
   await dbPut('spares',sp);
