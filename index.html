@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v175'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v177'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1296,7 +1296,7 @@ async function saveGcCfg(){
 }
 /* ================= PART 4 : 모달 ================= */
 function openModal(html){
-  window._cardOpen=null; // 설비 카드가 아니면 해제(openCard 가 끝에서 다시 지정)
+  window._cardOpen=window._cardNext||null;window._cardNext=null; // devSec 이 지정한 열린 카드(설비 카드 '@설비id'는 설비 상세)
   $('#modal-root').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="dock-x" onclick="closeModal()" title="닫기 (Esc)">✕</button>${html}</div></div>`;
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal-root').firstChild&&!/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||''))closeModal();});
@@ -2140,7 +2140,7 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
     ${measSummaryHtml(id)}
     <hr>
     <div class="muted">설비 사진 (명판·현장, 기기 로컬)</div>
-    ${photoStrip('equip',id)}
+    ${devSec('',id,null)}
     <hr>
     <div class="row"><h3 style="font-size:14px" class="grow">고장·조치 이력 (${faults.length})</h3>
       <button class="btn ghost sm" onclick="diagnoseEquip('${e.id}')">🔍 진단</button>
@@ -3589,9 +3589,9 @@ function flRecRows(q){
   return (S._flows||[]).map(f=>`<details class="card" style="margin:6px 0;padding:6px 12px"><summary style="cursor:pointer;font-weight:600">${esc(f.name)}</summary><div class="tkid-list">${L.filter(o=>o.f===f).map(row).join('')}</div></details>`).join('');
 }
 function _flItems(){const L=[];(S._flows||[]).forEach(f=>f.steps.forEach((s,si)=>s.items.forEach((x,ii)=>L.push({f,si,ii,x}))));return L;}
-function flRecCard(){
-  if(!(S._flows||[]).length)return '';
-  return `<div class="card"><h2>📷 점검·조치 기록</h2><input placeholder="설비 이름 (예: 크레인, 호퍼)" style="width:100%;margin-bottom:6px" autocomplete="off" value="${esc(S._flq||'')}" oninput="S._flq=this.value;document.getElementById('fl-rec-list').innerHTML=flRecRows(this.value)"><div id="fl-rec-list">${flRecRows(S._flq)}</div></div>`;
+function flRecCard(){ // v176: 모든 설비 검색 → 설비 카드(기록 칸). 흐름 설비는 아래에서 흐름별로도 찾음
+  const fl=(S._flows||[]).length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">흐름으로 찾기</summary><div id="fl-rec-list">${flRecRows('')}</div></details>`:'';
+  return `<div class="card"><h2>📷 점검·조치 기록</h2>${devSearchBox('rec-sr','','설비 이름·태그 (예: 크레인, HVAC MCC)')}${fl}</div>`;
 }
 function _flRender(){ // 흐름 화면이 떠 있으면 표시(주황 점)만 갱신 — 스크롤 위치 유지
   const rl=document.getElementById('fl-rec-list');if(rl)rl.innerHTML=flRecRows(S._flq); // 작업 탭 목록의 개수 갱신
@@ -3691,6 +3691,7 @@ function _cardZone(n){
 const DEV_KINDS=[['rep','점검보고서'],['act','조치 매뉴얼'],['pic','현장 사진']];
 const _devLk=()=>((S._devLinks||{}).map)||{};
 async function _devLkSave(m){S._devLinks={id:'devlinks',map:m};await dbPut('meta',S._devLinks);}
+const _cardReopen=c=>c&&c[0]==='@'?openEquip(c.slice(1),1):openCard(c);
 function devPhotos(key,nids,eid){
   const L=S.photos.filter(p=>(p.refType==='dev'||p.refType==='equip')&&p.refId===key);
   (S._flows||[]).forEach(f=>f.steps.forEach(s=>s.items.forEach(x=>{
@@ -3703,6 +3704,7 @@ function _devCnt(ref){ // 검색 결과 줄에 붙일 기록 개수
     const ph=devPhotos(key,n?[n.id]:[],eid);return ph.length+(_devLk()[key]||[]).filter(x=>S.docs.some(y=>y.id===x.id)).length;}catch(e){return 0;}
 }
 function devSec(id,eid,load){
+  window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[];
   const docs=k=>lk.filter(x=>x.kind===k).map(x=>({...x,d:S.docs.find(y=>y.id===x.id)})).filter(x=>x.d);
   const n=ph.length+lk.filter(x=>S.docs.some(y=>y.id===x.id)).length;
@@ -3739,7 +3741,7 @@ function devPickDoc(key,kind){
   window._dpk=[key,kind,window._cardOpen];
   openModal(`<h3>문서함에서 연결</h3><div class="muted">${kind==='act'?'조치 매뉴얼':'점검보고서'}로 이 설비에 연결합니다</div>
     <input id="dp-q" placeholder="제목·이름 검색" style="width:100%;margin:8px 0" oninput="devPickList()" autocomplete="off"><div id="dp-l"></div>
-    <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn ghost sm" onclick="openCard('${esc(window._cardOpen)}')">취소</button></div>`);
+    <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn ghost sm" onclick="_cardReopen('${esc(window._cardOpen)}')">취소</button></div>`);
   devPickList();
 }
 function devPickList(){
@@ -3747,7 +3749,7 @@ function devPickList(){
   const L=S.docs.filter(d=>!have.has(d.id)&&(!q||((d.title||'')+' '+(d.name||'')+' '+(d.kind||'')).toLowerCase().includes(q))).sort((a,b)=>(/매뉴얼|절차|보고/.test(b.kind)?1:0)-(/매뉴얼|절차|보고/.test(a.kind)?1:0)).slice(0,40);
   document.getElementById('dp-l').innerHTML=L.length?L.map(d=>`<div class="item click" onclick="devPickDo('${d.id}')"><div class="t"><div class="n" style="white-space:normal">${esc(d.title||d.name)}</div><div class="d">${esc(d.kind||'')} · ${esc((d.ext||'').toUpperCase())}</div></div></div>`).join(''):'<div class="empty">일치하는 문서 없음</div>';
 }
-async function devPickDo(docId){const [key,kind,cid]=window._dpk,m=_devLk();(m[key]=m[key]||[]).push({id:docId,kind});await _devLkSave(m);openCard(cid);}
+async function devPickDo(docId){const [key,kind,cid]=window._dpk,m=_devLk();(m[key]=m[key]||[]).push({id:docId,kind});await _devLkSave(m);_cardReopen(cid);}
 function openCard(id){
   const n=nodeById(id);if(!n){toast('노드 없음');return;}
   if(n.type==='bus'||n.type==='source'){nodeMenu(id);return;}
@@ -5847,7 +5849,7 @@ function _downscale(file,maxDim,q,cb){
   rd.readAsDataURL(file);
 }
 function _photoBack(refType,refId){
-  if(window._cardOpen&&(refType==='dev'||refType==='flow'||refType==='equip')){openCard(window._cardOpen);return;} // v175: 설비 카드에서 한 일은 카드로 돌아간다
+  if(window._cardOpen&&(refType==='dev'||refType==='flow'||refType==='equip')){_cardReopen(window._cardOpen);return;} // v175: 설비 카드에서 한 일은 카드로 돌아간다
   if(refType==='fault'){const f=S.faults.find(x=>x.id===refId);editFault(refId,f?f.equipId:'');}
   else if(refType==='equip')openEquip(refId);
   else if(refType==='checklog')openCheckResult(refId);
