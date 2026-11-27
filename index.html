@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v170'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v171'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -559,6 +559,7 @@ async function loadAll(){
   try{S.logic=await dbAll('logic');}catch(e){S.logic=[];}
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
+  try{S._bldg=await dbGet('meta','bldg');}catch(e){S._bldg=null;} // v171 건물·층 도면
   try{S._sitemap=await dbGet('meta','sitemap');}catch(e){S._sitemap=null;} // v169 현장 배치도(설비 찾기 건물 지도)
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
   try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
@@ -767,6 +768,7 @@ function _sniffJson(d){
   if(Array.isArray(d.zones)&&d.zones.length&&d.zones[0].panels)return '설비동';
   if(Array.isArray(d.flows)&&d.flows.length&&d.flows[0].steps)return '공정흐름';
   if(d.schema==='sitemap_v1'&&d.img&&Array.isArray(d.spots))return '배치도';
+  if(d.schema==='bldg_v1'&&Array.isArray(d.buildings))return '건물층';
   if(Array.isArray(d.links)&&d.links.length&&d.links[0].tag&&d.links[0].node)return '로직연결';
   if(Array.isArray(d.notes)&&d.notes.length&&d.notes[0].tag)return '해석노트';
   if(d.schema==='pwr-guide-v1'&&Array.isArray(d.rules))return '정비지침'; // v120: 운영지침 52200 기준표
@@ -841,6 +843,10 @@ async function _applyJson(kind,d){
     const m={};d.links.forEach(l=>{(Array.isArray(l.node)?l.node:[l.node]).forEach(n=>{m[n]=l.tag;});});
     await dbPut('meta',{id:'lclinks',map:m,added:todayStr()});S._lcLinks=m;
     return `로직 카드 연결 ${d.links.length}건`;
+  }
+  if(kind==='건물층'){
+    await dbPut('meta',{id:'bldg',buildings:d.buildings,src:d.src,added:todayStr()});S._bldg=d;
+    return `건물 층 도면 · ${d.buildings.length}동 ${d.buildings.reduce((a,b)=>a+b.floors.length,0)}개 층`;
   }
   if(kind==='배치도'){
     await dbPut('meta',{id:'sitemap',w:d.w,h:d.h,img:d.img,spots:d.spots,src:d.src,added:todayStr()});S._sitemap=d;
@@ -8354,6 +8360,7 @@ function devSearchBox(id,act,ph){
     </div><div id="${id}">${devRowsHtml(v,act,id)}</div>`;
 }
 function vFind(){
+  if(S._bld&&_bld(S._bld))return bldView();
   if(innerWidth>=900)setTimeout(()=>{const i=document.getElementById('find-sr-q');if(i)i.focus()},60);
   const Z=(S._zones||[]).filter(z=>(z.panels||[]).some(id=>nodeById(id)));
   const grp=pl=>{const L=Z.filter(z=>(z.plant||'PB')===pl);return L.length?`<div class="muted" style="margin:8px 0 4px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div><div class="chips" style="flex-wrap:wrap">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
@@ -8375,11 +8382,42 @@ function smapCard(Z){
   const sp=(M.spots||[]).filter(t=>!t.zone||Z.some(z=>z.id===t.zone)),rest=Z.filter(z=>!sp.some(t=>t.zone===z.id));
   const z=S._smZ||(innerWidth<700?0.5:(Math.min(innerWidth,1400)-48)/M.w);
   const g=sp.map(t=>{const r=t.rects[0],fs=t.fs||28,on=!!t.zone; // zone 없는 건물은 이름만 표시(누를 수 없음)
-    return `<g${on?` class="pf-sh" onclick="findZone('${esc(t.zone)}'${t.flow?`,'${esc(t.flow)}'`:''})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="8" fill="${on?'rgba(31,111,255,.2)':'rgba(120,120,120,.12)'}" stroke="${on?'#1f6fff':'#8d949c'}" stroke-width="${on?4:2}"/>`).join('')}<text x="${r[0]+r[2]/2}" y="${r[1]+r[3]/2+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="6">${esc(t.name)}</text></g>`;}).join('');
+    return `<g${on?` class="pf-sh" onclick="mapGo('${esc(t.zone)}','${esc(t.flow||'')}','${esc(t.bld||'')}')"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="8" fill="${on?'rgba(31,111,255,.2)':'rgba(120,120,120,.12)'}" stroke="${on?'#1f6fff':'#8d949c'}" stroke-width="${on?4:2}"/>`).join('')}<text x="${r[0]+r[2]/2}" y="${r[1]+r[3]/2+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="6">${esc(t.name)}</text></g>`;}).join('');
   return `<div class="card"><h2>🏢 건물로 둘러보기</h2><div class="row" style="gap:6px;margin:0 0 6px"><div class="grow"></div><button class="btn ghost sm" onclick="smZoom(0.8)">−</button><button class="btn ghost sm" onclick="smZoom(1.25)">＋</button><button class="btn ghost sm" onclick="smZoom(0)">맞춤</button></div>
     <div class="pf-cv"><svg id="sm-svg" data-w="${M.w}" viewBox="0 0 ${M.w} ${M.h}" style="width:${Math.round(M.w*z)}px"><image href="${M.img}" width="${M.w}" height="${M.h}"/>${g}</svg></div>
     ${rest.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${rest.map(x=>`<button class="chip" onclick="findZone('${x.id}')">${esc(x.name)}</button>`).join('')}</div>`:''}</div>`;
 }
+/* v171: 건물·층 — 지도에서 건물(bld)을 누르면 층 목록, 층을 누르면 층 평면도(데이터/건물층_v1.json, build_bldg.py) */
+function mapGo(zone,flow,bld){if(bld&&_bld(bld))bldOpen(bld);else findZone(zone,flow||undefined);}
+function _bld(id){return ((S._bldg||{}).buildings||[]).find(b=>b.id===id);}
+function bldOpen(id){S._bld=id;S._bldFl=null;render();scrollTo(0,0);}
+function bldBack(){if(S._bldFl)S._bldFl=null;else S._bld=null;render();scrollTo(0,0);}
+function bldView(){
+  const b=_bld(S._bld),fl=b.floors.find(f=>f.id===S._bldFl),Zs=S._zones||[];
+  const zc=ids=>{const L=Zs.filter(z=>(ids||[]).includes(z.id));return L.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
+  const head=`<div class="row" style="gap:6px;align-items:center;margin-bottom:8px"><button class="btn ghost sm" onclick="bldBack()">‹ 뒤로</button><b>${esc(b.name)}${fl?' · '+esc(fl.name):''}</b></div>`;
+  if(!fl)return head+`<div class="card">${b.floors.map(f=>`<div class="tkid" onclick="S._bldFl='${f.id}';render();scrollTo(0,0)"><span class="tkid-ic" style="font-weight:600;min-width:28px">${esc(f.id)}</span><span class="tkid-nm">${esc(f.name)}<span class="tpath-meta">${esc(f.spots.filter(s=>s.on).map(s=>s.name).join(' · '))}</span></span><span class="tkid-arr">›</span></div>`).join('')}</div>
+    <div class="card"><h2>설비동</h2>${zc(b.zones)}</div><div class="botpad"></div>`;
+  const z=S._bfZ||(innerWidth<700?0.9:Math.min(1,(Math.min(innerWidth,1400)-48)/fl.w)),idx=fl.spots.map((t,i)=>[t,i]);
+  const g=idx.map(([t,i])=>{const r=t.rects[0],fs=t.fs||24,on=!!t.on,tall=r[3]>r[2]*2.5,cx=r[0]+r[2]/2,cy=r[1]+r[3]/2;
+    return `<g${on?` class="pf-sh" onclick="bldSpot('${fl.id}',${i})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="${on?'rgba(31,111,255,.22)':'rgba(120,120,120,.10)'}" stroke="${on?'#1f6fff':'#8d949c'}" stroke-width="${on?3:2}"/>`).join('')}<text x="${cx}" y="${cy+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="5"${tall?` transform="rotate(-90 ${cx} ${cy})"`:''}>${esc(t.name)}</text></g>`;}).join('');
+  return head+`<div class="card"><div class="row" style="gap:6px;margin:0 0 6px"><span class="muted">${esc(fl.dwg)}</span><div class="grow"></div><button class="btn ghost sm" onclick="bfZoom(0.8)">−</button><button class="btn ghost sm" onclick="bfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="bfZoom(0)">맞춤</button></div>
+    <div class="pf-cv"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}</svg></div>${zc(fl.zones)}</div>
+    <div class="card">${idx.filter(([t])=>t.on).map(([t,i])=>`<div class="tkid" onclick="bldSpot('${fl.id}',${i})"><span class="tkid-ic" style="min-width:24px">${t.no||''}</span><span class="tkid-nm">${esc(t.name)}${t.spec||t.eq?`<span class="tpath-meta">${esc(t.spec||t.eq.map(e=>e.name).join(' · '))}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')}</div><div class="botpad"></div>`;
+}
+function bfZoom(k){
+  const sv=document.getElementById('bf-svg');if(!sv)return;const W=+sv.dataset.w,box=sv.parentElement.clientWidth-4;
+  S._bfZ=k?Math.max(0.2,Math.min(2.5,(S._bfZ||sv.clientWidth/W)*k)):box/W;sv.style.width=Math.round(W*S._bfZ)+'px';
+}
+function bldSpot(fid,i){
+  const b=_bld(S._bld),f=b&&b.floors.find(x=>x.id===fid),t=f&&f.spots[i];if(!t)return;
+  const rows=t.eq||[{no:t.no,name:t.name,spec:t.spec,q:t.q}];
+  openModal(`<h3>${esc(t.name)}</h3><div class="muted">${esc(b.name)} · ${esc(f.name)}</div>
+    ${rows.map(e=>`<div class="item"><div class="t"><div class="n" style="white-space:normal">${e.no?e.no+'. ':''}${esc(e.name)}</div><div class="d" style="white-space:normal">${esc(e.spec||'')}</div></div>${e.q?`<button class="btn ghost sm" onclick="bldFind('${esc(e.q)}')">찾기</button>`:''}</div>`).join('')}
+    <div class="muted" style="margin-top:6px;font-size:12px">크기(가로×세로×높이 mm)·수량은 설비 배치도(${esc(f.dwg)}) 설비 목록 기준</div>
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
+function bldFind(q){closeModal();S._bld=null;S['_q_find-sr']=q;S._dvMax=30;go('find');}
 function smZoom(k){
   const sv=document.getElementById('sm-svg');if(!sv)return;const W=+sv.dataset.w,box=sv.parentElement.clientWidth-4;
   S._smZ=k?Math.max(0.2,Math.min(2.5,(S._smZ||sv.clientWidth/W)*k)):box/W;sv.style.width=Math.round(W*S._smZ)+'px';
