@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v165'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v166'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3498,7 +3498,8 @@ function flowSvg(f){
     const lab=t?`<text x="${tx}" y="${ty}" text-anchor="${ta}" font-size="13" font-weight="700" fill="${lp==='c'?'#fff':'#1a1a1a'}" paint-order="stroke" stroke="${lp==='c'?'#333':'#dfe2e5'}" stroke-width="3">${esc(t)}</text>`:'';
     const hn=x&&(x.node||(x.parts||[]).some(p=>p.node)); // 회선이 계통 트리에 없으면(L/C 직결 등) 흰 점 — 가압 여부를 모름
     const dot=x&&_pfEl(x)?`<circle cx="${s.x+s.w-2}" cy="${s.y+2}" r="7" fill="${!hn?'#fff':_pfOn(x,live)?'#18c247':'#9aa0a6'}" stroke="${hn?'#fff':'#777'}" stroke-width="2"/>`:'';
-    return o?`<g class="pf-sh" onclick="flowItem('${esc(f.id)}',${o.si},${o.ii})"><title>${esc(x.name)}</title>${sym}${dot}${lab}</g>`:`<g>${sym}${lab}</g>`;}).join('');
+    const nph=x?_flCnt(f,x):0,pm=nph?`<circle cx="${s.x+2}" cy="${s.y+2}" r="9" fill="#f08c00" stroke="#fff" stroke-width="2"/><text x="${s.x+2}" y="${s.y+6}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${nph}</text>`:'';
+    return o?`<g class="pf-sh" onclick="flowItem('${esc(f.id)}',${o.si},${o.ii})"><title>${esc(x.name)}</title>${sym}${dot}${pm}${lab}</g>`:`<g>${sym}${lab}</g>`;}).join('');
   g+=(V.texts||[]).map(t=>`<text x="${t.x}" y="${t.y}" font-size="${t.s||12}" ${t.b?'font-weight="700" ':''}fill="${esc(t.c||'#333')}">${esc(t.t)}</text>`).join('');
   return `<div class="pf-cv"><svg id="pf-svg" data-w="${V.w}" viewBox="0 0 ${V.w} ${V.h}" style="width:${Math.round(V.w*z)}px"><defs><linearGradient id="pfm" x1="0" x2="1"><stop offset="0" stop-color="#9ca1a8"/><stop offset=".45" stop-color="#eceef0"/><stop offset="1" stop-color="#8d939a"/></linearGradient>${mk}</defs>${g}</svg></div>
     <div class="muted" style="margin-top:6px">● <span style="color:var(--ok)">초록</span> = 급전 회선 평상시 가압(운전 여부 아님) · ○ 흰 점 = 계통 트리에 회선 없음 · 설비를 누르면 모터 사양·전원 · 손가락으로 밀어 이동${f.src?`<br>근거: ${esc(f.src)}`:''}</div>`;
@@ -3521,7 +3522,7 @@ function flowHtml(f,zid){
     else if(prev&&!s.side){const a=prev.items.length,b=s.items.length;
       h+=a===b?`<div class="pf-arr">${s.items.map(()=>'<div>↓</div>').join('')}</div>`:`<div class="pf-arr mix"><div>▼ ${b<a?a+'→'+b+' 합류':b+'갈래로 나눔'}</div></div>`;}
     h+=`<div class="pf-st">${s.side?'↳ 곁가지':++no+'.'} ${esc(s.name)}${s.note?' — '+esc(s.note):''}</div><div class="pf-row">`+s.items.map((x,ii)=>
-      `<div class="pf-box${_pfOn(x,live)?' on':''}${_pfEl(x)?'':' np'}" onclick="flowItem('${esc(f.id)}',${si},${ii})">${esc(x.name)}<small>${esc(_pfSub(x))||'&nbsp;'}</small></div>`).join('')+`</div>`;
+      `<div class="pf-box${_pfOn(x,live)?' on':''}${_pfEl(x)?'':' np'}" onclick="flowItem('${esc(f.id)}',${si},${ii})">${esc(x.name)}${_flCnt(f,x)?` <span class="badge b-yellow">📷 ${_flCnt(f,x)}</span>`:''}<small>${esc(_pfSub(x))||'&nbsp;'}</small></div>`).join('')+`</div>`;
     if(!s.side)prev=s;
   });
   return h+(f.src?`<div class="muted" style="margin-top:12px">순서 근거: ${esc(f.src)}</div>`:'');
@@ -3543,10 +3544,33 @@ function flowItem(fid,si,ii){
     ${n?`<div class="card" style="margin:8px 0;padding:8px 12px"><div style="font-weight:600">${live.has(n.id)?'🟢':'⚪'} 급전 회선 · ${esc((n.name||'').replace(/\s*\(.*$/,'').replace(/^#\d+\s*/,''))}</div>
       <div class="muted" style="font-size:12px;margin:2px 0 4px">${esc(((pathUp(n.id).find(p=>p.type==='bus')||{}).name||'').replace(/\s*\(.*$/,''))}${n.panelNo?' · '+esc(n.panelNo):''}</div>
       <div>${seg(n).map(t=>`<span class="badge b-gray" style="margin:2px 4px 2px 0;white-space:normal">${esc(t)}</span>`).join('')}</div></div>`:''}
+    ${flowRecHtml(f,x)}
     ${own&&own.length?own.map(e=>eqRow(e,e.name+' (본체)',x.node)).join(''):''}
     ${rows?`<div class="muted" style="margin:10px 0 4px">${(x.parts||[]).length?'부속 설비':'모터'} — 누르면 설비 상세(정비 이력), 🔌는 전원·정전 영향</div>${rows}`:`<div class="empty">${x.node||(x.eq||[]).length?'모터 정보 없음':'전기설비가 아닌 단계입니다'}</div>`}
     ${rows?'<div class="muted" style="margin-top:8px;font-size:12px">정격전류·회전수·제조사 등 명판 사양은 모터를 눌러 설비 상세의 [정보 수정]에서 넣을 수 있습니다.</div>':''}
     <div class="row" style="margin-top:12px;gap:6px">${n?`<button class="btn" onclick="openCard('${n.id}')">🔌 전원·정전 영향</button>`:''}<div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
+}
+/* v166: 흐름 설비 점검·조치 기록 — photos 스토어(refType 'flow', refId '흐름id|설비id', kind rep 점검보고서·act 조치 매뉴얼·pic 현장 사진). 기기 로컬 저장(다른 사진과 같음) */
+const FLOW_KINDS=[['rep','점검보고서'],['act','조치 매뉴얼'],['pic','현장 사진']];
+const _flKey=(f,x)=>f.id+'|'+x.id,_flPh=k=>S.photos.filter(p=>p.refType==='flow'&&p.refId===k),_flCnt=(f,x)=>_flPh(_flKey(f,x)).length;
+function flowRecHtml(f,x){
+  const k=_flKey(f,x),all=_flPh(k);
+  return `<div class="muted" style="margin:12px 0 2px">점검·조치 기록</div>`+FLOW_KINDS.map(([c,l])=>{const ph=all.filter(p=>(p.kind||'pic')===c);
+    return `<div style="margin:6px 0 0"><b style="font-size:13px">${l}</b>${ph.length?` <span class="muted">${ph.length}</span>`:''}<div class="photostrip" style="margin:4px 0 6px">${ph.map(p=>`<div style="width:76px"><div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div><div class="muted" style="font-size:11px;text-align:center">${esc((p.added||'').slice(2))}</div></div>`).join('')}<button class="addph" onclick="flowAddPhoto('${esc(k)}','${c}')">＋<br>사진</button></div></div>`;}).join('');
+}
+function flowAddPhoto(k,kind){
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true; // 카메라·사진첩 선택은 폰이 묻는다
+  inp.onchange=async()=>{const fs=[...(inp.files||[])];if(!fs.length)return;
+    for(const f of fs){const dataUrl=await new Promise(r=>_downscale(f,1600,0.8,r)),rec={id:'PH'+uid(),refType:'flow',refId:k,kind,dataUrl,caption:'',added:todayStr()};await dbPut('photos',rec);S.photos.push(rec);}
+    toast('사진 '+fs.length+'장 저장(기기 로컬)');_photoBack('flow',k);};
+  inp.click();
+}
+function flowItemKey(k){const [fid,iid]=k.split('|'),f=(S._flows||[]).find(x=>x.id===fid);if(!f)return;
+  for(let si=0;si<f.steps.length;si++){const ii=f.steps[si].items.findIndex(x=>x.id===iid);if(ii>=0)return flowItem(fid,si,ii);}}
+function _flRender(){ // 흐름 화면이 떠 있으면 표시(주황 점)만 갱신 — 스크롤 위치 유지
+  if(!document.querySelector('.pf-cv,.pf-row'))return;
+  const c=document.querySelector('.pf-cv'),a=c&&[c.scrollLeft,c.scrollTop],y=scrollY;render();
+  const n=document.querySelector('.pf-cv');if(n&&a){n.scrollLeft=a[0];n.scrollTop=a[1];}scrollTo(0,y);
 }
 function _zBrk(n){const [l,s]=_kdBrkLabel(n);return esc(l+(s&&s!=='N.O'?' '+s:''))+(n.normalState==='NO'?' · N.O':' · N.C');}
 function _zRow(k,i){
@@ -5736,6 +5760,7 @@ function _photoBack(refType,refId){
   else if(refType==='inspection')openInsp(refId);
   else if(refType==='note'){const n=S.notes.find(x=>x.id===refId);editNote(refId,n?n.equipId:'');}
   else if(refType==='fdoc')openFdoc(refId);
+  else if(refType==='flow'){_flRender();flowItemKey(refId);}
 }
 function addPhoto(refType,refId,multi){ // multi: 카메라 고정 없이 사진첩에서 여러 장
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
