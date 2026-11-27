@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v207'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v208'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -6786,12 +6786,15 @@ function editSpare(id){
       <button class="btn ghost sm" onclick="closeModal()">취소</button>
       <button class="btn sm" onclick="saveSpare('${x?.id||''}')">저장</button></div>`);
 }
-const _r6=x=>Math.round(Number(x)*1e6)/1e6; // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
+const _r6=x=>Math.round(Number(x)*1e6)/1e6;
+/* v208: 예비품 수량 — 개수 단위(EA·SET·PCS·LOT·개·조·대·식 등)는 정수로 반올림, m·kg·L 같은 단위는 소수 6자리까지 허용 */
+const _CNT_U=/^(EA|SET|PCS|PC|LOT|SET|개|조|대|식|면|본|매|EACH)?$/i;
+const _qn=(v,u)=>_CNT_U.test(String(u||'EA').trim())?Math.round(Number(v)):_r6(v); // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
 async function saveSpare(id){
   const name=$('#sp-n').value.trim();if(!name){toast('품명을 입력하세요');return}
   const obj=id?S.spares.find(v=>v.id===id):{id:'SP'+uid()};
-  const num=v=>v===''?'':_r6(v);
-  Object.assign(obj,{name,spec:$('#sp-s').value.trim(),qty:num($('#sp-q').value),unit:$('#sp-u').value.trim()||'EA',
+  const un=$('#sp-u').value.trim()||'EA',num=v=>v===''?'':_qn(v,un);
+  Object.assign(obj,{name,spec:$('#sp-s').value.trim(),qty:num($('#sp-q').value),unit:un,
     minQty:num($('#sp-m').value),location:$('#sp-l').value.trim(),equipName:$('#sp-e').value.trim(),
     note:$('#sp-note').value.trim(),updated:todayStr()});
   await dbPut('spares',obj);if(!id)S.spares.push(obj);
@@ -6877,7 +6880,7 @@ function editInv(id){
 }
 async function saveInv(id){
   const matNo=$('#iv-m').value.trim();if(!matNo){toast('자재번호를 입력하세요');return}
-  const num=v=>v===''?'':_r6(v);
+  const un=$('#iv-u').value.trim()||'EA',num=v=>v===''?'':_qn(v,un);
   const obj=id?S.spares.find(v=>v.id===id):{id:'IV'+uid(),src:'inv',sheet:S._invSheet||'본사',seq:999};
   Object.assign(obj,{matNo,name:$('#iv-n').value.trim(),assetNo:$('#iv-a').value.trim(),unit:$('#iv-u').value.trim()||'EA',
     qty:num($('#iv-q').value),real:num($('#iv-r').value),location:$('#iv-l').value.trim(),note:$('#iv-note').value.trim(),
@@ -7072,7 +7075,7 @@ async function saveSpareReal(id){
   const el=document.getElementById('rq_'+id);if(!el)return;
   const s=S.spares.find(x=>x.id===id);if(!s)return;
   const was=(s.real!=null&&s.real!=='');
-  s.real=(el.value===''?'':_r6(el.value));s.updated=todayStr();
+  s.real=(el.value===''?'':_qn(el.value,s.unit));s.updated=todayStr();
   await dbPut('spares',s);
   const chk=(s.real!==''&&s.real!=null);
   const row=document.getElementById('row_'+id);
@@ -7101,7 +7104,7 @@ async function clearSpareReal(id){
 function filterSpareInsp(v){S._spareQ=v;const el=document.getElementById('inspbody');if(el)el.innerHTML=spareInspBody();}
 async function setSpareReal(id,v){
   const s=S.spares.find(x=>x.id===id);if(!s)return;
-  s.real=(v===''?'':_r6(v));s.updated=todayStr();
+  s.real=(v===''?'':_qn(v,s.unit));s.updated=todayStr();
   await dbPut('spares',s);
 }
 
@@ -8088,7 +8091,7 @@ function useSpare(backEquipId){
 async function applyUseSpare(backEquipId){
   const sp=S.spares.find(x=>x.id===$('#us-s').value);if(!sp){toast('품목 선택');return;}
   const q=Number($('#us-q').value||0);if(!(q>0)){toast('수량을 확인하세요');return;}
-  sp.qty=_r6(Number(sp.qty||0)-q);
+  sp.qty=_qn(Number(sp.qty||0)-q,sp.unit);
   sp.hist=sp.hist||[];sp.hist.push({date:todayStr(),delta:-q,note:$('#us-n').value.trim()});
   sp.updated=todayStr();
   await dbPut('spares',sp);
