@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v202'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v203'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1069,6 +1069,14 @@ async function fbLogout(){
   if(fbAuthObj)try{await fbAuthObj.signOut();}catch(e){}
   fbUser=null;render();
 }
+/* v203(v2 순위 6): 동기화 수신이 부르는 render 는 #app 안 입력칸을 쓰는 중이면 포커스가 빠질 때까지 미룬다(글 쓰다 날아가는 것 방지). 사용자가 누른 render 는 그대로.
+   빠진 blur 로 영원히 안 그려지지 않게 60초가 지나면 미룸을 무시. */
+function _snapRender(){
+  const a=document.activeElement,busy=a&&a.closest&&a.closest('#app')&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+  if(window._snapDef&&Date.now()-window._snapDef<60000)return;
+  if(busy){window._snapDef=Date.now();a.addEventListener('blur',()=>{window._snapDef=0;setTimeout(render,80);},{once:true});return;}
+  window._snapDef=0;render();
+}
 function fbStartSync(){
   if(!fbUser||!fbDB)return;
   fbStopSync();
@@ -1099,7 +1107,7 @@ function fbStartSync(){
           local.forEach((r,id)=>{if(!onServer.has(id)&&!(r.deleted&&_v2Old(r)))fbPush(store,r,true);});
         }
       }catch(e){fbErr('수신 '+store,e);}
-      render();
+      _snapRender();
     },err=>fbErr('수신 '+store,err));
     fbUnsubs.push(unsub);
   });
