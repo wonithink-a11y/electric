@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v186'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v187'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3721,13 +3721,38 @@ function _devKeyOfText(v){ // 문서의 대상 설비 글 → 설비 키(정확�
   return '';
 }
 /* v186 설비 카드 '📍 위치' 한 줄 — 층 도면에 이 설비가 연결돼 있으면 "건물 · 층 · 이름", 아니면 설비동. 누르면 지도·층 도면에서 그 자리를 주황색으로 보여 줌. */
+/* v187 설비동 기본 배정 — 판넬이 설비동에 속한 설비는 그대로(_cardZone), 22.9kV·6.9kV 수전반·변압기·발전기·L/C·펌프·송풍기처럼 설비동 판넬 밖에 있는 설비는
+   이름·계통으로 정한다(허남원님: 발전기 → ST 터빈동). 차단기는 위쪽(없으면 아래쪽) 설비의 동을 따른다. 위치 한 줄·문서 분류가 이 값을 씀. */
+function _plantOf(n){const p=pathUp(n.id),r=p[p.length-1]||n;return /DH/.test(r.name||'')?'DH':'PB';}
+function _zoneFb(n,d){
+  if(!n||d>8)return '';
+  const nm=n.name||'',dh=_plantOf(n)==='DH',has=id=>(S._zones||[]).some(z=>z.id===id)?id:'';
+  if(n.type!=='breaker'&&n.type!=='source'){
+    if(dh){
+      if(/MAIN LTG/i.test(nm))return has('Z-DH-PWR');
+      if(n.type==='load'&&/PUMP|ACCUMULATOR|압입송풍기|공기압축기|냉각수|HEATER/i.test(nm))return has('Z-DH-PUMP');
+      if(n.type==='bus')return has('Z-DH-MGMT');
+    }else{
+      if(/MAIN LTG|임시전원/.test(nm))return has('Z-PB-LTG');
+      if(n.type==='load'&&/급수펌프|송풍기|PAF|SAF|IDF|FBHE|SCRUBER/i.test(nm))return has('Z-PB-BOIL');
+      if(n.type==='load'&&/CONDENSATE|복수기|BYPASS|DH HEATER/i.test(nm))return has('Z-PB-ST');
+      if(/L\/C TR-[34]|L\/C-[34]/.test(nm))return has('Z-PB-BOIL');
+      if(n.type==='bus'||/발전기|GCB/.test(nm))return has('Z-PB-ST');
+    }
+  }
+  const par=n.parentId&&nodeById(n.parentId),z=par&&par.type!=='source'?_zoneFb(par,d+1):'';
+  if(z)return z;
+  const k=n.type==='breaker'?nodeKids(n.id)[0]:null,kz=k?_zoneFb(k,d+1):'';if(kz)return kz;
+  return par&&par.type==='source'?(nodeKids(par.id).filter(x=>x.id!==n.id&&nodeKids(x.id).length).map(x=>_zoneFb(x,d+1)).find(Boolean)||''):''; // 같은 인입선의 다른 인입 차단기(예: VCB-102)는 형제의 동을 따름
+}
+function _nodeZone(n){const zp=n&&_cardZone(n);return zp?zp.z.id:(n?_zoneFb(n,0):'');}
 function devLoc(id,eid,load,opt){
   const key=eid||(load&&load.id)||id,ids=new Set([..._devAlias(key,(opt||{}).short),id,eid,load&&load.id].filter(Boolean));
   let hit=null;
   for(const b of ((S._bldg||{}).buildings||[]))for(const f of b.floors)f.spots.forEach((sp,i)=>{if(!hit&&(sp.eq||[sp]).some(e=>e.dev&&ids.has(e.dev)))hit={b,f,sp,i};});
-  const n=(id&&nodeById(id))||(eid&&((S.equipment.find(e=>e.id===eid)&&_eqNode(S.equipment.find(e=>e.id===eid)))||null)),zp=n&&_cardZone(n);
-  if(!hit&&!zp)return '';
-  const txt=hit?`${hit.b.name} · ${hit.f.name}${hit.sp.name?' · '+hit.sp.name:''}`:zp.z.name,go=hit?`${hit.b.id}|${hit.f.id}|${hit.i}`:`z|${zp.z.id}`;
+  const n=(id&&nodeById(id))||(eid&&((S.equipment.find(e=>e.id===eid)&&_eqNode(S.equipment.find(e=>e.id===eid)))||null)),zid=_nodeZone(n),zn=(S._zones||[]).find(z=>z.id===zid);
+  if(!hit&&!zn)return '';
+  const txt=hit?`${hit.b.name} · ${hit.f.name}${hit.sp.name?' · '+hit.sp.name:''}`:zn.name,go=hit?`${hit.b.id}|${hit.f.id}|${hit.i}`:`z|${zn.id}`;
   return `<div style="margin:6px 0"><button class="chip" onclick="devLocGo('${esc(go)}')">📍 ${esc(txt)}</button></div>`;
 }
 function devLocGo(a){
@@ -6043,7 +6068,7 @@ function fdCats(){ // 문서 분류 목록 [{id,name,re}] — 설비동 + 기본
 function fdZoneOf(d){
   const C=fdCats();
   if(d.zoneSet&&C.some(z=>z.id===d.zoneId))return d.zoneId;
-  if(d.devKey){const r=resolveDev(d.devKey),n=r&&(r.n||(r.e&&_eqNode(r.e))),zp=n&&_cardZone(n);if(zp)return zp.z.id;}
+  if(d.devKey){const r=resolveDev(d.devKey),n=r&&(r.n||(r.e&&_eqNode(r.e))),zi=_nodeZone(n);if(zi)return zi;}
   const v=d.v||{},t=(v.place||'')+' '+(v.place_s||'')+' '+(v.equip||'')+' '+(d.content||'');
   const Z=C.filter(z=>!z.id.startsWith('X:')),z=Z.find(z=>t.includes(z.name));if(z)return z.id;
   const w=Z.filter(z=>{const k=z.name.replace(/^(PB|DH|SRF|ST)\s+/,'');return k.length>=3&&t.includes(k);});
