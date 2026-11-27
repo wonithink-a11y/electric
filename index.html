@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v172'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v173'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -8382,7 +8382,7 @@ function smapCard(Z){
   const sat=S._smMode==='sat'&&M.sat,I=sat?M.sat:M,sp=(M.spots||[]).filter(t=>!t.zone||Z.some(z=>z.id===t.zone)),rest=Z.filter(z=>!sp.some(t=>t.zone===z.id));
   const z=S._smZ||(innerWidth<700?(sat?0.7:0.5):(Math.min(innerWidth,1400)-48)/I.w),k=sat?0.75:1; // 위성 사진은 도면보다 작아서 글자·선을 줄임
   const g=sp.map(t=>{const P=sat?t.polys:t.rects.map(q=>[[q[0],q[1]],[q[0]+q[2],q[1]],[q[0]+q[2],q[1]+q[3]],[q[0],q[1]+q[3]]]);if(!P)return '';
-    const fs=(t.fs||28)*k,on=!!t.zone,c=P[0].reduce((a,q)=>[a[0]+q[0]/4,a[1]+q[1]/4],[0,0]); // zone 없는 건물은 이름만 표시(누를 수 없음)
+    const fs=(t.fs||28)*k,on=!!(t.zone||t.bld),c=P[0].reduce((a,q)=>[a[0]+q[0]/4,a[1]+q[1]/4],[0,0]); // zone 없는 건물은 이름만 표시(누를 수 없음)
     return `<g${on?` class="pf-sh" onclick="mapGo('${esc(t.zone)}','${esc(t.flow||'')}','${esc(t.bld||'')}')"`:''}><title>${esc(t.name)}</title>${P.map(q=>`<polygon points="${q.map(v=>v.join(',')).join(' ')}" fill="${on?'rgba(31,111,255,.25)':'rgba(255,255,255,.10)'}" stroke="${on?'#1f6fff':(sat?'#ddd':'#8d949c')}" stroke-width="${(on?4:2)*k}"/>`).join('')}<text x="${c[0]}" y="${c[1]+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="${6*k}">${esc(t.name)}</text></g>`;}).join('');
   return `<div class="card"><h2>🏢 건물로 둘러보기</h2><div class="row" style="gap:6px;margin:0 0 6px">${M.sat?`<button class="btn ${sat?'ghost':''} sm" onclick="S._smMode='plan';S._smZ=null;render()">도면</button><button class="btn ${sat?'':'ghost'} sm" onclick="S._smMode='sat';S._smZ=null;render()">위성</button>`:''}<div class="grow"></div><button class="btn ghost sm" onclick="smZoom(0.8)">−</button><button class="btn ghost sm" onclick="smZoom(1.25)">＋</button><button class="btn ghost sm" onclick="smZoom(0)">맞춤</button></div>
     <div class="pf-cv"><svg id="sm-svg" data-w="${I.w}" viewBox="0 0 ${I.w} ${I.h}" style="width:${Math.round(I.w*z)}px"><image href="${I.img}" width="${I.w}" height="${I.h}"/>${g}</svg></div>
@@ -8397,18 +8397,19 @@ function bldView(){
   const b=_bld(S._bld),fl=b.floors.find(f=>f.id===S._bldFl),Zs=S._zones||[];
   const zc=ids=>{const L=Zs.filter(z=>(ids||[]).includes(z.id));return L.length?`<div class="chips" style="flex-wrap:wrap;margin-top:8px">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
   const head=`<div class="row" style="gap:6px;align-items:center;margin-bottom:8px"><button class="btn ghost sm" onclick="bldBack()">‹ 뒤로</button><b>${esc(b.name)}${fl?' · '+esc(fl.name):''}</b></div>`;
-  if(!fl)return head+`<div class="card">${b.floors.map(f=>`<div class="tkid" onclick="S._bldFl='${f.id}';render();scrollTo(0,0)"><span class="tkid-ic" style="font-weight:600;min-width:28px">${esc(f.id)}</span><span class="tkid-nm">${esc(f.name)}<span class="tpath-meta">${esc(f.spots.filter(s=>s.on).map(s=>s.name).join(' · '))}</span></span><span class="tkid-arr">›</span></div>`).join('')}</div>
+  if(!fl)return head+`<div class="card">${b.floors.map(f=>`<div class="tkid" onclick="S._bldFl='${f.id}';S._bfZ=null;render();scrollTo(0,0)"><span class="tkid-ic" style="font-weight:600;min-width:28px">${esc(f.id)}</span><span class="tkid-nm">${esc(f.name)}<span class="tpath-meta">${esc(f.spots.filter(s=>s.on).map(s=>s.name).join(' · '))}</span></span><span class="tkid-arr">›</span></div>`).join('')}</div>
     <div class="card"><h2>설비동</h2>${zc(b.zones)}</div><div class="botpad"></div>`;
-  const z=S._bfZ||(innerWidth<700?0.9:Math.min(1,(Math.min(innerWidth,1400)-48)/fl.w)),idx=fl.spots.map((t,i)=>[t,i]);
-  const g=idx.map(([t,i])=>{const r=t.rects[0],fs=t.fs||24,on=!!t.on,tall=r[3]>r[2]*2.5,cx=r[0]+r[2]/2,cy=r[1]+r[3]/2;
+  const z=S._bfZ||_bfFit(fl),idx=fl.spots.map((t,i)=>[t,i]);
+  const g=idx.filter(([t])=>t.rects&&t.rects.length).map(([t,i])=>{const r=t.rects[0],fs=t.fs||24,on=!!t.on,tall=r[3]>r[2]*2.5,cx=r[0]+r[2]/2,cy=r[1]+r[3]/2;
     return `<g${on?` class="pf-sh" onclick="bldSpot('${fl.id}',${i})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>`<rect x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="${on?'rgba(31,111,255,.22)':'rgba(120,120,120,.10)'}" stroke="${on?'#1f6fff':'#8d949c'}" stroke-width="${on?3:2}"/>`).join('')}<text x="${cx}" y="${cy+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="5"${tall?` transform="rotate(-90 ${cx} ${cy})"`:''}>${esc(t.name)}</text></g>`;}).join('');
   return head+`<div class="card"><div class="row" style="gap:6px;margin:0 0 6px"><span class="muted">${esc(fl.dwg)}</span><div class="grow"></div><button class="btn ghost sm" onclick="bfZoom(0.8)">−</button><button class="btn ghost sm" onclick="bfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="bfZoom(0)">맞춤</button></div>
-    <div class="pf-cv"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}</svg></div>${zc(fl.zones)}</div>
+    <div class="pf-cv" style="width:fit-content;max-width:100%;margin:0 auto"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}</svg></div>${zc(fl.zones)}</div>
     <div class="card">${idx.filter(([t])=>t.on).map(([t,i])=>`<div class="tkid" onclick="bldSpot('${fl.id}',${i})"><span class="tkid-ic" style="min-width:24px">${t.no||''}</span><span class="tkid-nm">${esc(t.name)}${t.spec||t.eq?`<span class="tpath-meta">${esc(t.spec||t.eq.map(e=>e.name).join(' · '))}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')}</div><div class="botpad"></div>`;
 }
+function _bfFit(fl){return Math.min((Math.min(innerWidth,1400)-(innerWidth<700?36:96))/fl.w,innerHeight*0.62/fl.h);} // 폭·높이 모두 한 화면에 들어가게
 function bfZoom(k){
-  const sv=document.getElementById('bf-svg');if(!sv)return;const W=+sv.dataset.w,box=sv.parentElement.clientWidth-4;
-  S._bfZ=k?Math.max(0.2,Math.min(2.5,(S._bfZ||sv.clientWidth/W)*k)):box/W;sv.style.width=Math.round(W*S._bfZ)+'px';
+  const sv=document.getElementById('bf-svg');if(!sv)return;const W=+sv.dataset.w,fl=_bld(S._bld).floors.find(f=>f.id===S._bldFl);
+  S._bfZ=k?Math.max(0.15,Math.min(2.5,(S._bfZ||sv.clientWidth/W)*k)):_bfFit(fl);sv.style.width=Math.round(W*S._bfZ)+'px';
 }
 function bldSpot(fid,i){
   const b=_bld(S._bld),f=b&&b.floors.find(x=>x.id===fid),t=f&&f.spots[i];if(!t)return;
