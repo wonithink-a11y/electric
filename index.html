@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v188'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v189'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3766,19 +3766,54 @@ function devLocGo(a){
    찾는 곳: ①폰 문서함(문서·매뉴얼 등록한 것) ②드라이브 '전력앱 보고서/매뉴얼'(PC에서 데이터/push_manuals.py 로 올림, 앱이 목록을 받아 열기). PDF는 앱 뷰어, hwp·pptx는 받아서 한컴·PPT 앱으로. */
 const MAN_MAP=[[/UPS|AVR|DC110|축전지|BATTERY|충전기|B\/C/i,'UPS|AVR|비상전원'],[/INVERTER|인버터|VVVF|SOFT\s*STARTER|공냉식|ACC/i,'인버터'],[/FIRE|화재|소방/i,'자동화재'],[/VCB|ACB|MCCB|SWGR|MCC|L\/C|BREAKER|차단기|분전반|PDP|변압기/i,'전기설비 조작 절차서']];
 const _manRe=name=>MAN_MAP.filter(([d])=>d.test(name||'')).map(m=>m[1]).join('|');
+const _manIc=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^hwpx?$/.test(x)?'📘':/^pptx?$/.test(x)?'📙':'📄';};
+function manItems(){ // 드라이브 매뉴얼 [{f,i}] — 같은 이름의 PDF가 있으면 pptx 는 숨김(PDF 가 앱에서 바로 열림)
+  const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>!(/\.pptx?$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.pptx?$/i,'.pdf'))));
+}
+function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시)
+  if(gcOn()&&navigator.onLine&&(!S._manAt||Date.now()-S._manAt>600000))
+    return gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'}).then(r=>{S._manFiles=r.files||[];S._manAt=Date.now();}).catch(()=>{});
+  return Promise.resolve();
+}
+const _manRow=(name,sub,click,unl)=>`<div class="item"><div class="t click" onclick="${click}"><div class="n" style="white-space:normal">${_manIc(name)} ${esc(name.replace(/\.[^.]+$/,''))}</div><div class="d">${esc(sub)}</div></div>${unl||''}</div>`;
 async function manFill(){
-  const el=document.getElementById('man-rec');if(!el||!el.dataset.re)return;const re=new RegExp(el.dataset.re,'i');
-  const ic=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^hwpx?$/.test(x)?'📘':/^pptx?$/.test(x)?'📙':'📄';};
+  const el=document.getElementById('man-rec');if(!el)return;const key=el.dataset.k,re=el.dataset.re?new RegExp(el.dataset.re,'i'):null;
   const draw=()=>{
-    const loc=S.docs.filter(d=>/매뉴얼|절차/.test(d.kind||'')&&re.test((d.title||'')+' '+(d.name||''))).slice(0,6),dr=(S._manFiles||[]).map((f,i)=>({f,i})).filter(x=>re.test(x.f.name));
+    const pin=(_devLk()[key]||[]).filter(x=>x.dr).map(x=>x.dr),IT=manItems(),
+      loc=re?S.docs.filter(d=>/매뉴얼|절차/.test(d.kind||'')&&re.test((d.title||'')+' '+(d.name||''))).slice(0,6):[],
+      dr=IT.filter(x=>pin.includes(x.f.name)||(re&&re.test(x.f.name)));
     el.innerHTML=loc.length||dr.length?`<div class="muted" style="margin:10px 0 4px">관련 매뉴얼</div>`+
-      loc.map(d=>`<div class="item click" onclick="viewDoc('${d.id}')"><div class="t"><div class="n" style="white-space:normal">${ic(d.name)} ${esc(d.title||d.name)}</div><div class="d">문서함 · ${esc((d.ext||'').toUpperCase())}</div></div></div>`).join('')+
-      dr.map(x=>`<div class="item click" onclick="manOpen(${x.i})"><div class="t"><div class="n" style="white-space:normal">${ic(x.f.name)} ${esc(x.f.name.replace(/\.[^.]+$/,''))}</div><div class="d">드라이브 · ${_fsz(x.f.size)} · ${esc(x.f.name.split('.').pop().toUpperCase())}</div></div></div>`).join(''):'';
+      loc.map(d=>_manRow(d.name||d.title,'문서함 · '+(d.ext||'').toUpperCase(),`viewDoc('${d.id}')`)).join('')+
+      dr.map(x=>_manRow(x.f.name,'드라이브 · '+_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase()+(pin.includes(x.f.name)?' · ★ 직접 연결':''),`manOpen(${x.i})`,pin.includes(x.f.name)?`<button class="btn ghost sm" onclick="manUnlink('${esc(key)}','${esc(x.f.name)}')">✕</button>`:'')).join(''):'';
   };
-  draw();
-  if(gcOn()&&navigator.onLine&&(!S._manAt||Date.now()-S._manAt>600000)){
-    try{const r=await gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'});S._manFiles=r.files||[];S._manAt=Date.now();draw();}catch(e){}
-  }
+  draw();await manLoad();draw();
+}
+async function manLink(key,name,cid){const m=_devLk();(m[key]=m[key]||[]).push({dr:name,kind:'act'});await _devLkSave(m);_cardReopen(cid);}
+async function manUnlink(key,name){const m=_devLk();m[key]=(m[key]||[]).filter(x=>x.dr!==name);await _devLkSave(m);_cardReopen(window._cardOpen);}
+function manPick(key){ // 이 설비에 드라이브 매뉴얼을 직접 연결
+  window._mpk=[key,window._cardOpen];
+  openModal(`<h3>매뉴얼 연결</h3><div class="muted">드라이브 매뉴얼 중에서 이 설비에 붙입니다</div><input id="mp-q" placeholder="이름 검색" style="width:100%;margin:8px 0" oninput="manPickList()" autocomplete="off"><div id="mp-l"></div>
+    <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn ghost sm" onclick="_cardReopen(window._mpk[1])">취소</button></div>`);
+  manLoad().then(manPickList);manPickList();
+}
+function manPickList(){
+  const q=(document.getElementById('mp-q')||{value:''}).value.toLowerCase().trim(),[key]=window._mpk||[],have=new Set((_devLk()[key]||[]).map(x=>x.dr));
+  const L=manItems().filter(x=>!have.has(x.f.name)&&(!q||x.f.name.toLowerCase().includes(q)));
+  const e=document.getElementById('mp-l');if(e)e.innerHTML=L.length?L.map(x=>_manRow(x.f.name,_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase(),`manLink(window._mpk[0],'${esc(x.f.name)}',window._mpk[1])`)).join(''):'<div class="empty">'+(gcOn()?'일치하는 매뉴얼 없음':'구글 연동을 켜면 드라이브 매뉴얼을 볼 수 있습니다')+'</div>';
+}
+const MAN_CATS=[['UPS','UPS|AVR|비상전원'],['인버터','인버터'],['소방','자동화재'],['조작·절차','조작 절차서|법정검사']];
+function manPanel(){
+  setTimeout(()=>{manList();manLoad().then(manList);},30);
+  return `<div class="card"><input id="man-q" placeholder="매뉴얼 검색 (예: UPS, 인버터)" style="width:100%" value="${esc(S._manQ||'')}" oninput="S._manQ=this.value;manList()" autocomplete="off">
+    <div class="chips" style="flex-wrap:wrap;margin:8px 0" id="man-cats"></div><div id="man-list"></div></div>`;
+}
+function manList(){
+  const el=document.getElementById('man-list');if(!el)return;const q=(S._manQ||'').toLowerCase().trim(),cat=S._manCat||'';
+  const cr=cat?new RegExp((MAN_CATS.find(c=>c[0]===cat)||[0,'$^'])[1],'i'):null,ok=n=>(!q||n.toLowerCase().includes(q))&&(!cr||cr.test(n));
+  const ce=document.getElementById('man-cats');if(ce)ce.innerHTML=MAN_CATS.map(c=>`<button class="chip${cat===c[0]?' on':''}" onclick="S._manCat=S._manCat==='${c[0]}'?'':'${c[0]}';manList()">${c[0]}</button>`).join('');
+  const loc=S.docs.filter(d=>/매뉴얼|절차/.test(d.kind||'')&&ok((d.title||'')+' '+(d.name||''))),dr=manItems().filter(x=>ok(x.f.name));
+  el.innerHTML=loc.map(d=>_manRow(d.name||d.title,'문서함 · '+(d.ext||'').toUpperCase(),`viewDoc('${d.id}')`)).join('')+dr.map(x=>_manRow(x.f.name,'드라이브 · '+_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase(),`manOpen(${x.i})`)).join('')
+    +(!loc.length&&!dr.length?`<div class="empty">${gcOn()?'일치하는 매뉴얼 없음':'구글 연동을 켜면 드라이브 매뉴얼 목록을 받아 옵니다'}</div>`:'');
 }
 function manOpen(i){S._df={path:'전력앱 보고서/매뉴얼',dirs:[],files:S._manFiles||[]};driveOpen(i);}
 function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
@@ -3797,7 +3832,7 @@ function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이�
     return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
       ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}','${k}')">＋ ${nm} 작성</button>`:''}
       ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}','','','${k}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
-      ${c==='act'&&_manRe(o.short)?`<div id="man-rec" data-re="${esc(_manRe(o.short))}"></div>`:''}
+      ${c==='act'?`<div id="man-rec" data-k="${k}" data-re="${esc(_manRe(o.short))}"></div><button class="btn ghost sm" style="margin-top:6px" onclick="manPick('${k}')">＋ 매뉴얼 직접 연결</button>`:''}
       ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
   const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
@@ -4536,6 +4571,7 @@ async function driveOpen(i){
   if(ext==='pdf')return viewPdf(blob,f.name);
   if(/^(jpe?g|png|gif|webp)$/.test(ext)){const u=URL.createObjectURL(blob);
     openModal(`<h3>🖼️ ${esc(f.name)}</h3><img src="${u}" style="width:100%;border-radius:8px"><div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="driveFiles(S._df.path)">← 목록</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);return;}
+  try{const file=new File([blob],f.name,{type:blob.type});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:f.name});return;}}catch(e){if(e&&e.name==='AbortError')return;} // v189: 앱 선택창(한컴 뷰어 등)으로 바로 열기
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=f.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
   toast('다운로드 폴더에 받음 — 알림에서 열면 한컴·엑셀 앱으로 열립니다');
 }
@@ -8656,8 +8692,9 @@ function vFind(){
   const grp=pl=>{const L=Z.filter(z=>(z.plant||'PB')===pl);return L.length?`<div class="muted" style="margin:8px 0 4px">${pl==='DH'?'DH 열원설비':'PB 발전설비'}</div><div class="chips" style="flex-wrap:wrap">${L.map(z=>`<button class="chip" onclick="findZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>`:'';};
   const recRow=h=>`<div class="tkid" onclick="openDevice('${esc(h.key)}')"><span class="tkid-ic">${h.f?'★':'🕘'}</span><span class="tkid-nm">${esc(h.label)}</span><span class="tkid-arr">›</span></div>`;
   const fav=S._fav||[],rec=[...fav.map(x=>({...x,f:1})),...(_rec().hubs||[]).filter(h=>!fav.some(f=>f.key===h.key))].slice(0,10);
-  const tab=S._findTab||'map',seg=[['map','지도'],['tree','설비동'],['dwg','층 도면'],['rec','최근·★']];
+  const tab=S._findTab||'map',seg=[['map','지도'],['tree','설비동'],['dwg','층 도면'],['rec','최근·★'],['man','매뉴얼']];
   const panel=tab==='map'?(Z.length?smapCard(Z)||`<div class="card"><h2>🏢 건물로 둘러보기</h2>${grp('PB')}${grp('DH')}</div>`:''):
+    tab==='man'?manPanel():
     tab==='rec'?`<div class="card"><h2>최근·즐겨찾기</h2>${rec.length?rec.map(recRow).join(''):'<div class="empty">아직 없음</div>'}</div>`:
     tab==='tree'?`<div class="card"><h2>설비동</h2>${grp('PB')}${grp('DH')}<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" onclick="S._treeSubTab='path';go('tree')">🔌 계통 트리</button><button class="btn ghost sm" onclick="go('equip')">📋 설비 마스터 목록</button></div></div>`:
     `<div class="card"><h2>층 도면</h2>${bldFloorList()}<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" onclick="go('docfind')">📐 도면 찾기 (단선도·PDF)</button></div></div>`;
