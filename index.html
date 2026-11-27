@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v187'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v188'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3762,6 +3762,25 @@ function devLocGo(a){
   S._bld=b;S._bldFl=f;S._bfZ=null;S._hl={f,i:+i};render();scrollTo(0,0);
   setTimeout(()=>{const r=document.querySelector('#bf-svg .hl-rect');if(r)r.scrollIntoView({block:'center',inline:'center'});},120);
 }
+/* v188 관련 매뉴얼 — 설비 카드 '조치 매뉴얼' 탭에 설비 종류에 맞는 매뉴얼을 자동으로 보여 줌(UPS·인버터·소방·수전/차단기).
+   찾는 곳: ①폰 문서함(문서·매뉴얼 등록한 것) ②드라이브 '전력앱 보고서/매뉴얼'(PC에서 데이터/push_manuals.py 로 올림, 앱이 목록을 받아 열기). PDF는 앱 뷰어, hwp·pptx는 받아서 한컴·PPT 앱으로. */
+const MAN_MAP=[[/UPS|AVR|DC110|축전지|BATTERY|충전기|B\/C/i,'UPS|AVR|비상전원'],[/INVERTER|인버터|VVVF|SOFT\s*STARTER|공냉식|ACC/i,'인버터'],[/FIRE|화재|소방/i,'자동화재'],[/VCB|ACB|MCCB|SWGR|MCC|L\/C|BREAKER|차단기|분전반|PDP|변압기/i,'전기설비 조작 절차서']];
+const _manRe=name=>MAN_MAP.filter(([d])=>d.test(name||'')).map(m=>m[1]).join('|');
+async function manFill(){
+  const el=document.getElementById('man-rec');if(!el||!el.dataset.re)return;const re=new RegExp(el.dataset.re,'i');
+  const ic=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^hwpx?$/.test(x)?'📘':/^pptx?$/.test(x)?'📙':'📄';};
+  const draw=()=>{
+    const loc=S.docs.filter(d=>/매뉴얼|절차/.test(d.kind||'')&&re.test((d.title||'')+' '+(d.name||''))).slice(0,6),dr=(S._manFiles||[]).map((f,i)=>({f,i})).filter(x=>re.test(x.f.name));
+    el.innerHTML=loc.length||dr.length?`<div class="muted" style="margin:10px 0 4px">관련 매뉴얼</div>`+
+      loc.map(d=>`<div class="item click" onclick="viewDoc('${d.id}')"><div class="t"><div class="n" style="white-space:normal">${ic(d.name)} ${esc(d.title||d.name)}</div><div class="d">문서함 · ${esc((d.ext||'').toUpperCase())}</div></div></div>`).join('')+
+      dr.map(x=>`<div class="item click" onclick="manOpen(${x.i})"><div class="t"><div class="n" style="white-space:normal">${ic(x.f.name)} ${esc(x.f.name.replace(/\.[^.]+$/,''))}</div><div class="d">드라이브 · ${_fsz(x.f.size)} · ${esc(x.f.name.split('.').pop().toUpperCase())}</div></div></div>`).join(''):'';
+  };
+  draw();
+  if(gcOn()&&navigator.onLine&&(!S._manAt||Date.now()-S._manAt>600000)){
+    try{const r=await gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'});S._manFiles=r.files||[];S._manAt=Date.now();draw();}catch(e){}
+  }
+}
+function manOpen(i){S._df={path:'전력앱 보고서/매뉴얼',dirs:[],files:S._manFiles||[]};driveOpen(i);}
 function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[],o=opt||{};
@@ -3778,10 +3797,12 @@ function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이�
     return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
       ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}','${k}')">＋ ${nm} 작성</button>`:''}
       ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}','','','${k}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
+      ${c==='act'&&_manRe(o.short)?`<div id="man-rec" data-re="${esc(_manRe(o.short))}"></div>`:''}
       ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
   const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
   const n=cnt.rep+cnt.act+cnt.pic;
+  setTimeout(manFill,60);
   return sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec" style="margin-top:8px">${panels}</div>`,true);
 }
 function devTab(k){S._devTab=k;document.querySelectorAll('.dv-p').forEach(e=>e.style.display=e.dataset.k===k?'':'none');document.querySelectorAll('.dv-t').forEach(e=>e.classList.toggle('ghost',e.dataset.k!==k));}
