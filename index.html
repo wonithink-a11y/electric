@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v178'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v179'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3707,15 +3707,20 @@ function devSec(id,eid,load){
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[];
   const docs=k=>lk.filter(x=>x.kind===k).map(x=>({...x,d:S.docs.find(y=>y.id===x.id)})).filter(x=>x.d);
-  const n=ph.length+lk.filter(x=>S.docs.some(y=>y.id===x.id)).length;
-  const k=esc(key),body=DEV_KINDS.map(([c,l])=>{
-    const P=ph.filter(p=>(p.kind||'pic')===c),D=c==='pic'?[]:docs(c);
-    return `<div style="margin:8px 0 0"><b style="font-size:13px">${l}</b>${P.length+D.length?` <span class="muted">${P.length+D.length}</span>`:''}
+  const k=esc(key),cur=S._devTab||'rep',cnt={};
+  const panel=([c,l])=>{
+    const P=ph.filter(p=>(p.kind||'pic')===c),D=c==='pic'?[]:docs(c);cnt[c]=P.length+D.length;
+    return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
       ${D.map(x=>`<div class="item"><div class="t click" onclick="viewDoc('${x.id}')"><div class="n" style="white-space:normal">📄 ${esc(x.d.title||x.d.name)}</div><div class="d">${esc((x.d.ext||'').toUpperCase())}${x.d.size?' · '+Math.round(x.d.size/1024)+'KB':''}</div></div><button class="btn ghost sm" onclick="devUnlink('${k}','${x.id}')">✕</button></div>`).join('')}
-      <div class="photostrip" style="margin:4px 0 4px">${P.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}
-        <button class="addph" onclick="devAddPhoto('${k}','${c}')">＋<br>사진</button>${c==='pic'?'':`<button class="addph" onclick="devAddDoc('${k}','${c}')">＋<br>PDF</button><button class="addph" onclick="devPickDoc('${k}','${c}')">문서함<br>연결</button>`}</div></div>`;}).join('');
-  return sec0('📷 기록 <span class="cnt">'+n+'</span>',body,true);
+      ${P.length?`<div class="photostrip" style="margin:6px 0">${P.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}</div>`:''}
+      ${P.length+D.length?'':'<div class="muted" style="margin:6px 0">아직 없음</div>'}
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn sm" onclick="devAddPhoto('${k}','${c}')">＋ 사진</button>${c==='pic'?'':`<button class="btn sm" onclick="devAddDoc('${k}','${c}')">＋ PDF</button><button class="btn ghost sm" onclick="devPickDoc('${k}','${c}')">문서함에서</button>`}</div></div>`;};
+  const panels=DEV_KINDS.map(panel).join('');
+  const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
+  const n=cnt.rep+cnt.act+cnt.pic;
+  return sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec">${panels}</div>`,true);
 }
+function devTab(k){S._devTab=k;document.querySelectorAll('.dv-p').forEach(e=>e.style.display=e.dataset.k===k?'':'none');document.querySelectorAll('.dv-t').forEach(e=>e.classList.toggle('ghost',e.dataset.k!==k));}
 const sec0=(t,b,open)=>`<details class="card" style="margin:8px 0;padding:8px 12px"${open?' open':''}><summary style="cursor:pointer;font-weight:600">${t}</summary><div style="margin-top:8px">${b}</div></details>`;
 function devAddPhoto(key,kind){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
