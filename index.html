@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v194'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v195'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3778,12 +3778,22 @@ const _manIc=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pd
 function manItems(){ // 드라이브 매뉴얼 [{f,i}] — 같은 이름의 PDF가 있으면 pptx 는 숨김(PDF 가 앱에서 바로 열림)
   const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>x.f.name[0]!=='_'&&!/\(정리판\)/.test(x.f.name)&&!(/\.pptx?$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.pptx?$/i,'.pdf'))));
 }
-function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시)
+/* v195: 매뉴얼 목록·쪽 색인·PDF 를 기기(meta 'manlist'·'man:이름')에 저장 — 한 번 받으면 오프라인에서도 열리고 다시 받지 않음(백업·동기화 대상 아님) */
+async function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시) — 먼저 기기 저장본, 온라인이면 새로 받아 저장
+  if(!S._manFiles||!S._manFiles.length){try{const m=await dbGet('meta','manlist');if(m){S._manFiles=m.files||[];if(m.idx)S._manIdx=m.idx;}}catch(e){}}
   if(gcOn()&&navigator.onLine&&(!S._manAt||Date.now()-S._manAt>600000))
     return gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'}).then(async r=>{S._manFiles=r.files||[];S._manAt=Date.now();
       const ix=S._manFiles.find(f=>f.name==='_색인.json'); // v190 운영업무지침서 쪽 색인
-      if(ix&&!S._manIdx){try{const g=await gcCall({op:'get',id:ix.id});S._manIdx=JSON.parse(decodeURIComponent(escape(atob(g.b64))));}catch(e){}}}).catch(()=>{});
-  return Promise.resolve();
+      if(ix){try{const g=await gcCall({op:'get',id:ix.id});S._manIdx=JSON.parse(decodeURIComponent(escape(atob(g.b64))));}catch(e){}}
+      try{await dbPut('meta',{id:'manlist',files:S._manFiles,idx:S._manIdx||null});}catch(e){}}).catch(()=>{});
+}
+const _b64blob=(b64,mime)=>{const bin=atob(b64),u8=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u8[k]=bin.charCodeAt(k);return new Blob([u8],{type:mime||'application/octet-stream'});};
+async function manSyncAll(){ // 드라이브 매뉴얼 PDF 전부 기기에 저장(이미 있고 크기 같으면 건너뜀)
+  await manLoad();const L=manItems().map(x=>x.f).filter(f=>/\.pdf$/i.test(f.name)&&f.size<=30*1048576);let n=0,t=0;
+  for(const f of L){const c=await dbGet('meta','man:'+f.name).catch(()=>null);if(c&&c.size===f.size&&c.blob)continue;
+    t++;toast('매뉴얼 저장 중 '+t+'… '+f.name.slice(0,18));
+    try{const r=await gcCall({op:'get',id:f.id});await dbPut('meta',{id:'man:'+f.name,size:f.size,blob:_b64blob(r.b64,'application/pdf')});n++;}catch(e){}}
+  toast(t?'매뉴얼 PDF '+n+'개 기기에 저장':'매뉴얼 PDF 모두 기기에 저장되어 있음');
 }
 const _manRow=(name,sub,click,unl)=>`<div class="item"><div class="t click" onclick="${click}"><div class="n" style="white-space:normal">${_manIc(name)} ${esc(name.replace(/\.[^.]+$/,''))}</div><div class="d">${esc(sub)}</div></div>${unl||''}</div>`;
 /* v190 운영업무지침서 연결 — 설비 카드 조치 매뉴얼 탭에 '정기점검보수 기준(50000 부록 52200)'의 그 설비 종류 쪽과 30000 절차 쪽을 바로 열기 행으로 보여 줌.
@@ -3828,7 +3838,7 @@ const MAN_CATS=[['지침','^\\d{5}'],['UPS','UPS|AVR|비상전원'],['인버터'
 function manPanel(){
   setTimeout(()=>{manList();manLoad().then(manList);},30);
   return `<div class="card"><input id="man-q" placeholder="매뉴얼 검색 (예: UPS, 인버터)" style="width:100%" value="${esc(S._manQ||'')}" oninput="S._manQ=this.value;manList()" autocomplete="off">
-    <div class="chips" style="flex-wrap:wrap;margin:8px 0" id="man-cats"></div><div id="man-list"></div></div>`;
+    <div class="chips" style="flex-wrap:wrap;margin:8px 0" id="man-cats"></div><div id="man-list"></div><button class="btn ghost sm full" style="margin-top:8px" onclick="manSyncAll()">📥 PDF 기기에 저장</button></div>`;
 }
 function manList(){
   const el=document.getElementById('man-list');if(!el)return;const q=(S._manQ||'').toLowerCase().trim(),cat=S._manCat||'';
@@ -4588,10 +4598,11 @@ async function driveFiles(path){
 async function driveOpen(i,page){
   const f=S._df&&S._df.files[i];if(!f)return;
   if(f.size>30*1048576){window.open(f.url,'_blank');return;}
-  toast('받는 중… '+_fsz(f.size));
-  let r;try{r=await gcCall({op:'get',id:f.id});}catch(e){toast('받기 실패: '+e.message);return;}
-  const bin=atob(r.b64),u8=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u8[k]=bin.charCodeAt(k);
-  const blob=new Blob([u8],{type:r.mime||'application/octet-stream'}),ext=f.name.split('.').pop().toLowerCase();
+  const ext=f.name.split('.').pop().toLowerCase(),man=S._df.path==='전력앱 보고서/매뉴얼'&&ext==='pdf';let blob=null;
+  if(man){const c=await dbGet('meta','man:'+f.name).catch(()=>null);if(c&&c.size===f.size&&c.blob)blob=c.blob;} // v195: 기기에 저장된 매뉴얼은 다시 받지 않음
+  if(!blob){toast('받는 중… '+_fsz(f.size));
+    let r;try{r=await gcCall({op:'get',id:f.id});}catch(e){toast('받기 실패: '+e.message);return;}
+    blob=_b64blob(r.b64,r.mime);if(man)dbPut('meta',{id:'man:'+f.name,size:f.size,blob}).catch(()=>{});}
   if(ext==='pdf')return viewPdf(blob,f.name,page);
   if(/^(jpe?g|png|gif|webp)$/.test(ext)){const u=URL.createObjectURL(blob);
     openModal(`<h3>🖼️ ${esc(f.name)}</h3><img src="${u}" style="width:100%;border-radius:8px"><div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="driveFiles(S._df.path)">← 목록</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);return;}
@@ -8964,7 +8975,7 @@ async function driveSeedApply(){
     if(kinds.includes('로직카드'))for(const c of await dbAll('logic'))await dbDel('logic',c.id);
     let n=0;for(let i=0;i<B.files.length;i++){if(kinds[i]==='알수없음'||kinds[i]==='백업')continue;await _applyJson(kinds[i],B.files[i].d);n++;}
     await dbPut('meta',{id:'driveseed',v:B.stamp||''});
-    await loadAll();render();toast(`드라이브 데이터 반영 완료 — ${n}개 파일`);
+    await loadAll();render();toast(`드라이브 데이터 반영 완료 — ${n}개 파일`);setTimeout(()=>manSyncAll().catch(()=>{}),2500); // v195: 매뉴얼 PDF 도 기기에 저장
   }catch(e){console.error('driveSeedApply',e);toast('반영 실패: '+e.message+' — 다시 가져오기를 누르면 이어서 맞춰집니다');}
 }
 (async function init(){
