@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v181'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v182'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5940,21 +5940,61 @@ const fdPh=id=>S.photos.filter(p=>p.refType==='fdoc'&&p.refId===id).sort((a,b)=>
 function fdocCard(){
   const n=S.notes.filter(x=>x.kind==='fdoc').length;
   return `<div class="card"><h2>📄 현장 문서 <span class="cnt">${n}건</span></h2>
-    <div class="muted">사진·내용만 넣으면 A4 문서로 → PDF 저장·공유. 이 기기에만 보관(서버 없음).</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
-    ${n?`<input id="fd-q" placeholder="문서함 검색 (설비·내용)" value="${esc(S._fdq||'')}" oninput="S._fdq=this.value;$('#fd-list').innerHTML=fdListHtml()">`:''}
+    ${n?`<div id="fd-chips">${fdChipsHtml()}</div><input id="fd-q" placeholder="문서함 검색 (설비·내용)" value="${esc(S._fdq||'')}" oninput="S._fdq=this.value;$('#fd-list').innerHTML=fdListHtml()">`:''}
     <div id="fd-list">${fdListHtml()}</div></div>`;
 }
-function fdListHtml(){
-  const q=(S._fdq||'').trim().toLowerCase();
-  let all=S.notes.filter(x=>x.kind==='fdoc').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id.localeCompare(a.id));
-  if(q)all=all.filter(d=>(d.tag+' '+Object.values(d.v||{}).join(' ')+' '+fdPh(d.id).map(p=>p.caption).join(' ')).toLowerCase().includes(q));
-  const shown=all.slice(0,q?50:5);
-  return shown.map(d=>`<div class="item click" onclick="openFdoc('${d.id}')"><div class="t"><div class="n">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
-    <div class="d">${esc(d.date)} · ${esc(d.tag)}${fdPh(d.id).length?' · 사진 '+fdPh(d.id).length:''}</div></div></div>`).join('')
-    +(all.length>shown.length?`<div class="muted">최근 ${shown.length}건 — 검색하면 전체에서 찾습니다 (더보기 › 업무 메모에도 있음)</div>`:'')
-    +(q&&!all.length?'<div class="empty">찾는 문서 없음</div>':'');
+/* v182 문서 분류 — 설비(devKey) > 설비동(zoneId) > 미분류. 설비는 문서를 저장할 때 자동(카드에서 쓰면 그 설비, 아니면 '설비 품목·대상 설비' 글),
+   설비동은 설비·'설비 장소' 글에서 알아냄. 자동으로 안 되면 문서 줄의 분류 칩을 눌러 직접 고른다(수동은 d.zoneSet·d.devSet 으로 기억). */
+function fdZoneOf(d){
+  const Z=S._zones||[];
+  if(d.zoneSet&&Z.some(z=>z.id===d.zoneId))return d.zoneId;
+  if(d.devKey){const r=resolveDev(d.devKey),n=r&&(r.n||(r.e&&_eqNode(r.e))),zp=n&&_cardZone(n);if(zp)return zp.z.id;}
+  const v=d.v||{},t=(v.place||'')+' '+(v.place_s||'')+' '+(v.equip||'');
+  const z=Z.find(z=>t.includes(z.name));if(z)return z.id;
+  const w=Z.filter(z=>{const k=z.name.replace(/^(PB|DH|SRF|ST)\s+/,'');return k.length>=3&&t.includes(k);});
+  return w.length===1?w[0].id:'';
 }
+function fdDevName(d){if(!d.devKey)return '';const r=resolveDev(d.devKey);return r?((r.n&&r.n.name)||(r.e&&r.e.name)||'').replace(/\s*\(.*$/,''):'';}
+function fdClsLabel(d){const z=(S._zones||[]).find(z=>z.id===fdZoneOf(d)),dn=fdDevName(d);return z?z.name+(dn?' › '+_kdShort(dn,16):''):(dn?_kdShort(dn,20):'미분류');}
+function fdChipsHtml(){
+  const all=S.notes.filter(x=>x.kind==='fdoc'),cnt={},f=S._fdz||'';let none=0;
+  all.forEach(d=>{const z=fdZoneOf(d);if(z)cnt[z]=(cnt[z]||0)+1;else none++;});
+  const Z=(S._zones||[]).filter(z=>cnt[z.id]),chip=(k,l,n,hot)=>`<button class="chip${f===k?' on':''}" style="${hot?'border-color:var(--warn,#e0a030)':''}" onclick="S._fdz=S._fdz==='${k}'?'':'${k}';$('#fd-chips').innerHTML=fdChipsHtml();$('#fd-list').innerHTML=fdListHtml()">${l} ${n}</button>`;
+  return `<div class="chips" style="flex-wrap:wrap;margin-bottom:6px">${none?chip('_none','미분류',none,1):''}${Z.map(z=>chip(z.id,z.name,cnt[z.id])).join('')}</div>`;
+}
+function fdListHtml(){
+  const q=(S._fdq||'').trim().toLowerCase(),f=S._fdz||'';
+  let all=S.notes.filter(x=>x.kind==='fdoc').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id.localeCompare(a.id));
+  if(f)all=all.filter(d=>f==='_none'?!fdZoneOf(d):fdZoneOf(d)===f);
+  if(q)all=all.filter(d=>(d.tag+' '+Object.values(d.v||{}).join(' ')+' '+fdPh(d.id).map(p=>p.caption).join(' ')).toLowerCase().includes(q));
+  const shown=all.slice(0,q||f?50:5);
+  return shown.map(d=>{const un=!fdZoneOf(d)&&!d.devKey;return `<div class="item"><div class="t click" onclick="openFdoc('${d.id}')"><div class="n">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
+    <div class="d">${esc(d.date)} · ${esc(d.tag)}${fdPh(d.id).length?' · 사진 '+fdPh(d.id).length:''}</div></div><button class="chip${un?'':' on'}" onclick="fdClsPick('${d.id}')">📍 ${esc(fdClsLabel(d))}</button></div>`;}).join('')
+    +(all.length>shown.length?`<div class="muted">최근 ${shown.length}건 — 칩이나 검색으로 전체에서 찾습니다 (더보기 › 업무 메모에도 있음)</div>`:'')
+    +((q||f)&&!all.length?'<div class="empty">찾는 문서 없음</div>':'');
+}
+function fdClsPick(id,from){ // 문서 분류를 직접 고르는 창: 설비동 칩 / 설비 검색 / 자동으로 되돌리기
+  if(S._fdT)fdAutoNow();
+  const d=S.notes.find(x=>x.id===id);if(!d)return;window._fcp=[id,from||''];
+  const cur=fdZoneOf(d);
+  openModal(`<h3>📍 문서 분류</h3><div class="muted" style="margin-bottom:6px">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
+    <div class="muted">지금: ${esc(fdClsLabel(d))}${d.zoneSet||d.devSet?' (직접 지정)':''}</div>
+    <div class="muted" style="margin-top:10px">설비동으로 분류</div>
+    <div class="chips" style="flex-wrap:wrap;margin-top:4px">${(S._zones||[]).map(z=>`<button class="chip${z.id===cur?' on':''}" onclick="fdClsZone('${z.id}')">${esc(z.name)}</button>`).join('')}</div>
+    <div class="muted" style="margin-top:10px">또는 설비로 지정</div>
+    <input id="fc-q" placeholder="설비 이름·태그" style="width:100%;margin:4px 0" oninput="fdClsList()" autocomplete="off"><div id="fc-l"></div>
+    <div class="row" style="margin-top:10px;gap:6px">${d.zoneSet||d.devSet?`<button class="btn ghost sm" onclick="fdClsReset()">자동으로 되돌리기</button>`:''}<div class="grow"></div><button class="btn sm" onclick="fdClsDone()">닫기</button></div>`);
+}
+function fdClsList(){
+  const q=document.getElementById('fc-q').value;const L=_dvOk(q)?devSearch(q).slice(0,8):[];
+  document.getElementById('fc-l').innerHTML=L.map(h=>`<div class="item click" onclick="fdClsDev('${esc(h.ref)}')"><div class="t"><div class="n" style="white-space:normal">${esc(h.t)}</div>${h.d?`<div class="d">${esc(h.d)}</div>`:''}</div></div>`).join('');
+}
+async function _fdClsSave(fn){const [id]=window._fcp,d=S.notes.find(x=>x.id===id);if(!d)return;fn(d);await dbPut('notes',d);fdClsDone();}
+function fdClsZone(zid){_fdClsSave(d=>{d.zoneId=zid;d.zoneSet=true;});}
+function fdClsDev(ref){const k=_devKeyOfRes(resolveDev(ref));if(!k){toast('이 설비는 지정할 수 없습니다');return;}_fdClsSave(d=>{d.devKey=k;d.devSet=true;d.zoneSet=false;});}
+function fdClsReset(){_fdClsSave(d=>{d.zoneSet=false;d.zoneId='';if(d.devSet){d.devKey='';d.devSet=false;}});}
+function fdClsDone(){const [id,from]=window._fcp||[];closeModal();if(from==='doc'&&id)openFdoc(id);else if(S.view==='work')render();}
 function fdFor(place){ // 설비 카드 '＋ 현장 문서' — 종류를 고르면 설비·장소 칸이 채워진 채로 열림
   openModal(`<h3>📄 ${esc(place)} — 현장 문서</h3>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}','${esc(place)}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
@@ -5987,6 +6027,7 @@ function openFdoc(id,type,place,devKey){
       :`<input id="fd-${k}" type="${t==='d'?'date':'text'}" value="${esc(v[k]||'')}" placeholder="${esc(ph||'')}">`}`;
   let fields='';for(let i=0;i<T.f.length;i++){const f=T.f[i],g=T.f[i+1];if(f[5]&&g&&g[5]){fields+=`<div class="fd-half"><div>${fh(f)}</div><div>${fh(g)}</div></div>`;i++;}else fields+=fh(f);}
   openModal(`<div class="fdf"><h3>${T.ic} ${T.name}${d?'':' 작성'}${d&&d.archived?` <span class="badge b-gray">📦 보관 ${esc(mdShort(d.archived))}</span>`:''}</h3>
+    ${d?`<div style="margin:0 0 6px"><button type="button" class="chip" onclick="fdClsPick('${d.id}','doc')">📍 ${esc(fdClsLabel(d))}</button></div>`:''}
     ${fields}
     <label>사진 <span class="muted" style="font-weight:400">— 누르면 표시·그리기</span></label>
     <div class="photostrip">${fdPh(d?d.id:'-').map((p,i,a)=>`<div style="width:100px"><div class="thumb" style="width:100px;height:75px"><img src="${p.dataUrl}" onclick="fdEdit('${p.id}')">
