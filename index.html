@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v203'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v204'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -739,11 +739,79 @@ function isChkDone(c){
 
 /* ================= PART 3 : 내보내기 / 가져오기 ================= */
 const BACKUP_STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','tree','laws','lotologs','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','logic'];
+/* v204 (v2 순위 7·8·9, 문서/DATA_CONTRACT.md §6) 백업 v3·복원·교환 파일.
+   - 백업 v3: schemaVersion 3 + kind·device + meta(허용 목록의 기준 데이터만). 비밀값(fbConfig·gcCfg·vaultKdf)은 허용 목록에 없어 절대 안 들어감.
+   - 복원: 버전 검사(3 초과 중단) · 전부 검사한 뒤에 쓰기(앞 스토어만 덮이고 중단되는 일 방지) · 빈 스토어는 비움(도면 제외 백업의 빈 도면은 예외).
+   - 교환 파일(kind 'exchange'): 도면·사진 제외, 가져올 때 mergeRec 으로 병합(없는 건 추가·더 새로 고친 쪽이 이김·삭제 표시 존중). */
+const BACKUP_META=['guide','zones','flows','dwgindex','lclinks','areas','driveseed'];
+const XCHG_STORES=['todos','issues','inspections','checklists','checklogs','measurements','faults','lotologs','spares','budget','permits','procs','notes','dwgnotes'];
+const _devName=()=>{try{return matchMedia('(pointer:coarse)').matches?'폰':'PC';}catch(e){return '';}};
+async function backupData(incDraw){
+  const data={app:'pwr_work',schemaVersion:3,kind:'backup',device:_devName(),exported:new Date().toISOString()};
+  for(const s of BACKUP_STORES)data[s]=(s==='drawings'&&!incDraw)?[]:await dbAll(s);
+  data.meta=[];for(const k of BACKUP_META){const m=await dbGet('meta',k);if(m)data.meta.push(m);}
+  return data;
+}
+async function restoreData(data){ // 던지는 오류 문구가 곧 사용자 안내
+  if(!data||data.app!=='pwr_work')throw new Error('이 앱의 백업 파일이 아닙니다 (app 필드: '+((data&&data.app)||'없음')+')');
+  const sv=Number(data.schemaVersion)||2;
+  if(sv>3)throw new Error('더 새로운 버전(v'+sv+')의 백업입니다 — 앱을 먼저 업데이트하세요');
+  if(data.kind==='exchange')throw new Error('교환 파일입니다 — [교환 파일 가져오기]로 넣으세요(백업 복원은 통째로 덮어씁니다)');
+  const plan=[],skip=[];
+  for(const s of BACKUP_STORES){
+    if(!Array.isArray(data[s]))continue;
+    if(data[s].some(x=>!x||x.id===undefined||x.id===null||x.id===''))skip.push(s);
+    else if(s==='drawings'&&!data[s].length)continue;
+    else plan.push(s);
+  }
+  const meta=(Array.isArray(data.meta)?data.meta:[]).filter(m=>m&&BACKUP_META.includes(m.id));
+  if(!plan.length&&!meta.length)throw new Error('복원할 데이터가 없습니다 (백업 파일이 비어있음)');
+  const nl=String.fromCharCode(10);
+  if(!(await confirmModal('기존 데이터를 백업 내용으로 덮어씁니다.'+nl+plan.map(s=>s+' '+data[s].length).join(' · ')+(skip.length?nl+'(id 없는 기록이 있어 건너뜀: '+skip.join(', ')+')':'')+nl+'계속할까요?')))return;
+  let n=0;
+  for(const s of plan){await dbClear(s);await dbBulkPut(s,data[s]);n+=data[s].length;}
+  for(const m of meta)await dbPut('meta',m);
+  await loadAll();render();
+  toast('복원 완료 ('+n+'건'+(meta.length?' · 기준 데이터 '+meta.length+'개':'')+(skip.length?' · 건너뜀 '+skip.length:'')+')');
+}
+const _sj=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(x=>[x,v[x]])):v); // 키 순서와 상관없는 비교용
+async function exportExchange(){
+  const data={app:'pwr_work',schemaVersion:3,kind:'exchange',device:_devName(),exported:new Date().toISOString()};
+  for(const s of XCHG_STORES)data[s]=await dbAll(s); // 삭제 표시 포함 — 받는 쪽도 삭제를 알아야 함
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download='업무앱_교환_'+todayStr()+(data.device?'_'+data.device:'')+'.json';a.click();URL.revokeObjectURL(a.href);
+  toast('교환 파일 다운로드 완료 (도면·사진 제외)');
+}
+async function mergeExchange(d){ // 반환 {add,upd,same,bad}
+  const r={add:0,upd:0,same:0,bad:0};
+  for(const s of XCHG_STORES){
+    if(!Array.isArray(d[s]))continue;
+    const loc=new Map((await dbAll(s)).map(x=>[x.id,x]));
+    for(const r0 of d[s]){
+      let x;try{x=normalizeRec(s,r0);}catch(e){r.bad++;continue;}
+      const mine=loc.get(x.id),win=mergeRec(mine,x,s);
+      if(!mine&&win.deleted&&_v2Old(win)){r.same++;continue;}
+      if(mine&&_sj(win)===_sj(mine)){r.same++;continue;}
+      mine?r.upd++:r.add++;
+      await dbPut(s,win);loc.set(win.id,win);
+      if(V2_SYNC.includes(s))fbPush(s,win,true);
+    }
+  }
+  return r;
+}
+function importExchange(){
+  pickFile(async d=>{
+    try{
+      if(!d||d.app!=='pwr_work'||d.kind!=='exchange'){toast('교환 파일이 아닙니다 — 백업 파일이면 [백업 복원]');return;}
+      if((Number(d.schemaVersion)||2)>3){toast('더 새로운 버전의 파일입니다 — 앱을 먼저 업데이트하세요');return;}
+      const r=await mergeExchange(d);await loadAll();render();
+      toast('교환 파일 — 추가 '+r.add+' · 갱신 '+r.upd+' · 그대로 '+r.same+(r.bad?' · 건너뜀 '+r.bad:''));
+    }catch(e){console.error('importExchange',e);toast('가져오기 실패: '+e.message);}
+  });
+}
 async function exportJSON(){
   const incDraw=S.drawings.length?await confirmModal('도면 이미지를 백업에 포함할까요?\n(확인=포함 / 취소=도면 제외)'):false;
-  const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
-  for(const s of BACKUP_STORES)
-    data[s]=(s==='drawings'&&!incDraw)?[]:await dbAll(s);
+  const data=await backupData(incDraw);
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -765,6 +833,8 @@ function pickFile(cb){
 function _sniffJson(d){
   if(!d||typeof d!=='object')return '알수없음';
   if(/^dwg-index/.test(d.schema||'')&&Array.isArray(d.docs))return '도면색인';
+  if(d.app==='pwr_work'&&d.kind==='exchange')return '교환'; // v204: kind 를 먼저 봄(설비·계통이 든 백업을 seed 로 오판하지 않게)
+  if(d.app==='pwr_work'&&d.kind==='backup')return '백업';
   if(d.app==='pwr_work'&&!d.equipment&&!d.tree)return '백업';
   if(Array.isArray(d.logic)&&d.logic.length&&d.logic[0].tag)return '로직카드';
   if(Array.isArray(d.invItems)&&d.invItems.length)return '재물조사';
@@ -893,10 +963,10 @@ function importAll(){
       try{d=JSON.parse(await f.text());kind=_sniffJson(d);}catch(e){}
       jobs.push({name:f.name,kind,data:d});
     }
-    const usable=jobs.filter(j=>j.data&&j.kind!=='알수없음'&&j.kind!=='백업'&&j.kind!=='읽기실패');
+    const usable=jobs.filter(j=>j.data&&j.kind!=='알수없음'&&j.kind!=='백업'&&j.kind!=='교환'&&j.kind!=='읽기실패');
     const skipped=jobs.filter(j=>!usable.includes(j));
     const listHtml=jobs.map(j=>`<div class="item"><div class="t"><div class="n">${esc(j.name)}</div>
-      <div class="d">${j.kind==='백업'?'전체 백업 — [백업 복원]으로 따로 넣으세요':esc(j.kind)}</div></div>
+      <div class="d">${j.kind==='백업'?'전체 백업 — [백업 복원]으로 따로 넣으세요':j.kind==='교환'?'교환 파일 — [교환 파일 가져오기]로 따로 넣으세요':esc(j.kind)}</div></div>
       <span class="badge ${usable.includes(j)?'b-green':'b-gray'}">${usable.includes(j)?'주입':'건너뜀'}</span></div>`).join('');
     if(!(await confirmModal(`${files.length}개 파일 중 ${usable.length}개를 이 기기(로컬)에 넣습니다.\n같은 id·태그는 덮어쓰기됩니다. 계속할까요?`))){render();return;}
     const done=[],fail=[];
@@ -948,18 +1018,7 @@ function importSeed(){
 function importBackup(){
   pickFile(async data=>{
     try{
-      if(data.app!=='pwr_work'){toast('이 앱의 백업 파일이 아닙니다 (app 필드: '+(data.app||'없음')+')');return}
-      if(!(await confirmModal('기존 데이터를 백업 파일 내용으로 덮어씁니다. 계속할까요?')))return;
-      let restored=0;
-      for(const s of BACKUP_STORES){
-        if(Array.isArray(data[s])&&data[s].length){
-          const noId=data[s].find(x=>x.id===undefined||x.id===null);
-          if(noId){console.warn('스토어 '+s+'에 id 없는 항목, 건너뜀',noId);continue}
-          await dbClear(s);await dbBulkPut(s,data[s]);restored+=data[s].length;
-        }
-      }
-      await loadAll();render();
-      toast(restored>0?`복원 완료 (${restored}건)`:'복원할 데이터가 없습니다 (백업 파일이 비어있음)');
+      await restoreData(data); // v204: 검사·확인·복원은 restoreData 에서
     }catch(e){
       console.error('importBackup 실패',e);
       toast('복원 실패: '+e.message);
@@ -980,8 +1039,7 @@ async function exportEncrypted(){
   if(!pw)return;
   if(pw.length<6){toast('암호는 6자 이상 권장 — 다시 시도');return}
   const incDraw=S.drawings.length?await confirmModal('도면 이미지를 포함할까요?\n(확인=포함 / 취소=도면 제외 백업)'):false;
-  const data={app:'pwr_work',schemaVersion:2,exported:new Date().toISOString()};
-  for(const s of BACKUP_STORES)data[s]=(s==='drawings'&&!incDraw)?[]:await dbAll(s);
+  const data=await backupData(incDraw);
   const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
   const key=await deriveKey(pw,salt);
   const enc=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(data)));
@@ -1001,14 +1059,11 @@ function importEncrypted(){
       if(out.app!=='pwr_work_enc'){toast('암호화 백업 파일이 아닙니다');return}
       const pw=await promptModal('백업 암호를 입력하세요');if(!pw)return;
       const key=await deriveKey(pw,unb64(out.salt));
-      const dec=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(out.iv)},key,unb64(out.data));
-      const data=JSON.parse(new TextDecoder().decode(dec));
-      if(!(await confirmModal('복호화 성공. 기존 데이터를 이 백업으로 덮어쓸까요?')))return;
-      for(const s of BACKUP_STORES){
-        if(Array.isArray(data[s])&&data[s].length){await dbClear(s);await dbBulkPut(s,data[s]);}
-      }
-      await loadAll();render();toast('암호화 백업 복원 완료');
-    }catch(e){toast('복원 실패 — 암호가 틀렸거나 파일 손상')}
+      let data;
+      try{const dec=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(out.iv)},key,unb64(out.data));data=JSON.parse(new TextDecoder().decode(dec));}
+      catch(e){toast('복원 실패 — 암호가 틀렸거나 파일 손상');return;}
+      await restoreData(data); // v204: 복호화 성공 뒤는 일반 복원과 같은 검사·확인
+    }catch(e){toast('복원 실패: '+e.message)}
   };
   inp.click();
 }
@@ -4674,6 +4729,8 @@ function moreDataSheet(){
   openModal(`<h3>💾 백업·복원·동기화</h3>
     <button class="btn full" onclick="closeModal();exportJSON()">📤 전체 백업 내보내기 (JSON)</button>
     <button class="btn ghost full" onclick="closeModal();importBackup()">📂 백업 복원 (JSON)</button>
+    <button class="btn ghost full" onclick="closeModal();exportExchange()">🔁 교환 파일 내보내기 (PC↔폰, 도면·사진 제외)</button>
+    <button class="btn ghost full" onclick="closeModal();importExchange()">📥 교환 파일 가져오기 (병합)</button>
     <hr>
     <button class="btn full" onclick="closeModal();exportEncrypted()">🔐 암호화 백업 내보내기</button>
     <button class="btn ghost full" onclick="closeModal();importEncrypted()">🔓 암호화 백업 복원</button>
@@ -8999,7 +9056,7 @@ async function driveSeedApply(){
   try{
     const kinds=B.files.map(f=>_sniffJson(f.d));
     if(kinds.includes('로직카드'))for(const c of await dbAll('logic'))await dbDel('logic',c.id);
-    let n=0;for(let i=0;i<B.files.length;i++){if(kinds[i]==='알수없음'||kinds[i]==='백업')continue;await _applyJson(kinds[i],B.files[i].d);n++;}
+    let n=0;for(let i=0;i<B.files.length;i++){if(kinds[i]==='알수없음'||kinds[i]==='백업'||kinds[i]==='교환')continue;await _applyJson(kinds[i],B.files[i].d);n++;}
     await dbPut('meta',{id:'driveseed',v:B.stamp||''});
     await loadAll();render();toast(`드라이브 데이터 반영 완료 — ${n}개 파일`);setTimeout(()=>manSyncAll().catch(()=>{}),2500); // v195: 매뉴얼 PDF 도 기기에 저장
   }catch(e){console.error('driveSeedApply',e);toast('반영 실패: '+e.message+' — 다시 가져오기를 누르면 이어서 맞춰집니다');}
