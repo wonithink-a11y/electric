@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v180'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v181'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1296,11 +1296,12 @@ async function saveGcCfg(){
 }
 /* ================= PART 4 : 모달 ================= */
 function openModal(html){
+  if(!/class="fdf"/.test(html))window._fdBack=null; // 현장 문서 양식이 아니면 '돌아갈 카드' 해제
   window._cardOpen=window._cardNext||null;window._cardNext=null; // devSec 이 지정한 열린 카드(설비 카드 '@설비id'는 설비 상세)
   $('#modal-root').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="dock-x" onclick="closeModal()" title="닫기 (Esc)">✕</button>${html}</div></div>`;
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal-root').firstChild&&!/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||''))closeModal();});
-function closeModal(){window._cardOpen=null;if(S._fdT)fdAutoNow();$('#modal-root').innerHTML=''} // v113: 현장 문서 자동 저장이 남았으면 칸을 지우기 전에 마저 저장(fdSave는 첫 await 전에 칸을 다 읽음)
+function closeModal(){const fb=window._fdBack;window._fdBack=null;window._cardOpen=null;if(S._fdT)fdAutoNow();$('#modal-root').innerHTML='';if(fb)setTimeout(()=>_cardReopen(fb),0);} // v181: 설비 카드에서 연 문서 양식은 닫으면 그 카드로 돌아감 // v113: 현장 문서 자동 저장이 남았으면 칸을 지우기 전에 마저 저장(fdSave는 첫 await 전에 칸을 다 읽음)
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
@@ -3703,22 +3704,35 @@ function _devCnt(ref){ // 검색 결과 줄에 붙일 기록 개수
   try{const r=resolveDev(ref);if(!r)return 0;const n=r.n,load=n&&(n.type==='load'?n:nodeKids(n.id).find(k=>k.type==='load')),eid=(r.e&&r.e.id)||(n&&n.equipId)||(load&&load.equipId)||'',key=eid||(load&&load.id)||(n&&n.id)||'';if(!key)return 0;
     const ph=devPhotos(key,n?[n.id]:[],eid);return ph.length+(_devLk()[key]||[]).filter(x=>S.docs.some(y=>y.id===x.id)).length;}catch(e){return 0;}
 }
+function _devKeyOfRes(r){ // resolveDev 결과 → 카드 기록 키(설비 마스터 id, 없으면 부하 노드 id)
+  if(!r||r.amb)return '';const n=r.n,load=n&&(n.type==='load'?n:nodeKids(n.id).find(k=>k.type==='load'));
+  return (r.e&&r.e.id)||(n&&n.equipId)||(load&&load.equipId)||(load&&load.id)||(n&&n.id)||'';
+}
+function _devAlias(key,short){ // 같은 설비가 설비 마스터·계통 노드로 따로 있을 때(연결 전) 둘을 한 설비로 봄 — 이름이 하나로 정해질 때만
+  const A=new Set([key]);if(!short)return A;const k=_normTag(short);
+  const E=S.equipment.filter(e=>_normTag(e.tagNo||'')===k||_normTag(e.name||'')===k),N=S.tree.filter(n=>_normTag((n.name||'').replace(/\s*\(.*$/,''))===k);
+  if(E.length===1)A.add(E[0].id);if(N.length===1)A.add(N[0].id);return A;
+}
+function _devKeyOfText(v){ // 문서의 대상 설비 글 → 설비 키(정확히 하나로 정해질 때만)
+  for(const t of [v.equip_t,v.place_t,v.equip,v.place]){if(!t)continue;const k=_devKeyOfRes(resolveDev(t));if(k)return k;}
+  return '';
+}
 function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[],o=opt||{};
   const docs=k=>lk.filter(x=>x.kind===k).map(x=>({...x,d:S.docs.find(y=>y.id===x.id)})).filter(x=>x.d);
-  const k=esc(key),cur=S._devTab||'rep',cnt={},FT={rep:'insp',act:'man',pic:'photo'};
+  const k=esc(key),cur=S._devTab||'rep',cnt={},FT={rep:'insp',act:'man',pic:'photo'},AL=_devAlias(key,o.short);
   const panel=([c,l])=>{
     const P=ph.filter(p=>(p.kind||'pic')===c),D=c==='pic'?[]:docs(c),T=FT[c],nm=(FDOC_TYPES[T]||{}).short||l;
-    const fds=o.tk&&o.tk.length>=4?S.notes.filter(x=>x.kind==='fdoc'&&x.type===T&&x.v&&_normTag((x.v.place||'')+' '+(x.v.equip||'')).includes(o.tk)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):[];
+    const fds=S.notes.filter(x=>x.kind==='fdoc'&&x.type===T&&x.v&&(x.devKey?AL.has(x.devKey):(o.tk&&o.tk.length>=4&&_normTag((x.v.place||'')+' '+(x.v.equip||'')).includes(o.tk)))).sort((a,b)=>(b.date||'').localeCompare(a.date||''))
     cnt[c]=fds.length+P.length+D.length;
     const att=`<details style="margin-top:10px"${P.length+D.length?' open':''}><summary class="muted" style="cursor:pointer">첨부 사진·PDF ${P.length+D.length||''}</summary>
       ${D.map(x=>`<div class="item"><div class="t click" onclick="viewDoc('${x.id}')"><div class="n" style="white-space:normal">📄 ${esc(x.d.title||x.d.name)}</div><div class="d">${esc((x.d.ext||'').toUpperCase())}${x.d.size?' · '+Math.round(x.d.size/1024)+'KB':''}</div></div><button class="btn ghost sm" onclick="devUnlink('${k}','${x.id}')">✕</button></div>`).join('')}
       ${P.length?`<div class="photostrip" style="margin:6px 0">${P.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}</div>`:''}
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn ghost sm" onclick="devAddPhoto('${k}','${c}')">＋ 사진</button>${c==='pic'?'':`<button class="btn ghost sm" onclick="devAddDoc('${k}','${c}')">＋ PDF</button><button class="btn ghost sm" onclick="devPickDoc('${k}','${c}')">문서함에서</button>`}</div></details>`;
     return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
-      ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}')">＋ ${nm} 작성</button>`:''}
-      ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
+      ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}','${k}')">＋ ${nm} 작성</button>`:''}
+      ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}','','','${k}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
       ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
   const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
@@ -5946,8 +5960,8 @@ function fdFor(place){ // 설비 카드 '＋ 현장 문서' — 종류를 고르
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}','${esc(place)}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
-function openFdoc(id,type,place){
-  const d=id?S.notes.find(x=>x.id===id):null;if(id&&!d)return;
+function openFdoc(id,type,place,devKey){
+  const fb=devKey?window._cardOpen:null,d=id?S.notes.find(x=>x.id===id):null;if(id&&!d)return;
   type=d?d.type:type;const T=FDOC_TYPES[type];
   let v=d?d.v:{date:todayStr()};
   if(!d){ // 새 문서: 설비 카드에서 넘어온 이름은 점검보고서면 '설비 품목' 수기 칸에, 점검자·작성자는 지난 문서 값
@@ -5956,7 +5970,7 @@ function openFdoc(id,type,place){
     if(wf&&wf[2]==='c')v.writer_s=wf[4].includes(S._dept)?S._dept:wf[4][0]; // v110: 점검자 = 부서 선택, 기본 첫 항목(전력계통과)
     else{const last=S.notes.filter(x=>x.kind==='fdoc'&&x.v&&x.v.writer).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];if(last)v.writer=last.v.writer;}
   }
-  S._fdoc={id:d?d.id:'',type};
+  S._fdoc={id:d?d.id:'',type,dev:devKey||''};
   const cOpts=o=>{if(o!=='zones')return o; // 설비동은 plant(PB·DH 등)별 묶음
     const Z=S._zones||[],P=[...new Set(Z.map(z=>z.plant||''))];return P.length>1?P.map(p=>[p||'그 밖',Z.filter(z=>(z.plant||'')===p).map(z=>z.name)]):Z.map(z=>z.name);};
   const cHtml=(k,ph,o)=>{let G=cOpts(o),L=G.flatMap(x=>Array.isArray(x)?x[1]:[x]);
@@ -5985,6 +5999,7 @@ function openFdoc(id,type,place){
     <div class="row" style="margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap">${d?`<button class="btn danger sm" onclick="fdDel()">삭제</button>`:''}<span class="muted" id="fd-st" style="font-size:12px">${d?'✓ 저장됨':'쓰면 자동 저장'}</span><div class="grow"></div>
       <button class="btn ghost sm" onclick="fdPreview()">미리보기</button>
       ${gcOn()?`<button class="btn ghost sm" onclick="fdSavePdf()">💾 PDF</button><button class="btn sm" onclick="fdDrive()">☁️ 드라이브</button>`:`<button class="btn sm" onclick="fdSavePdf()">💾 PDF 저장</button>`}</div></div>`);
+  window._fdBack=fb||null;
   // v113 자동 저장: 칸에 쓰거나 고르면 0.8초 뒤 저장(창을 닫을 때 남은 것도 closeModal이 마저 저장)
   const box=document.querySelector('#modal-root .fdf');if(box){box.oninput=fdAuto;box.onchange=fdAuto;}
 }
@@ -6029,7 +6044,7 @@ function fdChoose(k){ // 작성 창 위에 따로 뜨는 선택창(작성 창 �
 }
 function fdPick(b){const on=b.classList.contains('on');b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));if(!on)b.classList.add('on');fdAuto();} // 다시 누르면 해제
 async function fdSave(quiet){
-  const {id,type}=S._fdoc,T=FDOC_TYPES[type],v={};
+  const {id,type,dev}=S._fdoc,T=FDOC_TYPES[type],v={};
   T.f.forEach(([k,,t])=>{const el=document.getElementById('fd-'+k);
     if(t==='c'){const s=(document.getElementById('fd-'+k+'-s')||{}).value||'',x=el&&el.tagName==='INPUT'?el.value.trim():'';v[k+'_s']=s;v[k+'_t']=x;v[k]=[s,x].filter(Boolean).join(' · ');}
     else if(t==='r'){const on=el&&el.querySelector('.chip.on');v[k]=on?on.dataset.v:'';}
@@ -6038,6 +6053,7 @@ async function fdSave(quiet){
   if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
   // date·tag·content는 업무 메모 목록(noteListHtml)이 그대로 쓰는 필드
   Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:[v.place,v.equip,v.kind].filter(Boolean).join(' · ')||'(제목 없음)'});
+  d.devKey=dev||d.devKey||_devKeyOfText(v)||''; // v181: 이 문서가 속한 설비(설비 카드 기록 탭이 개수·목록을 이 값으로 모음)
   const caps=fdPh(d.id).filter(p=>{const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;return true;}}); // 첫 await 전에 칸을 다 읽음(창 닫기와 겹쳐도 안전)
   await dbPut('notes',d);
   for(const p of caps)await dbPut('photos',p);
