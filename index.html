@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v208'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v209'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -6772,9 +6772,9 @@ function editSpare(id){
     <label>품명 *</label><input id="sp-n" value="${esc(x?.name||'')}">
     <label>규격/사양</label><input id="sp-s" value="${esc(x?.spec||'')}">
     <div class="row">
-      <div class="grow"><label>수량</label><input id="sp-q" type="number" value="${esc(String(x?.qty??''))}"></div>
+      <div class="grow"><label>수량</label><input id="sp-q" type="number" step="0.1" value="${esc(String(x?.qty??''))}"></div>
       <div class="grow"><label>단위</label><input id="sp-u" value="${esc(x?.unit||'EA')}"></div>
-      <div class="grow"><label>최소수량</label><input id="sp-m" type="number" value="${esc(String(x?.minQty??''))}"></div>
+      <div class="grow"><label>최소수량</label><input id="sp-m" type="number" step="0.1" value="${esc(String(x?.minQty??''))}"></div>
     </div>
     <label>보관 위치</label><input id="sp-l" value="${esc(x?.location||'')}">
     <label>연결 설비(선택)</label><input id="sp-e" list="eqnames" value="${esc(x?.equipName||'')}">
@@ -6787,9 +6787,8 @@ function editSpare(id){
       <button class="btn sm" onclick="saveSpare('${x?.id||''}')">저장</button></div>`);
 }
 const _r6=x=>Math.round(Number(x)*1e6)/1e6;
-/* v208: 예비품 수량 — 개수 단위(EA·SET·PCS·LOT·개·조·대·식 등)는 정수로 반올림, m·kg·L 같은 단위는 소수 6자리까지 허용 */
-const _CNT_U=/^(EA|SET|PCS|PC|LOT|SET|개|조|대|식|면|본|매|EACH)?$/i;
-const _qn=(v,u)=>_CNT_U.test(String(u||'EA').trim())?Math.round(Number(v)):_r6(v); // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
+/* v209: 예비품 수량 — 단위와 상관없이 소수점 첫째 자리까지만(0.5 EA·2.5 M 같은 값은 허용, 그 이하는 반올림). 두 번째 인자(단위)는 쓰지 않음 */
+const _qn=v=>Math.round(Number(v)*10)/10; // v206(v2 순위 10): 수량 계산 결과는 소수 6자리에서 반올림(0.1+0.2 같은 부동소수 찌꺼기 방지)
 async function saveSpare(id){
   const name=$('#sp-n').value.trim();if(!name){toast('품명을 입력하세요');return}
   const obj=id?S.spares.find(v=>v.id===id):{id:'SP'+uid()};
@@ -6866,8 +6865,8 @@ function editInv(id){
       <div class="grow"><label>단위</label><input id="iv-u" value="${esc(x?.unit||'EA')}"></div>
     </div>
     <div class="row">
-      <div class="grow"><label>장부수량</label><input id="iv-q" type="number" value="${esc(String(x?.qty??''))}"></div>
-      <div class="grow"><label>실사수량</label><input id="iv-r" type="number" value="${esc(String(x?.real??''))}"></div>
+      <div class="grow"><label>장부수량</label><input id="iv-q" type="number" step="0.1" value="${esc(String(x?.qty??''))}"></div>
+      <div class="grow"><label>실사수량</label><input id="iv-r" type="number" step="0.1" value="${esc(String(x?.real??''))}"></div>
     </div>
     <label>보관 위치</label><input id="iv-l" value="${esc(x?.location||'')}">
     <label>비고</label><input id="iv-note" value="${esc(x?.note||'')}">
@@ -7062,7 +7061,7 @@ function spareInspBody(){
           <div class="mmeta">${esc(s.matNo||'')} · 장부 ${esc(String(s.qty??0))}${esc(s.unit||'')}</div>
         </div>
         <div class="inspcol">
-          <input class="inspq" id="rq_${s.id}" type="number" inputmode="numeric" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
+          <input class="inspq" id="rq_${s.id}" type="number" step="0.1" inputmode="decimal" placeholder="실수량" value="${chk?esc(String(s.real)):''}">
           <button class="btn sm inspsave" onclick="saveSpareReal('${s.id}')">저장</button>
           <button class="btn ghost sm inspclear" onclick="clearSpareReal('${s.id}')">해제</button>
         </div>
@@ -8082,7 +8081,7 @@ function useSpare(backEquipId){
   if(!S.spares.some(x=>x.src!=='inv')){toast('등록된 예비품이 없습니다 (예비품 재고에서 추가)');return;}
   openModal(`<h3>🧰 예비품 사용(차감)</h3>
     <label>품목</label><select id="us-s">${S.spares.filter(x=>x.src!=='inv').map(x=>`<option value="${x.id}">${esc(x.name)} — 재고 ${x.qty??0}${esc(x.unit||'EA')}</option>`).join('')}</select>
-    <label>사용 수량</label><input id="us-q" type="number" value="1" min="1">
+    <label>사용 수량</label><input id="us-q" type="number" value="1" min="0.1" step="0.1">
     <label>비고(작업/설비)</label><input id="us-n">
     <div class="row" style="margin-top:12px"><div class="grow"></div>
       <button class="btn ghost sm" onclick="${backEquipId?`openEquip('${backEquipId}')`:`go('spare')`}">취소</button>
