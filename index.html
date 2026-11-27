@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v166'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v167'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3567,7 +3567,20 @@ function flowAddPhoto(k,kind){
 }
 function flowItemKey(k){const [fid,iid]=k.split('|'),f=(S._flows||[]).find(x=>x.id===fid);if(!f)return;
   for(let si=0;si<f.steps.length;si++){const ii=f.steps[si].items.findIndex(x=>x.id===iid);if(ii>=0)return flowItem(fid,si,ii);}}
+/* v167: 작업 탭 맨 위 '점검·조치 기록' — 흐름 설비를 이름으로 찾거나 흐름별로 펼쳐 바로 기록 창(flowItem)을 연다 */
+function flRecRows(q){
+  const t=String(q||'').toLowerCase().split(/\s+/).filter(Boolean),L=_flItems();
+  const row=o=>{const n=_flCnt(o.f,o.x);return `<div class="tkid" onclick="flowItem('${esc(o.f.id)}',${o.si},${o.ii})"><span class="tkid-nm">${esc(o.x.name)}<span class="tpath-meta">${esc(o.f.name)} · ${esc(o.f.steps[o.si].name)}</span></span>${n?`<span class="badge b-yellow">${n}</span>`:''}<span class="tkid-arr">›</span></div>`;};
+  if(t.length){const r=L.filter(o=>t.every(w=>(o.x.name+' '+o.f.name+' '+o.f.steps[o.si].name).toLowerCase().includes(w)));return r.length?`<div class="tkid-list">${r.slice(0,40).map(row).join('')}</div>`:'<div class="empty">일치 없음</div>';}
+  return (S._flows||[]).map(f=>`<details class="card" style="margin:6px 0;padding:6px 12px"><summary style="cursor:pointer;font-weight:600">${esc(f.name)}</summary><div class="tkid-list">${L.filter(o=>o.f===f).map(row).join('')}</div></details>`).join('');
+}
+function _flItems(){const L=[];(S._flows||[]).forEach(f=>f.steps.forEach((s,si)=>s.items.forEach((x,ii)=>L.push({f,si,ii,x}))));return L;}
+function flRecCard(){
+  if(!(S._flows||[]).length)return '';
+  return `<div class="card"><h2>📷 점검·조치 기록</h2><input placeholder="설비 이름 (예: 크레인, 호퍼)" style="width:100%;margin-bottom:6px" autocomplete="off" value="${esc(S._flq||'')}" oninput="S._flq=this.value;document.getElementById('fl-rec-list').innerHTML=flRecRows(this.value)"><div id="fl-rec-list">${flRecRows(S._flq)}</div></div>`;
+}
 function _flRender(){ // 흐름 화면이 떠 있으면 표시(주황 점)만 갱신 — 스크롤 위치 유지
+  const rl=document.getElementById('fl-rec-list');if(rl)rl.innerHTML=flRecRows(S._flq); // 작업 탭 목록의 개수 갱신
   if(!document.querySelector('.pf-cv,.pf-row'))return;
   const c=document.querySelector('.pf-cv'),a=c&&[c.scrollLeft,c.scrollTop],y=scrollY;render();
   const n=document.querySelector('.pf-cv');if(n&&a){n.scrollLeft=a[0];n.scrollTop=a[1];}scrollTo(0,y);
@@ -8353,6 +8366,7 @@ function findZone(id){S._zoneId=null;S._treeSubTab='zone';go('tree');zoneOpen(id
 function vWork(){
   const l=S._loto,ld=l?l.steps.filter(x=>x.done).length:0;
   return `${l?`<div class="card"><h2>🔒 진행 중 LOTO</h2><div class="item click" onclick="renderLoto()"><div class="t"><div class="n">${esc(l.target)}</div><div class="d">${esc(l.date)} · ${ld}/${l.steps.length} 단계</div></div><span class="badge b-blue">이어서</span></div></div>`:''}
+  ${flRecCard()}
   ${fdocCard()}
   <div class="card"><h2>🔒 LOTO 시작 — 작업할 설비</h2>${devSearchBox('work-sr','loto','차단기·부하 이름·태그 (예: VCB-501)')}
     <div class="muted">탭하면 격리 계획(열 차단기·역가압·자동투입 경고)과 단계 체크가 열립니다.</div></div>
