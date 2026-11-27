@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v189'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v190'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3768,21 +3768,36 @@ const MAN_MAP=[[/UPS|AVR|DC110|축전지|BATTERY|충전기|B\/C/i,'UPS|AVR|비�
 const _manRe=name=>MAN_MAP.filter(([d])=>d.test(name||'')).map(m=>m[1]).join('|');
 const _manIc=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^hwpx?$/.test(x)?'📘':/^pptx?$/.test(x)?'📙':'📄';};
 function manItems(){ // 드라이브 매뉴얼 [{f,i}] — 같은 이름의 PDF가 있으면 pptx 는 숨김(PDF 가 앱에서 바로 열림)
-  const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>!(/\.pptx?$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.pptx?$/i,'.pdf'))));
+  const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>x.f.name[0]!=='_'&&!(/\.pptx?$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.pptx?$/i,'.pdf'))));
 }
 function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시)
   if(gcOn()&&navigator.onLine&&(!S._manAt||Date.now()-S._manAt>600000))
-    return gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'}).then(r=>{S._manFiles=r.files||[];S._manAt=Date.now();}).catch(()=>{});
+    return gcCall({op:'list',folder:'전력앱 보고서/매뉴얼'}).then(async r=>{S._manFiles=r.files||[];S._manAt=Date.now();
+      const ix=S._manFiles.find(f=>f.name==='_색인.json'); // v190 운영업무지침서 쪽 색인
+      if(ix&&!S._manIdx){try{const g=await gcCall({op:'get',id:ix.id});S._manIdx=JSON.parse(decodeURIComponent(escape(atob(g.b64))));}catch(e){}}}).catch(()=>{});
   return Promise.resolve();
 }
 const _manRow=(name,sub,click,unl)=>`<div class="item"><div class="t click" onclick="${click}"><div class="n" style="white-space:normal">${_manIc(name)} ${esc(name.replace(/\.[^.]+$/,''))}</div><div class="d">${esc(sub)}</div></div>${unl||''}</div>`;
+/* v190 운영업무지침서 연결 — 설비 카드 조치 매뉴얼 탭에 '정기점검보수 기준(50000 부록 52200)'의 그 설비 종류 쪽과 30000 절차 쪽을 바로 열기 행으로 보여 줌.
+   설비 마스터에 정비 기준(guideId)이 있으면 그 기준 쪽, 없으면 이름으로 종류를 짐작(GUIDE_RE). 쪽 색인 = 드라이브 매뉴얼 폴더의 _색인.json(데이터/정비계획/build_guide_pdf.py). */
+const GUIDE_RE=[[/L\/C|LOAD CENTER/i,'Load Center'],[/MCC|MOTOR CONTROL/i,'Motor Control'],[/SWGR|SWITCHGEAR|VCB/i,'Metal Clad'],[/UPS/i,'무정전'],[/변압기|\bTR\b/i,'주변압기'],[/축전지|BATTERY/i,'축전지'],[/발전기/,'본 체'],[/COMPRESSOR|압축기/i,'공기압축기'],[/MOTOR|펌프|PUMP|FAN|송풍기/i,'저압전동기'],[/CABLE|케이블/i,'전선'],[/PANEL|판넬|분전반/i,'현지반']];
+function guideRows(key,short){
+  const ix=S._manIdx;if(!ix)return [];const e=S.equipment.find(x=>x.id===key),out=[];
+  let r=e&&e.guideId&&ix.rules.find(x=>x.id===e.guideId);
+  if(!r){const g=GUIDE_RE.find(([re])=>re.test(short||''));if(g)r=ix.rules.find(x=>x.name.replace(/\s/g,'').includes(g[1].replace(/\s/g,'')));}
+  if(r)out.push({t:'52200 정기점검보수 지침 — '+r.name,file:r.file,page:r.page});
+  if(r||(e&&e.guideId))(ix.sections||[]).filter(x=>x.re==='.'&&/^30000/.test(x.label)).forEach(x=>out.push({t:x.label,file:x.file,page:x.page}));
+  return out;
+}
 async function manFill(){
   const el=document.getElementById('man-rec');if(!el)return;const key=el.dataset.k,re=el.dataset.re?new RegExp(el.dataset.re,'i'):null;
   const draw=()=>{
     const pin=(_devLk()[key]||[]).filter(x=>x.dr).map(x=>x.dr),IT=manItems(),
       loc=re?S.docs.filter(d=>/매뉴얼|절차/.test(d.kind||'')&&re.test((d.title||'')+' '+(d.name||''))).slice(0,6):[],
       dr=IT.filter(x=>pin.includes(x.f.name)||(re&&re.test(x.f.name)));
-    el.innerHTML=loc.length||dr.length?`<div class="muted" style="margin:10px 0 4px">관련 매뉴얼</div>`+
+    const gr=guideRows(key,el.dataset.nm||'');
+    el.innerHTML=loc.length||dr.length||gr.length?`<div class="muted" style="margin:10px 0 4px">관련 매뉴얼</div>`+
+      gr.map(x=>`<div class="item"><div class="t click" onclick="manOpenAt('${esc(x.file)}',${x.page})"><div class="n" style="white-space:normal">📖 ${esc(x.t)}</div><div class="d">운영업무지침서 · ${x.page}쪽부터</div></div></div>`).join('')+
       loc.map(d=>_manRow(d.name||d.title,'문서함 · '+(d.ext||'').toUpperCase(),`viewDoc('${d.id}')`)).join('')+
       dr.map(x=>_manRow(x.f.name,'드라이브 · '+_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase()+(pin.includes(x.f.name)?' · ★ 직접 연결':''),`manOpen(${x.i})`,pin.includes(x.f.name)?`<button class="btn ghost sm" onclick="manUnlink('${esc(key)}','${esc(x.f.name)}')">✕</button>`:'')).join(''):'';
   };
@@ -3801,7 +3816,7 @@ function manPickList(){
   const L=manItems().filter(x=>!have.has(x.f.name)&&(!q||x.f.name.toLowerCase().includes(q)));
   const e=document.getElementById('mp-l');if(e)e.innerHTML=L.length?L.map(x=>_manRow(x.f.name,_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase(),`manLink(window._mpk[0],'${esc(x.f.name)}',window._mpk[1])`)).join(''):'<div class="empty">'+(gcOn()?'일치하는 매뉴얼 없음':'구글 연동을 켜면 드라이브 매뉴얼을 볼 수 있습니다')+'</div>';
 }
-const MAN_CATS=[['UPS','UPS|AVR|비상전원'],['인버터','인버터'],['소방','자동화재'],['조작·절차','조작 절차서|법정검사']];
+const MAN_CATS=[['지침','^\\d{5}'],['UPS','UPS|AVR|비상전원'],['인버터','인버터'],['소방','자동화재'],['조작·절차','조작 절차서|법정검사']];
 function manPanel(){
   setTimeout(()=>{manList();manLoad().then(manList);},30);
   return `<div class="card"><input id="man-q" placeholder="매뉴얼 검색 (예: UPS, 인버터)" style="width:100%" value="${esc(S._manQ||'')}" oninput="S._manQ=this.value;manList()" autocomplete="off">
@@ -3815,7 +3830,8 @@ function manList(){
   el.innerHTML=loc.map(d=>_manRow(d.name||d.title,'문서함 · '+(d.ext||'').toUpperCase(),`viewDoc('${d.id}')`)).join('')+dr.map(x=>_manRow(x.f.name,'드라이브 · '+_fsz(x.f.size)+' · '+x.f.name.split('.').pop().toUpperCase(),`manOpen(${x.i})`)).join('')
     +(!loc.length&&!dr.length?`<div class="empty">${gcOn()?'일치하는 매뉴얼 없음':'구글 연동을 켜면 드라이브 매뉴얼 목록을 받아 옵니다'}</div>`:'');
 }
-function manOpen(i){S._df={path:'전력앱 보고서/매뉴얼',dirs:[],files:S._manFiles||[]};driveOpen(i);}
+function manOpen(i,page){S._df={path:'전력앱 보고서/매뉴얼',dirs:[],files:S._manFiles||[]};driveOpen(i,page);}
+function manOpenAt(file,page){const i=(S._manFiles||[]).findIndex(f=>f.name===file);if(i<0){toast('드라이브 매뉴얼 폴더에 없습니다');return;}manOpen(i,page);}
 function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
   const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[],o=opt||{};
@@ -3832,7 +3848,7 @@ function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이�
     return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
       ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}','${k}')">＋ ${nm} 작성</button>`:''}
       ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}','','','${k}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
-      ${c==='act'?`<div id="man-rec" data-k="${k}" data-re="${esc(_manRe(o.short))}"></div><button class="btn ghost sm" style="margin-top:6px" onclick="manPick('${k}')">＋ 매뉴얼 직접 연결</button>`:''}
+      ${c==='act'?`<div id="man-rec" data-k="${k}" data-nm="${esc(o.short||'')}" data-re="${esc(_manRe(o.short))}"></div><button class="btn ghost sm" style="margin-top:6px" onclick="manPick('${k}')">＋ 매뉴얼 직접 연결</button>`:''}
       ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
   const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
@@ -4561,14 +4577,14 @@ async function driveFiles(path){
     <div class="section-note">PDF는 앱 뷰어로, 사진은 바로 보기, 한글·엑셀·PPT는 폰에 받은 뒤 그 앱으로 엽니다. 30MB가 넘으면 드라이브 앱으로 열립니다.</div>
     <button class="btn ghost sm full" onclick="closeModal()">닫기</button>`);
 }
-async function driveOpen(i){
+async function driveOpen(i,page){
   const f=S._df&&S._df.files[i];if(!f)return;
   if(f.size>30*1048576){window.open(f.url,'_blank');return;}
   toast('받는 중… '+_fsz(f.size));
   let r;try{r=await gcCall({op:'get',id:f.id});}catch(e){toast('받기 실패: '+e.message);return;}
   const bin=atob(r.b64),u8=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u8[k]=bin.charCodeAt(k);
   const blob=new Blob([u8],{type:r.mime||'application/octet-stream'}),ext=f.name.split('.').pop().toLowerCase();
-  if(ext==='pdf')return viewPdf(blob,f.name);
+  if(ext==='pdf')return viewPdf(blob,f.name,page);
   if(/^(jpe?g|png|gif|webp)$/.test(ext)){const u=URL.createObjectURL(blob);
     openModal(`<h3>🖼️ ${esc(f.name)}</h3><img src="${u}" style="width:100%;border-radius:8px"><div class="row" style="margin-top:8px"><button class="btn ghost sm" onclick="driveFiles(S._df.path)">← 목록</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal()">닫기</button></div>`);return;}
   try{const file=new File([blob],f.name,{type:blob.type});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:f.name});return;}}catch(e){if(e&&e.name==='AbortError')return;} // v189: 앱 선택창(한컴 뷰어 등)으로 바로 열기
