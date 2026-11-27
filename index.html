@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v195'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v196'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3776,7 +3776,7 @@ const MAN_MAP=[[/UPS|AVR|DC110|축전지|BATTERY|충전기|B\/C/i,'UPS|AVR|비�
 const _manRe=name=>MAN_MAP.filter(([d])=>d.test(name||'')).map(m=>m[1]).join('|');
 const _manIc=n=>{const x=String(n).split('.').pop().toLowerCase();return x==='pdf'?'📕':/^hwpx?$/.test(x)?'📘':/^pptx?$/.test(x)?'📙':'📄';};
 function manItems(){ // 드라이브 매뉴얼 [{f,i}] — 같은 이름의 PDF가 있으면 pptx 는 숨김(PDF 가 앱에서 바로 열림)
-  const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>x.f.name[0]!=='_'&&!/\(정리판\)/.test(x.f.name)&&!(/\.pptx?$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.pptx?$/i,'.pdf'))));
+  const F=S._manFiles||[];return F.map((f,i)=>({f,i})).filter(x=>x.f.name[0]!=='_'&&!/\(정리판\)/.test(x.f.name)&&!(/\.(pptx?|hwpx?)$/i.test(x.f.name)&&F.some(g=>g.name===x.f.name.replace(/\.(pptx?|hwpx?)$/i,'.pdf'))));
 }
 /* v195: 매뉴얼 목록·쪽 색인·PDF 를 기기(meta 'manlist'·'man:이름')에 저장 — 한 번 받으면 오프라인에서도 열리고 다시 받지 않음(백업·동기화 대상 아님) */
 async function manLoad(){ // 드라이브 매뉴얼 폴더 목록(10분 캐시) — 먼저 기기 저장본, 온라인이면 새로 받아 저장
