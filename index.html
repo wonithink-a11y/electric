@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v196'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v197'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -5853,6 +5853,7 @@ async function viewPdf(blob,label,startPage,opts){
       const cx=cv.getContext('2d');cx.drawImage(off,0,0);
       if(anc){wrap.scrollLeft=anc.fx*cv.offsetWidth+cv.offsetLeft-anc.cx;wrap.scrollTop=anc.fy*cv.offsetHeight+cv.offsetTop-anc.cy;if(!pend)anc=null;}
       ind.textContent=page+'/'+pdf.numPages;
+      wrap.style.touchAction=wrap.scrollWidth>wrap.clientWidth+4?'pan-x pan-y':'pan-y'; // 확대 전엔 가로 밀기를 쪽 넘김으로
       if(opts&&opts.tag&&_normTag(opts.tag).length>=3){ // v69: 글자층이 있는 PDF는 찾는 태그를 노란 박스로 표시
         const tg=_normTag(opts.tag);let first=null,nHit=0;
         const tc=await pg.getTextContent();
@@ -5879,10 +5880,10 @@ async function viewPdf(blob,label,startPage,opts){
   // 확대: 마우스 휠(그냥 굴리면 확대/축소) + 모바일 두 손가락 핀치
   try{wrap.style.touchAction='pan-x pan-y';}catch(e){}
   wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();zoomBy(e.deltaY<0?1.12:0.89,e.clientX-r.left,e.clientY-r.top);},{passive:false});
-  const pts=new Map();let pinchBase=0,pinchStart=1,pm=null,drag=null;
+  const pts=new Map();let pinchBase=0,pinchStart=1,pm=null,drag=null,sw=null; // v197: sw = 한 손가락 밀기 시작점(좌우로 밀면 쪽 넘김)
   const pmid=()=>{const a=[...pts.values()],r=wrap.getBoundingClientRect();return [(a[0].x+a[1].x)/2-r.left,(a[0].y+a[1].y)/2-r.top];};
   wrap.addEventListener('pointerdown',e=>{
-    if(e.pointerType==='touch')pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(e.pointerType==='touch'){sw=pts.size===0?{x:e.clientX,y:e.clientY}:null;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});}
     else if(e.button===0){drag={x:e.clientX,y:e.clientY,l:wrap.scrollLeft,t:wrap.scrollTop};wrap.setPointerCapture(e.pointerId);wrap.style.cursor='grabbing';}});
   wrap.addEventListener('pointermove',e=>{
     if(drag){wrap.scrollLeft=drag.l-(e.clientX-drag.x);wrap.scrollTop=drag.t-(e.clientY-drag.y);return;}
@@ -5892,7 +5893,10 @@ async function viewPdf(blob,label,startPage,opts){
       if(!pinchBase){pinchBase=dist;pinchStart=scale;cv.style.transformOrigin=(wrap.scrollLeft+pm[0]-cv.offsetLeft)+'px '+(wrap.scrollTop+pm[1]-cv.offsetTop)+'px';}
       const ratio=Math.min(Math.max(dist/pinchBase,.2),8);cv.style.transform='scale('+ratio+')';}
   },{passive:false});
-  const endPinch=e=>{drag=null;wrap.style.cursor='';pts.delete(e.pointerId);
+  const endPinch=e=>{drag=null;wrap.style.cursor='';
+    if(e.type==='pointerup'&&sw&&pts.size===1&&!pinchBase){const dx=e.clientX-sw.x,dy=e.clientY-sw.y; // 가로로 충분히 밀었고 화면이 가로로 넘치지 않을 때(확대 전)만
+      if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.8&&wrap.scrollWidth<=wrap.clientWidth+4){const n=page+(dx<0?1:-1);if(n>=1&&n<=pdf.numPages){page=n;fit=true;render();wrap.scrollTop=0;}}}
+    sw=null;pts.delete(e.pointerId);
     if(pts.size<2&&pinchBase){const m=cv.style.transform.match(/scale\(([\d.]+)\)/);const ratio=m?parseFloat(m[1]):1;
       const f=Math.min(Math.max(pinchStart*ratio,.3),6)/scale;pinchBase=0;zoomBy(f,pm[0],pm[1],true);}};
   wrap.addEventListener('pointerup',endPinch);wrap.addEventListener('pointercancel',endPinch);
