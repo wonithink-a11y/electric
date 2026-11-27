@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v179'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v180'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2140,7 +2140,7 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
     ${measSummaryHtml(id)}
     <hr>
     <div class="muted">설비 사진 (명판·현장, 기기 로컬)</div>
-    ${devSec('',id,null)}
+    ${devSec('',id,null,{short:(e.tagNo||e.name||'').replace(/['"\\]/g,''),tk:_normTag(e.tagNo||e.name||'')})}
     <hr>
     <div class="row"><h3 style="font-size:14px" class="grow">고장·조치 이력 (${faults.length})</h3>
       <button class="btn ghost sm" onclick="diagnoseEquip('${e.id}')">🔍 진단</button>
@@ -3688,7 +3688,7 @@ function _cardZone(n){
 /* v175: 설비 카드 '기록' — 한 설비의 사진·점검보고서·조치 매뉴얼을 카드 한 곳에. 키 = 연결된 설비 마스터 id, 없으면 노드 id.
    사진 = photos(refType 'dev'; 예전 설비 상세(equip)·흐름 설비 창(flow) 사진도 합쳐 보임), PDF·hwp = 문서함(docs) 파일 + meta 'devlinks' 연결({key:[{id,kind}]}).
    사진·연결은 이 기기에만 저장(백업 제외). 문서함에 이미 있는 매뉴얼은 [문서함]으로 연결. */
-const DEV_KINDS=[['rep','점검보고서'],['act','조치 매뉴얼'],['pic','현장 사진']];
+const DEV_KINDS=[['rep','점검보고서'],['act','조치 매뉴얼'],['pic','사진']];
 const _devLk=()=>((S._devLinks||{}).map)||{};
 async function _devLkSave(m){S._devLinks={id:'devlinks',map:m};await dbPut('meta',S._devLinks);}
 const _cardReopen=c=>c&&c[0]==='@'?openEquip(c.slice(1),1):openCard(c);
@@ -3703,22 +3703,27 @@ function _devCnt(ref){ // 검색 결과 줄에 붙일 기록 개수
   try{const r=resolveDev(ref);if(!r)return 0;const n=r.n,load=n&&(n.type==='load'?n:nodeKids(n.id).find(k=>k.type==='load')),eid=(r.e&&r.e.id)||(n&&n.equipId)||(load&&load.equipId)||'',key=eid||(load&&load.id)||(n&&n.id)||'';if(!key)return 0;
     const ph=devPhotos(key,n?[n.id]:[],eid);return ph.length+(_devLk()[key]||[]).filter(x=>S.docs.some(y=>y.id===x.id)).length;}catch(e){return 0;}
 }
-function devSec(id,eid,load){
+function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이름} — 이 설비로 채운 현장 문서 작성·목록에 씀
   window._cardNext=id||('@'+eid); // 이어서 openModal 이 열린 카드로 기억
-  const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[];
+  const key=eid||(load&&load.id)||id,nids=[id,load&&load.id].filter(Boolean),ph=devPhotos(key,nids,eid),lk=_devLk()[key]||[],o=opt||{};
   const docs=k=>lk.filter(x=>x.kind===k).map(x=>({...x,d:S.docs.find(y=>y.id===x.id)})).filter(x=>x.d);
-  const k=esc(key),cur=S._devTab||'rep',cnt={};
+  const k=esc(key),cur=S._devTab||'rep',cnt={},FT={rep:'insp',act:'man',pic:'photo'};
   const panel=([c,l])=>{
-    const P=ph.filter(p=>(p.kind||'pic')===c),D=c==='pic'?[]:docs(c);cnt[c]=P.length+D.length;
-    return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
+    const P=ph.filter(p=>(p.kind||'pic')===c),D=c==='pic'?[]:docs(c),T=FT[c],nm=(FDOC_TYPES[T]||{}).short||l;
+    const fds=o.tk&&o.tk.length>=4?S.notes.filter(x=>x.kind==='fdoc'&&x.type===T&&x.v&&_normTag((x.v.place||'')+' '+(x.v.equip||'')).includes(o.tk)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):[];
+    cnt[c]=fds.length+P.length+D.length;
+    const att=`<details style="margin-top:10px"${P.length+D.length?' open':''}><summary class="muted" style="cursor:pointer">첨부 사진·PDF ${P.length+D.length||''}</summary>
       ${D.map(x=>`<div class="item"><div class="t click" onclick="viewDoc('${x.id}')"><div class="n" style="white-space:normal">📄 ${esc(x.d.title||x.d.name)}</div><div class="d">${esc((x.d.ext||'').toUpperCase())}${x.d.size?' · '+Math.round(x.d.size/1024)+'KB':''}</div></div><button class="btn ghost sm" onclick="devUnlink('${k}','${x.id}')">✕</button></div>`).join('')}
       ${P.length?`<div class="photostrip" style="margin:6px 0">${P.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}</div>`:''}
-      ${P.length+D.length?'':'<div class="muted" style="margin:6px 0">아직 없음</div>'}
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn sm" onclick="devAddPhoto('${k}','${c}')">＋ 사진</button>${c==='pic'?'':`<button class="btn sm" onclick="devAddDoc('${k}','${c}')">＋ PDF</button><button class="btn ghost sm" onclick="devPickDoc('${k}','${c}')">문서함에서</button>`}</div></div>`;};
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn ghost sm" onclick="devAddPhoto('${k}','${c}')">＋ 사진</button>${c==='pic'?'':`<button class="btn ghost sm" onclick="devAddDoc('${k}','${c}')">＋ PDF</button><button class="btn ghost sm" onclick="devPickDoc('${k}','${c}')">문서함에서</button>`}</div></details>`;
+    return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
+      ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}')">＋ ${nm} 작성</button>`:''}
+      ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
+      ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
   const tabs=DEV_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow dv-t" data-k="${c}" onclick="devTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
   const n=cnt.rep+cnt.act+cnt.pic;
-  return sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec">${panels}</div>`,true);
+  return sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec" style="margin-top:8px">${panels}</div>`,true);
 }
 function devTab(k){S._devTab=k;document.querySelectorAll('.dv-p').forEach(e=>e.style.display=e.dataset.k===k?'':'none');document.querySelectorAll('.dv-t').forEach(e=>e.classList.toggle('ghost',e.dataset.k!==k));}
 const sec0=(t,b,open)=>`<details class="card" style="margin:8px 0;padding:8px 12px"${open?' open':''}><summary style="cursor:pointer;font-weight:600">${t}</summary><div style="margin-top:8px">${b}</div></details>`;
@@ -3823,7 +3828,7 @@ function openCard(id){
       ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
       <button class="btn ghost sm" onclick="fdFor('${esc(short)}')">＋ 현장 문서</button>
       <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(short)}')">＋ 할 일</button></div>
-    ${devSec(id,eid,load)}
+    ${devSec(id,eid,load,{short,tk})}
     ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
     ${sec('🔌 정전 영향',impH,false)}
     ${sec('⚡ 전원 경로',pathH,false,pathSub)}
@@ -3839,7 +3844,7 @@ function openCard(id){
       ${n.type==='load'||n.type==='breaker'?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
       <button class="btn ghost sm" onclick="cardTodo('${esc(ref)}','${esc(_kdShort(c0?c0.tag:(n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''))}')">＋ 할 일</button>
       <button class="btn ghost sm" onclick="closeModal();openHub('${id}')">📐 도면·로직</button></div>
-    ${devSec(id,eid,load)}
+    ${devSec(id,eid,load,{short,tk})}
     ${sec('📌 걸린 일 <span class="cnt">'+nowH.length+'</span>',nowH.join(''),true)}
     ${sec('🔌 정전 영향',impH,true)}
     ${sec('⚡ 전원 경로',pathH,false,pathSub)}
@@ -3883,7 +3888,7 @@ function nodeMenu(id){
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
-    ${n.type==='bus'?devSec(id,'',null):''}
+    ${n.type==='bus'?devSec(id,'',null,{short:_kdShort((n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''),tk:_normTag((n.name||'').replace(/\s*\(.*$/,''))}):''}
     <div class="hubb">${n.type==='bus'||n.type==='source'?'':`<button class="btn" onclick="openCard('${id}')">🪪 설비 카드</button>`}<button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
       ${logicByTag(n)?`<button class="btn" onclick="openLogicCard('${id}')">⚡ 로직 카드</button>`:''}
       ${n.type==='load'||isBrk?`<button class="btn" onclick="startLoto('${id}')">🔒 LOTO 시작</button>`:''}
