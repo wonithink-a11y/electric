@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v184'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v185'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -560,6 +560,7 @@ async function loadAll(){
   try{S._vaultKdf=await dbGet('meta','vaultKdf');}catch(e){S._vaultKdf=null;}
   try{S._dwgIndex=await dbGet('meta','dwgindex');}catch(e){S._dwgIndex=null;}
   try{S._bldg=await dbGet('meta','bldg');}catch(e){S._bldg=null;} // v171 건물·층 도면
+  try{S._arc=await dbGet('meta','arc');}catch(e){S._arc=null;} // v185 드라이브 자동 보관 설정
   try{S._fdcats=await dbGet('meta','fdcats');}catch(e){S._fdcats=null;} // v184 직접 만든 문서 분류
   try{S._devLinks=await dbGet('meta','devlinks');}catch(e){S._devLinks=null;} // v175 설비 카드 문서 연결
   try{S._sitemap=await dbGet('meta','sitemap');}catch(e){S._sitemap=null;} // v169 현장 배치도(설비 찾기 건물 지도)
@@ -1302,7 +1303,7 @@ function openModal(html){
   $('#modal-root').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="dock-x" onclick="closeModal()" title="닫기 (Esc)">✕</button>${html}</div></div>`;
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal-root').firstChild&&!/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||''))closeModal();});
-function closeModal(){const fb=window._fdBack;window._fdBack=null;window._cardOpen=null;if(S._fdT)fdAutoNow();$('#modal-root').innerHTML='';if(fb)setTimeout(()=>_cardReopen(fb),0);} // v181: 설비 카드에서 연 문서 양식은 닫으면 그 카드로 돌아감 // v113: 현장 문서 자동 저장이 남았으면 칸을 지우기 전에 마저 저장(fdSave는 첫 await 전에 칸을 다 읽음)
+function closeModal(){arcKick(3000);const fb=window._fdBack;window._fdBack=null;window._cardOpen=null;if(S._fdT)fdAutoNow();$('#modal-root').innerHTML='';if(fb)setTimeout(()=>_cardReopen(fb),0);} // v181: 설비 카드에서 연 문서 양식은 닫으면 그 카드로 돌아감 // v113: 현장 문서 자동 저장이 남았으면 칸을 지우기 전에 마저 저장(fdSave는 첫 await 전에 칸을 다 읽음)
 
 /* ================= PART 5 : 홈(대시보드) ================= */
 function vHome(){
@@ -3746,7 +3747,7 @@ function devAddPhoto(key,kind){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async()=>{const fs=[...(inp.files||[])];if(!fs.length)return;
     for(const f of fs){const dataUrl=await new Promise(r=>_downscale(f,1600,0.8,r)),rec={id:'PH'+uid(),refType:'dev',refId:key,kind,dataUrl,caption:'',added:todayStr()};await dbPut('photos',rec);S.photos.push(rec);}
-    toast('사진 '+fs.length+'장 저장(기기 로컬)');_photoBack('dev',key);};
+    toast('사진 '+fs.length+'장 저장(기기 로컬)');arcKick(3000);_photoBack('dev',key);};
   inp.click();
 }
 function devAddDoc(key,kind){
@@ -3755,7 +3756,7 @@ function devAddDoc(key,kind){
     for(const f of fs){const ext=(f.name.split('.').pop()||'').toLowerCase(),rec={id:'DOC'+uid(),kind:kind==='act'?'매뉴얼':'보고서',title:f.name.replace(/\.[^.]+$/,''),plant:'',level:'',docNo:'',folder:'설비 카드',ext,name:f.name,size:f.size,added:todayStr(),blob:f};
       if(ext==='pdf'){try{const pg=await extractPdfText(f);if(pg){rec.pages=pg;rec.text=pg.join(' \n ');}}catch(e){}} // 글자 색인(실패해도 저장)
       await dbPut('docs',rec);const {blob,...meta}=rec;S.docs.push(meta);a.push({id:rec.id,kind});}
-    await _devLkSave(m);toast(fs.length+'개 문서 저장(기기 로컬)');_photoBack('dev',key);};
+    await _devLkSave(m);toast(fs.length+'개 문서 저장(기기 로컬)');arcKick(3000);_photoBack('dev',key);};
   inp.click();
 }
 async function devUnlink(key,docId){
@@ -5938,10 +5939,75 @@ const FDOC_TYPES={
   photo:{name:'사진대장',short:'사진대장',ic:'📷',f:[['date','일자','d'],['place','작업명·장소','t'],['writer','작성자','t'],['memo','개요','a']]}
 };
 const fdPh=id=>S.photos.filter(p=>p.refType==='fdoc'&&p.refId===id).sort((a,b)=>(a.ord??1e9)-(b.ord??1e9));
+/* v185 드라이브 자동 보관 — 켜 두면 새로 쓰거나 고친 현장 문서(PDF)와 설비 카드에 붙인 사진·첨부 파일을 드라이브 '전력앱 보고서'에 자동으로 올린다.
+   기존 구글 연동(Apps Script, GC_GAS)의 op 'pdf'(문서 PDF·같은 이름은 덮어씀)·'put'(파일)을 그대로 씀 → 새 스크립트 코드가 필요 없음(v122 이상).
+   올린 기록: 문서는 d.driveAt, 사진·첨부는 meta 'arc'.done{id: 크기}. 문서 PDF 는 문서 안 사진을 품고 있음. 앱으로 되돌려 받는 기능은 없음(보관용). */
+const ARC={busy:false,t:0};
+const _b64=blob=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(blob);});
+const _arcOn=()=>!!(S._arc&&S._arc.on)&&gcOn();
+function arcKick(ms){if(!(S._arc&&S._arc.on))return;clearTimeout(ARC.t);ARC.t=setTimeout(arcRun,ms||3000);}
+function arcPending(){
+  const A=S._arc||{},done=A.done||{},L=[];
+  S.notes.filter(x=>x.kind==='fdoc').forEach(d=>{const last=d.driveAt||(d.drive?1:0);if(!last||(d.upd||0)>last)L.push({t:'fd',id:d.id});});
+  S.photos.filter(p=>['dev','flow','equip'].includes(p.refType)&&done[p.id]!==(p.dataUrl||'').length).forEach(p=>L.push({t:'ph',id:p.id}));
+  S.docs.filter(x=>x.folder==='설비 카드'&&!done[x.id]).forEach(x=>L.push({t:'dc',id:x.id}));
+  return L;
+}
+function _arcName(p){
+  let who='';
+  if(p.refType==='flow'){const [fid,iid]=String(p.refId).split('|'),f=(S._flows||[]).find(x=>x.id===fid);f&&f.steps.forEach(st=>st.items.forEach(x=>{if(x.id===iid)who=x.name;}));}
+  else{const r=resolveDev(p.refId);who=r?((r.n&&r.n.name)||(r.e&&r.e.name)||''):'';}
+  const kind={rep:'점검',act:'조치',pic:'사진'}[p.kind||'pic'];
+  return (`${who.replace(/\s*\(.*$/,'')||'설비'}_${kind}_${p.added||''}_${String(p.id).slice(-5)}`).replace(/[\\/:*?"<>|]/g,'_');
+}
+async function arcOne(it){
+  const A=S._arc,F='전력앱 보고서/설비 기록';
+  if(it.t==='fd'){
+    const d=S.notes.find(x=>x.id===it.id);if(!d)return;
+    const blob=await fdPdf(d);if(!blob)throw new Error('PDF를 만들지 못함');
+    const r=await gcCall({op:'pdf',name:fdName(d)+'.pdf',b64:await _b64(blob),folder:'전력앱 보고서'});
+    if(!r.url)throw new Error('스크립트가 옛 버전 — 새 코드로 다시 배포하세요');
+    d.driveAt=Date.now();await dbPut('notes',d);return;
+  }
+  if(it.t==='ph'){
+    const p=S.photos.find(x=>x.id===it.id),m=p&&/^data:([^;]+);base64,(.*)$/.exec(p.dataUrl||'');if(!m)return;
+    await gcCall({op:'put',folder:F,name:_arcName(p)+'.'+(m[1].includes('png')?'png':'jpg'),b64:m[2],mime:m[1]});
+    A.done[p.id]=p.dataUrl.length;await dbPut('meta',A);return;
+  }
+  const d=await dbGet('docs',it.id);if(!d||!d.blob)return;
+  await gcCall({op:'put',folder:F,name:((d.title||'문서').replace(/[\\/:*?"<>|]/g,'')+'_'+String(it.id).slice(-5)+'.'+(d.ext||'pdf')),b64:await _b64(d.blob),mime:d.blob.type||undefined});
+  A.done[it.id]=1;await dbPut('meta',A);
+}
+async function arcRun(){
+  if(ARC.busy||!_arcOn()||!navigator.onLine)return;
+  const L=arcPending();if(!L.length){arcBarRefresh();return;}
+  ARC.busy=true;let ok=0,fail=0,msg='';
+  try{for(const it of L){try{await arcOne(it);ok++;arcBarRefresh(L.length-ok-fail);}catch(e){fail++;msg=e.message;if(/옛 버전|허용|비밀키|HTTP|응답 오류/.test(msg))break;}}}
+  finally{ARC.busy=false;}
+  if(ok||fail)toast(`☁️ 드라이브 보관 ${ok}건${fail?' · 실패 '+fail+(msg?' ('+msg+')':''):''}`);
+  arcBarRefresh();
+}
+function arcBarRefresh(left){const e=document.getElementById('arc-bar');if(e)e.innerHTML=arcBar(left);}
+function arcBar(left){
+  if(!gcOn())return `<div class="muted" style="margin:4px 0">☁️ 자동 보관 — 더보기 › 구글 캘린더(Apps Script) 연동을 켜면 쓸 수 있습니다</div>`;
+  const on=!!(S._arc&&S._arc.on),n=left!==undefined?left:arcPending().length;
+  return `<div class="row" style="gap:6px;align-items:center;margin:4px 0"><span class="muted grow">☁️ 자동 보관 ${on?'켬'+(ARC.busy?' · 올리는 중 '+n:' · 대기 '+n):'꺼짐 · 안 올린 것 '+n}</span><button class="btn ${on?'ghost ':''}sm" onclick="arcToggle()">${on?'끄기':'켜기'}</button>${on&&n&&!ARC.busy?'<button class="btn ghost sm" onclick="arcRun()">지금</button>':''}</div>`;
+}
+async function arcToggle(){
+  if(!gcOn()){toast('먼저 더보기에서 구글 캘린더(Apps Script) 연동을 켜세요');return;}
+  const A=S._arc=S._arc||{id:'arc',on:false,done:{}};A.done=A.done||{};
+  if(A.on){A.on=false;await dbPut('meta',A);arcBarRefresh();toast('자동 보관을 껐습니다');return;}
+  const n=arcPending();
+  if(!(await confirmModal(`지금까지 쓴 현장 문서 ${n.filter(x=>x.t==='fd').length}건과 설비 카드 사진·첨부 ${n.filter(x=>x.t!=='fd').length}건을 드라이브 '전력앱 보고서'에 올리고, 앞으로 저장할 때마다 자동으로 올립니다. 켤까요?`)))return;
+  A.on=true;await dbPut('meta',A);arcBarRefresh();arcRun();
+}
+window.addEventListener('online',()=>arcKick(3000));
+window.addEventListener('load',()=>setTimeout(()=>arcKick(1000),8000));
 function fdocCard(){
   const n=S.notes.filter(x=>x.kind==='fdoc').length;
   return `<div class="card"><h2>📄 현장 문서 <span class="cnt">${n}건</span></h2>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0">${Object.entries(FDOC_TYPES).map(([k,t])=>`<button class="btn sm" style="line-height:1.4" onclick="openFdoc('','${k}')">${t.ic}<br>${t.short}</button>`).join('')}</div>
+    <div id="arc-bar">${arcBar()}</div>
     ${n?`<div id="fd-chips">${fdChipsHtml()}</div><input id="fd-q" placeholder="문서함 검색 (설비·내용)" value="${esc(S._fdq||'')}" oninput="S._fdq=this.value;$('#fd-list').innerHTML=fdListHtml()">`:''}
     <div id="fd-list">${fdListHtml()}</div></div>`;
 }
@@ -6078,7 +6144,7 @@ async function fdDrive(){ // v114: PDF를 Apps Script로 보내 드라이브 '�
   const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(blob);});
   try{const r=await gcCall({op:'pdf',name:fdName(d)+'.pdf',b64,folder:'전력앱 보고서'});
     if(!r.url)throw new Error('스크립트가 옛 버전 — 새 코드로 다시 배포하세요');
-    d.drive=todayStr();await dbPut('notes',d);toast('☁️ 드라이브 › '+(r.folder||'전력앱 보고서')+'에 저장됨');}
+    d.drive=todayStr();d.driveAt=Date.now();await dbPut('notes',d);toast('☁️ 드라이브 › '+(r.folder||'전력앱 보고서')+'에 저장됨');}
   catch(e){toast(/옛 버전/.test(e.message)?'드라이브 저장 실패: '+e.message:'드라이브 저장 실패 — 설정에서 코드 복사 → Apps Script에 다시 붙여넣고 [배포 관리 › 새 버전]으로 배포했는지 확인 ('+e.message+')');}
 }
 async function fdSavePdf(){ // v113: 인쇄 창 없이 바로 PDF 파일로 — 폰은 '다운로드' 폴더에 저장됨
@@ -6111,6 +6177,7 @@ async function fdSave(quiet){
   if(!d){d={id:'FD'+uid(),kind:'fdoc',type,equipId:''};S.notes.push(d);S._fdoc.id=d.id;}
   // date·tag·content는 업무 메모 목록(noteListHtml)이 그대로 쓰는 필드
   Object.assign(d,{v,date:v.date||todayStr(),tag:T.name,content:[v.place,v.equip,v.kind].filter(Boolean).join(' · ')||'(제목 없음)'});
+  d.upd=Date.now();arcKick(25000); // v185 자동 보관: 마지막 저장 25초 뒤(닫으면 곧바로) PDF를 드라이브에
   d.devKey=dev||d.devKey||_devKeyOfText(v)||''; // v181: 이 문서가 속한 설비(설비 카드 기록 탭이 개수·목록을 이 값으로 모음)
   const caps=fdPh(d.id).filter(p=>{const el=document.getElementById('fdc-'+p.id);if(el&&el.value!==p.caption){p.caption=el.value;return true;}}); // 첫 await 전에 칸을 다 읽음(창 닫기와 겹쳐도 안전)
   await dbPut('notes',d);
