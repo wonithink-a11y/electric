@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v192'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v193'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3572,10 +3572,13 @@ function flowItem(fid,si,ii){
 const FLOW_KINDS=[['rep','점검보고서'],['act','조치 매뉴얼'],['pic','현장 사진']];
 const _flKey=(f,x)=>f.id+'|'+x.id,_flPh=k=>S.photos.filter(p=>p.refType==='flow'&&p.refId===k),_flCnt=(f,x)=>_flPh(_flKey(f,x)).length;
 function flowRecHtml(f,x){
-  const k=_flKey(f,x),all=_flPh(k);
-  return `<div class="muted" style="margin:12px 0 2px">점검·조치 기록</div>`+FLOW_KINDS.map(([c,l])=>{const ph=all.filter(p=>(p.kind||'pic')===c);
-    return `<div style="margin:6px 0 0"><b style="font-size:13px">${l}</b>${ph.length?` <span class="muted">${ph.length}</span>`:''}<div class="photostrip" style="margin:4px 0 6px">${ph.map(p=>`<div style="width:76px"><div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div><div class="muted" style="font-size:11px;text-align:center">${esc((p.added||'').slice(2))}</div></div>`).join('')}<button class="addph" onclick="flowAddPhoto('${esc(k)}','${c}')">＋<br>사진</button></div></div>`;}).join('');
+  const k=_flKey(f,x),all=_flPh(k),cur=S._flTab||'rep',cnt={};
+  const panels=FLOW_KINDS.map(([c,l])=>{const ph=all.filter(p=>(p.kind||'pic')===c);cnt[c]=ph.length;
+    return `<div class="fl-p" data-k="${c}" style="${c===cur?'':'display:none'}"><div class="photostrip" style="margin:4px 0 6px">${ph.map(p=>`<div style="width:76px"><div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div><div class="muted" style="font-size:11px;text-align:center">${esc((p.added||'').slice(2))}</div></div>`).join('')}<button class="addph" onclick="flowAddPhoto('${esc(k)}','${c}')">＋<br>사진</button></div></div>`;}).join('');
+  const tabs=FLOW_KINDS.map(([c,l])=>`<button class="btn ${c===cur?'':'ghost'} sm grow fl-t" data-k="${c}" onclick="flowTab('${c}')">${l}${cnt[c]?' '+cnt[c]:''}</button>`).join('');
+  return `<div class="muted" style="margin:12px 0 4px">점검·조치 기록</div><div class="row" style="gap:6px">${tabs}</div><div style="margin-top:6px">${panels}</div>`;
 }
+function flowTab(k){S._flTab=k;document.querySelectorAll('.fl-p').forEach(e=>e.style.display=e.dataset.k===k?'':'none');document.querySelectorAll('.fl-t').forEach(e=>e.classList.toggle('ghost',e.dataset.k!==k));}
 function flowAddPhoto(k,kind){
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true; // 카메라·사진첩 선택은 폰이 묻는다
   inp.onchange=async()=>{const fs=[...(inp.files||[])];if(!fs.length)return;
