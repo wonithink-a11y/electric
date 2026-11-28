@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v219'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v220'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -570,6 +570,7 @@ async function loadAll(){
   try{S._devLinks=await dbGet('meta','devlinks');}catch(e){S._devLinks=null;} // v175 설비 카드 문서 연결
   try{S._sitemap=await dbGet('meta','sitemap');}catch(e){S._sitemap=null;} // v169 현장 배치도(설비 찾기 건물 지도)
   try{const z=await dbGet('meta','zones');S._zones=z&&z.zones||[];}catch(e){S._zones=[];}
+  S._rndM={};try{for(const c of (S.checklists||[]).filter(c=>c.devs)){const v=await dbGet('meta',_rndKey(c));if(v)S._rndM[v.id]=v;}}catch(e){} // v220 순회 진행(이번 기간)
   try{const f=await dbGet('meta','flows');S._flows=f&&f.flows||[];}catch(e){S._flows=[];}
   try{const t=await dbGet('meta','tripTpl');S._tripTpl=t?{name:t.name}:null;const c=await dbGet('meta','tripCfg');S._tripCfg=c||{};}catch(e){S._tripTpl=null;S._tripCfg={};} // v142: 출장비 양식 파일(meta, 백업·동기화 안 감)
   try{const h=await dbGet('meta','ecmsHubs');S._ecms=h?{hubs:h.hubs||[],cases:h.cases||[],stepImgs:h.stepImgs||{}}:{hubs:[],cases:[],stepImgs:{}};}catch(e){S._ecms={hubs:[],cases:[],stepImgs:{}};} // v139: ECMS 허브 표(IP는 코드에 없고 JSON 주입)
@@ -1650,7 +1651,7 @@ function _todoRow(x,ts){return `<div class="item k k-todo"><div class="chk" oncl
   <div class="t click" onclick="openDay('${x.date}')"><div class="n">${tdTitle(x)}</div>
   <div class="d"${x.date<ts?' style="color:var(--danger)"':''}>${esc(x.date)}${x.note?' · '+esc(x.note):''}</div></div>${x.date===ts?'<span class="badge b-blue">오늘</span>':x.date<ts?'<span class="badge b-red">지남</span>':`<span class="badge b-gray">${esc(mdShort(x.date))}</span>`}</div>`;}
 function _chkRow(c){return `<div class="item k k-chk"><div class="chk" onclick="toggleChk('${c.id}')"></div>
-  <div class="t"><div class="n">${esc(c.name)}</div><div class="d">주기업무${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
+  <div class="t"><div class="n">${esc(c.name)}</div><div class="d">${c.devs?'순회 '+roundProg(c):'주기업무'}${c.detail?' · '+esc(c.detail).slice(0,30):''}</div></div>
   <span class="badge b-gray">${CYCLE_KO[c.cycle]||''}</span></div>`;}
 function homeSearch(q){
   const el=$('#home-sr');
@@ -1661,6 +1662,7 @@ function homeSearch(q){
 }
 async function toggleChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
+  if(c.devs&&c.devs.length)return roundOpen(id); // v220: 순회 경로는 한 번에 완료하지 않고 설비별 확인 창
   const pk=periodKey(c.cycle);
   const log={id:uid(),chkId:id,period:pk,date:todayStr(),name:c.name,cycle:c.cycle};
   await saveRec('checklogs',log);
@@ -4564,7 +4566,7 @@ async function delInsp(id){
 
 /* ================= PART 8 : 주기 체크리스트 ================= */
 function vChk(){
-  const groups=['weekly','monthly','halfyear','yearly'];
+  const groups=['daily','weekly','monthly','quarterly','halfyear','yearly']; // v220: 일간(순회)·분기도 보이게
   const recent=S.checklogs.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   return monthPlanCard()+groups.map(g=>{
     const items=S.checklists.filter(c=>c.cycle===g&&!c.months);
@@ -4574,8 +4576,8 @@ function vChk(){
         const done=isChkDone(c);
         return `<div class="item">
           <div class="chk ${done?'done':''}" onclick="${done?`undoChk('${c.id}')`:`toggleChk('${c.id}')`}">✓</div>
-          <div class="t"><div class="n" style="${done?'text-decoration:line-through;color:var(--dim)':''}">${esc(c.name)}</div>
-          <div class="d">${esc(c.detail||'')} ${lawLinkHtml(c)}</div></div>
+          <div class="t${c.devs?' click':''}"${c.devs?` onclick="roundOpen('${c.id}')"`:''}><div class="n" style="${done?'text-decoration:line-through;color:var(--dim)':''}">${c.devs?'🚶 ':''}${esc(c.name)}</div>
+          <div class="d">${c.devs?'순회 '+roundProg(c)+' · ':''}${esc(c.detail||'')} ${lawLinkHtml(c)}</div></div>
         </div>`}).join('')}
     </div>`;
   }).join('')+`
@@ -4583,7 +4585,88 @@ function vChk(){
     ${recent.map(l=>`<div class="item"><div class="t"><div class="n">${esc(l.name)}</div><div class="d">${esc(l.date)} · ${esc(l.period)}</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
     <div class="section-note">완료 이력은 연말 실적·차년도 계획 작성 시 백업 JSON에서 재활용</div>
   </div>
-  <div class="card"><button class="btn ghost sm full" onclick="editChk()">+ 주기 업무 추가</button></div>`;
+  <div class="card"><button class="btn ghost sm full" onclick="editChk()">+ 주기 업무 추가</button><button class="btn ghost sm full" style="margin-top:6px" onclick="roundEdit()">🚶 + 순회 경로 만들기</button></div>`;
+}
+/* ===== v220 순회점검 =====
+   경로 = checklists 기록에 devs(설비 키 배열: 계통 노드 id)·items(확인 항목 글) 추가. 동기화·주기·오늘 화면은 주기 업무 그대로.
+   돌면서 누른 정상/이상은 이 폰 meta 'rnd:경로id:기간'에(끝나기 전엔 다른 기기로 안 감), 완료하면 checklogs에 res·note로 남김.
+   이상 = 현안 자동 등록(ref = 설비 키 → 그 설비 카드 '걸린 일'에 보임). */
+const RND_ITEMS='이상음 · 이상 냄새 · 발열 · 표시등 · 누유·누설 · 청결';
+const _rndKey=c=>'rnd:'+c.id+':'+periodKey(c.cycle);
+const _rndName=k=>(((nodeById(k)||S.equipment.find(e=>e.id===k)||{}).name)||k).replace(/\s*\(.*$/,'');
+function _rndLog(c){return S.checklogs.find(l=>l.chkId===c.id&&l.period===periodKey(c.cycle));}
+function _rndRes(c){const l=_rndLog(c);if(l&&l.res)return Object.fromEntries(l.res.map(x=>[x.k,x.r]));const m=(S._rndM||{})[_rndKey(c)];return (m&&m.res)||{};}
+function roundProg(c){const r=_rndRes(c),n=c.devs.filter(k=>r[k]).length,ng=c.devs.filter(k=>r[k]==='ng').length;return `${n}/${c.devs.length}${ng?' · 이상 '+ng:''}`;}
+async function roundOpen(id){
+  const c=S.checklists.find(x=>x.id===id);if(!c)return;
+  const key=_rndKey(c),M=S._rndM=S._rndM||{};if(!M[key])M[key]=(await dbGet('meta',key).catch(()=>null))||{id:key,res:{}};S._rnd=M[key];
+  const r=_rndRes(c),done=!!_rndLog(c),n=c.devs.filter(k=>r[k]).length;
+  const row=k=>{const v=r[k];return `<div class="item"><div class="t click" onclick="openDevice('${esc(k)}')"><div class="n" style="white-space:normal">${v==='ok'?'✅ ':v==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(k),30))}</div></div>
+    ${done?'':`<button class="btn ${v==='ok'?'':'ghost '}sm" onclick="roundMark('${id}','${esc(k)}','ok')">정상</button><button class="btn ${v==='ng'?'danger':'ghost'} sm" onclick="roundNg('${id}','${esc(k)}')">이상</button>`}</div>`;};
+  openModal(`<h3>🚶 ${esc(c.name)} <span class="cnt">${n}/${c.devs.length}</span></h3>
+    <div class="muted">${esc(CYCLE_KO[c.cycle]||c.cycle)} · ${esc(periodKey(c.cycle))}${done?' · 완료':''}</div>
+    <div class="path-box" style="margin:6px 0">${esc(c.items||RND_ITEMS)}</div>
+    ${c.devs.map(row).join('')}
+    <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+      ${done?`<button class="btn ghost sm" onclick="undoChk('${id}').then(()=>roundOpen('${id}'))">완료 취소</button>`:`<button class="btn sm" onclick="roundDone('${id}')">✓ 순회 완료</button>`}
+      <button class="btn ghost sm" onclick="roundEdit('${id}')">경로 수정</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal();render()">닫기</button></div>`);
+}
+async function roundMark(id,k,v){S._rnd.res[k]=v;await dbPut('meta',S._rnd);roundOpen(id);}
+function roundNg(id,k){
+  openModal(`<h3>⚠️ ${esc(_kdShort(_rndName(k),30))}</h3><label>이상 내용 (현안으로 등록)</label><input id="rn-t" placeholder="예: 3상 발열 차 7℃, 표시등 소등">
+    <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="roundOpen('${id}')">취소</button><div class="grow"></div><button class="btn danger sm" onclick="roundNgSave('${id}','${esc(k)}')">이상 등록</button></div>`);
+  setTimeout(()=>{const e=document.getElementById('rn-t');if(e)e.focus();},50);
+}
+async function roundNgSave(id,k){
+  const t=($('#rn-t').value||'').trim();if(!t){toast('이상 내용을 적으세요');return;}
+  await saveRec('issues',{id:uid(),date:todayStr(),title:'[순회] '+_kdShort(_rndName(k),24)+' — '+t,note:'',done:false,ref:k});
+  toast('현안 등록');roundMark(id,k,'ng');
+}
+async function roundDone(id){
+  const c=S.checklists.find(x=>x.id===id),r=_rndRes(c),left=c.devs.filter(k=>!r[k]).length;
+  if(left&&!(await confirmModal(`아직 안 본 설비 ${left}곳이 있습니다. 이대로 완료할까요?`)))return roundOpen(id);
+  const ng=c.devs.filter(k=>r[k]==='ng');
+  await saveRec('checklogs',{id:uid(),chkId:id,period:periodKey(c.cycle),date:todayStr(),name:c.name,cycle:c.cycle,
+    note:`정상 ${c.devs.filter(k=>r[k]==='ok').length} · 이상 ${ng.length}${left?' · 미점검 '+left:''}${ng.length?' ('+ng.map(k=>_kdShort(_rndName(k),14)).join(', ')+')':''}`,
+    res:c.devs.filter(k=>r[k]).map(k=>({k,r:r[k]}))});
+  await dbDel('meta',S._rnd.id).catch(()=>{});delete S._rndM[S._rnd.id];S._rnd=null;toast('순회 완료');roundOpen(id);
+}
+/* 경로 만들기·수정: 설비동을 고르면 그 동의 판넬(모선)·설비가 나오고 체크해서 담는다. 동을 바꿔도 고른 것은 유지 */
+function roundEdit(id){
+  const c=id?S.checklists.find(x=>x.id===id):null;window._rdSel=new Set(c?c.devs:[]);window._rdId=id||'';
+  const Z=(S._zones||[]);
+  openModal(`<h3>🚶 ${c?'순회 경로 수정':'순회 경로 만들기'}</h3>
+    <label>이름 *</label><input id="rd-n" value="${esc(c?c.name:'')}" placeholder="예: 수처리동 주간 순회">
+    <label>주기</label><select id="rd-c">${['daily','weekly','monthly'].map(v=>`<option value="${v}"${(c?c.cycle:'weekly')===v?' selected':''}>${CYCLE_KO[v]}</option>`).join('')}</select>
+    <label>확인 항목</label><input id="rd-i" value="${esc(c&&c.items||RND_ITEMS)}">
+    <label>설비 고르기 <span class="cnt" id="rd-cnt">${window._rdSel.size}</span></label>
+    <select id="rd-z" onchange="roundList()"><option value="">— 설비동 —</option><option value="_sel">고른 설비만 보기</option>${Z.map(z=>`<option value="${esc(z.id)}">${esc(z.name)}</option>`).join('')}</select>
+    <input id="rd-q" placeholder="이름으로 거르기" oninput="roundList()" autocomplete="off" style="margin-top:4px">
+    <div id="rd-l" style="max-height:40vh;overflow:auto;margin-top:4px"></div>
+    <div class="row" style="margin-top:10px;gap:6px">${c?`<button class="btn danger sm" onclick="roundDel('${id}')">삭제</button>`:''}<div class="grow"></div>
+      <button class="btn ghost sm" onclick="${c?`roundOpen('${id}')`:'closeModal()'}">취소</button><button class="btn sm" onclick="roundSave()">저장</button></div>`);
+  if(c){$('#rd-z').value='_sel';}roundList();
+}
+function roundList(){
+  const z=$('#rd-z').value,q=($('#rd-q').value||'').trim().toLowerCase(),sel=window._rdSel;
+  let L=z==='_sel'?[...sel].map(k=>nodeById(k)).filter(Boolean):z?S.tree.filter(n=>(n.type==='bus'||n.type==='load')&&_nodeZone(n)===z):[];
+  if(q)L=L.filter(n=>(n.name||'').toLowerCase().includes(q));
+  L.sort((a,b)=>(a.type==='bus'?0:1)-(b.type==='bus'?0:1)); // 판넬(모선) 먼저
+  $('#rd-l').innerHTML=L.slice(0,200).map(n=>`<label class="item" style="gap:8px;cursor:pointer"><input type="checkbox" ${sel.has(n.id)?'checked':''} onchange="roundPick('${esc(n.id)}',this.checked)" style="width:auto">
+    <div class="t"><div class="n" style="white-space:normal">${n.type==='bus'?'▦ ':''}${esc(_kdShort((n.name||'').replace(/\s*\(.*$/,''),34))}</div></div></label>`).join('')
+    ||`<div class="muted">${z?'해당 설비 없음':'설비동을 고르세요'}</div>`;
+}
+function roundPick(k,on){const s=window._rdSel;on?s.add(k):s.delete(k);$('#rd-cnt').textContent=s.size;}
+async function roundSave(){
+  const name=$('#rd-n').value.trim(),devs=[...window._rdSel];
+  if(!name){toast('이름을 적으세요');return;}if(!devs.length){toast('설비를 하나 이상 고르세요');return;}
+  const id=window._rdId,c=id?S.checklists.find(x=>x.id===id):null;
+  const obj=Object.assign(c?{...c}:{id:'UC'+uid()},{name,cycle:$('#rd-c').value,items:$('#rd-i').value.trim()||RND_ITEMS,devs,detail:(c&&c.detail)||''});
+  await saveRec('checklists',obj);toast('순회 경로 저장');roundOpen(obj.id);
+}
+async function roundDel(id){
+  if(!(await confirmModal('이 순회 경로를 삭제할까요? (지난 완료 기록은 남습니다)')))return;
+  await removeRec('checklists',id);closeModal();render();
 }
 async function undoChk(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
