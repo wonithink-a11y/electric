@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v217'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v218'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -3952,7 +3952,7 @@ function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이�
   const n=cnt.rep+cnt.act+cnt.pic;
   setTimeout(manFill,60);
   const mansec=`<details class="card" style="margin:8px 0;padding:8px 12px" open><summary style="cursor:pointer;font-weight:600">📖 관련 매뉴얼</summary><div style="margin-top:8px"><div id="man-rec" data-k="${k}" data-nm="${esc(o.short||'')}" data-re="${esc(_manRe(o.short))}"></div><button class="btn ghost sm" style="margin-top:4px" onclick="manPick('${k}')">＋ 매뉴얼 직접 연결</button></div></details>`;
-  return mansec+sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec" style="margin-top:8px">${panels}</div>`,true);
+  return mansec+sec0('📷 기록 <span class="cnt">'+n+'</span>',`<div class="row" style="gap:6px">${tabs}</div><div id="dev-rec" style="margin-top:8px">${panels}</div>`,n>0); // v218: 0건이면 접음 — 맨 위 ＋작성 버튼과 같은 이름 탭이 나란히 보이지 않게
 }
 function devTab(k){S._devTab=k;document.querySelectorAll('.dv-p').forEach(e=>e.style.display=e.dataset.k===k?'':'none');document.querySelectorAll('.dv-t').forEach(e=>e.classList.toggle('ghost',e.dataset.k!==k));}
 const sec0=(t,b,open)=>`<details class="card" style="margin:8px 0;padding:8px 12px"${open?' open':''}><summary style="cursor:pointer;font-weight:600">${t}</summary><div style="margin-top:8px">${b}</div></details>`;
