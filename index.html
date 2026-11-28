@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v212'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v213'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -7799,6 +7799,7 @@ const MEAS_TYPES=[
  {k:'베어링 온도',u:'℃',dir:'lo',warn:80},
  {k:'부하전류',u:'A',dir:'',warn:null},
  {k:'절연유 내압',u:'kV',dir:'hi',warn:null},
+ {k:'열화상 온도차',u:'℃',dir:'lo',warn:5,bad:10}, // v213: 전기안전관리자 직무고시 별지 제7호(3상 비교법) — 5℃ 이하 정상·5℃ 초과 요주의·10℃ 이상 이상. 값 = 측정점 최고−최저
  {k:'기타',u:'',dir:'',warn:null}
 ];
 function measType(k){return MEAS_TYPES.find(t=>t.k===k)||MEAS_TYPES[MEAS_TYPES.length-1];}
@@ -7807,21 +7808,21 @@ function measJudge(m){
   if(m.unit&&t.u&&m.unit!==t.u)return ''; // v206: 기본 단위와 다른 단위의 값은 판정하지 않음(변환 안 함)
   const v=Number(m.value);
   if(t.dir==='hi')return v<t.warn?'주의':'양호';
-  if(t.dir==='lo')return v>t.warn?'주의':'양호';
+  if(t.dir==='lo')return t.bad!=null&&v>=t.bad?'이상':v>t.warn?'주의':'양호';
   return '';
 }
-/* v212: 설비·유형별 가장 최근 측정이 '주의'인 것만(다시 재서 양호면 빠짐). 오늘 화면 칸·목록 */
+/* v212: 설비·유형별 가장 최근 측정이 '주의'(v213부터 '이상' 포함)인 것만(다시 재서 양호면 빠짐). 오늘 화면 칸·목록 */
 function measWarnList(){
   const last={};
   for(const m of S.measurements||[]){const k=m.equipId+'|'+m.type;if(!last[k]||(m.date||'')>=(last[k].date||''))last[k]=m;}
-  return Object.values(last).filter(m=>measJudge(m)==='주의').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return Object.values(last).filter(m=>/주의|이상/.test(measJudge(m))).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 }
 function measWarnSheet(){
   const L=measWarnList(),nm=id=>(S.equipment.find(e=>e.id===id)||{}).name||id;
   openModal(`<h3>⚠️ 측정 이상 <span class="cnt">${L.length}</span></h3>
     ${L.map(m=>{const t=measType(m.type);return `<div class="item click" onclick="measHistory('${esc(m.equipId)}','${esc(m.type)}')">
-      <div class="t"><div class="n">${esc(nm(m.equipId))}</div><div class="d">${esc(m.type)} ${esc(String(m.value))}${esc(t.u)} (기준 ${t.dir==='hi'?'≥':'≤'}${t.warn}) · ${esc(m.date||'')}</div></div>
-      <span class="badge b-red">주의</span></div>`;}).join('')||'<div class="empty">없음</div>'}
+      <div class="t"><div class="n">${esc(nm(m.equipId))}</div><div class="d">${esc(m.type)} ${esc(String(m.value))}${esc(t.u)} (기준 ${t.dir==='hi'?'≥':'≤'}${t.warn}${t.bad!=null?' · 이상 ≥'+t.bad:''}) · ${esc(m.date||'')}</div></div>
+      <span class="badge b-red">${measJudge(m)}</span></div>`;}).join('')||'<div class="empty">없음</div>'}
     <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
 function measSummaryHtml(equipId){
@@ -7835,7 +7836,7 @@ function measSummaryHtml(equipId){
     const mn=vals.length?Math.min(...vals):null, mx=vals.length?Math.max(...vals):null;
     const j=measJudge(last);
     return `<div class="item click" onclick="measHistory('${equipId}','${esc(tp)}')">
-      <div class="t"><div class="n">${esc(tp)} ${j?`<span class="badge ${j==='주의'?'b-red':'b-green'}">${j}</span>`:''}</div>
+      <div class="t"><div class="n">${esc(tp)} ${j?`<span class="badge ${j==='양호'?'b-green':'b-red'}">${j}</span>`:''}</div>
       <div class="d">최근 ${esc(String(last.value))}${esc(u)} (${esc(last.date||'')}) · 최소 ${mn??'-'} / 최대 ${mx??'-'} · ${list.length}회</div></div>
       <span class="badge b-gray">추세</span></div>`;
   }).join('');
@@ -7866,7 +7867,7 @@ function measHistory(equipId,type){
   openModal(`<h3>${esc(type)} 추세 — ${esc(e?.name||'')}</h3>
     ${measChart(asc)}
     ${list.map(m=>{const j=measJudge(m);return `<div class="item">
-      <div class="t"><div class="n">${esc(String(m.value))}${esc(u)} ${j?`<span class="badge ${j==='주의'?'b-red':'b-green'}">${j}</span>`:''}</div>
+      <div class="t"><div class="n">${esc(String(m.value))}${esc(u)} ${j?`<span class="badge ${j==='양호'?'b-green':'b-red'}">${j}</span>`:''}</div>
       <div class="d">${esc(m.date||'')}${m.note?' · '+esc(m.note):''}</div></div>
       <button class="btn danger sm" onclick="delMeas('${m.id}','${equipId}')">✕</button></div>`;}).join('')||'<div class="empty">없음</div>'}
     <div class="section-note">경고 기준은 참고값입니다. 접지저항 종별·절연저항 전압별 기준은 설비·KEC/사내 기준으로 확인하세요.</div>
@@ -8014,7 +8015,7 @@ function annualReport(){
   const chkY=S.checklogs.filter(l=>inY(l.date)).length;
   const inspY=S.inspections.reduce((n,i)=>n+((i.history||[]).filter(h=>inY(h.date)).length),0);
   const bY=S.budget.filter(b=>b.kind!=='필요'&&inY(b.date));const exec=bY.filter(b=>b.kind!=='계획').reduce((s,b)=>s+Number(b.amount||0),0);
-  const mY=S.measurements.filter(m=>inY(m.date));const mW=mY.filter(m=>measJudge(m)==='주의').length;
+  const mY=S.measurements.filter(m=>inY(m.date));const mW=mY.filter(m=>/주의|이상/.test(measJudge(m))).length;
   const t=`[${Y}년 전기설비 유지보수 실적 보고]
 부서: ${deptName()}   작성자: 허남원   작성일: ${todayStr()}
 
@@ -8056,7 +8057,7 @@ function vStats(){
   const execRate=plan?Math.round(exec/plan*100):0;
   // 측정
   const mY=S.measurements.filter(m=>inY(m.date));
-  const mWarn=mY.filter(m=>measJudge(m)==='주의').length;
+  const mWarn=mY.filter(m=>/주의|이상/.test(measJudge(m))).length;
   // 허가
   const pY=S.permits.filter(p=>inY(p.date)).length;
   return `<div class="card"><h2>📈 실적 요약 <span class="cnt">${Y}년</span></h2>
