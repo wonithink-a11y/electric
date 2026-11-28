@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v225'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v226'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -6404,7 +6404,8 @@ function arcBarRefresh(left){const e=document.getElementById('arc-bar');if(e)e.i
 function arcBar(left){
   if(!gcOn())return `<div class="muted" style="margin:4px 0">☁️ 자동 보관 — 더보기 › 구글 캘린더(Apps Script) 연동을 켜면 쓸 수 있습니다</div>`;
   const on=!!(S._arc&&S._arc.on),n=left!==undefined?left:arcPending().length;
-  return `<div class="row" style="gap:6px;align-items:center;margin:4px 0"><span class="grow">☁️ 자동 보관 <span class="badge ${on?'b-green':'b-red'}">${on?'켬':'꺼짐'}</span> <span class="muted">${on?(ARC.busy?'올리는 중 '+n:'대기 '+n):'안 올린 것 '+n}</span></span><button class="btn ${on?'ghost ':''}sm" onclick="arcToggle()">${on?'끄기':'켜기'}</button>${on&&n&&!ARC.busy?'<button class="btn ghost sm" onclick="arcRun()">지금</button>':''}<button class="btn ghost sm" onclick="arcRestore()">되받기</button></div>`;
+  // v226: 한눈에 보이게 가로 꽉 찬 색 띠(켜짐 초록·꺼짐 빨강)
+  return `<div class="row" style="gap:6px;align-items:center;margin:8px 0;padding:10px 12px;border-radius:8px;border:2px solid ${on?'#3fbf5a':'#e5484d'};background:${on?'rgba(63,191,90,.16)':'rgba(229,72,77,.16)'}"><span class="grow" style="font-size:15px;font-weight:700;color:${on?'#3fbf5a':'#e5484d'}">${on?'●':'○'} 자동 보관 ${on?'켜짐':'꺼짐'}<span class="muted" style="display:block;font-size:12px;font-weight:400">${on?(ARC.busy?'올리는 중 '+n:'대기 '+n):'안 올린 것 '+n}</span></span><button class="btn ${on?'ghost ':''}sm" onclick="arcToggle()">${on?'끄기':'켜기'}</button>${on&&n&&!ARC.busy?'<button class="btn ghost sm" onclick="arcRun()">지금</button>':''}<button class="btn ghost sm" onclick="arcRestore()">되받기</button></div>`;
 }
 async function arcToggle(){
   if(!gcOn()){toast('먼저 더보기에서 구글 캘린더(Apps Script) 연동을 켜세요');return;}
