@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v218'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v219'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -6279,8 +6279,14 @@ function fdListHtml(){
   if(f)all=all.filter(d=>f==='_none'?!fdZoneOf(d):fdZoneOf(d)===f);
   if(q)all=all.filter(d=>(d.tag+' '+Object.values(d.v||{}).join(' ')+' '+fdPh(d.id).map(p=>p.caption).join(' ')).toLowerCase().includes(q));
   const shown=all.slice(0,q||f||S._fdt?50:5);
-  return shown.map(d=>{const un=!fdZoneOf(d)&&!d.devKey;return `<div class="item"><div class="t click" onclick="openFdoc('${d.id}')"><div class="n">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
-    <div class="d">${esc(d.date)} · ${esc(d.tag)}${fdPh(d.id).length?' · 사진 '+fdPh(d.id).length:''}</div></div><button class="chip${un?'':' on'}" onclick="fdClsPick('${d.id}')">📍 ${esc(fdClsLabel(d))}</button></div>`;}).join('')
+  const row=d=>{const un=!fdZoneOf(d)&&!d.devKey;return `<div class="item"><div class="t click" onclick="openFdoc('${d.id}')"><div class="n">${FDOC_TYPES[d.type].ic} ${esc(d.content)}</div>
+    <div class="d">${esc(d.date)} · ${esc(d.tag)}${fdPh(d.id).length?' · 사진 '+fdPh(d.id).length:''}</div></div><button class="chip${un?'':' on'}" onclick="fdClsPick('${d.id}')">📍${f&&f!=='_none'?'':' '+esc(fdClsLabel(d))}</button></div>`;}; // v219: 설비별로 묶였을 땐 분류 글자 생략(제목과 같음)
+  // v219: 설비동을 고르면 설비별로 묶음(문서 많은 설비 먼저, 설비 이름 누르면 그 카드)
+  let body;
+  if(f&&f!=='_none'){const G={};shown.forEach(d=>{const k=fdDevName(d)?d.devKey:'';(G[k]=G[k]||[]).push(d);});
+    body=Object.entries(G).sort((a,b)=>!a[0]-!b[0]||b[1].length-a[1].length).map(([k,L])=>`<div class="row" style="margin:10px 0 2px;gap:6px;align-items:center">${k?`<b class="click" onclick="openDevice('${esc(k)}')">🏭 ${esc(_kdShort(fdDevName(L[0]),28))} ›</b>`:'<b class="muted">설비 미지정</b>'}<span class="cnt">${L.length}</span></div>`+L.map(row).join('')).join('');}
+  else body=shown.map(row).join('');
+  return body
     +(all.length>shown.length?`<div class="muted">최근 ${shown.length}건 — 칩이나 검색으로 전체에서 찾습니다 (더보기 › 업무 메모에도 있음)</div>`:'')
     +((q||f||S._fdt)&&!all.length?'<div class="empty">찾는 문서 없음</div>':'');
 }
