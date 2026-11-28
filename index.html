@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v216'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v217'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2174,6 +2174,7 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
     <h3>${esc(e.name)}</h3>
     <div class="muted">${esc(e.tagNo||'Tag 미지정')} · <span class="badge ${e.plant==='PB'?'b-blue':'b-purple'}">${esc(e.plant)}</span> ${esc(e.category)}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+      ${cardDocBtns((e.tagNo||e.name||'').replace(/['"\\]/g,''),id)}
       <button class="btn ghost sm" onclick="addMeas('${id}')">＋ 측정</button>
       <button class="btn ghost sm" onclick="editFault('','${e.id}')">＋ 고장</button>
       <button class="btn ghost sm" onclick="editNote('','${e.id}')">＋ 메모</button>
@@ -3944,7 +3945,6 @@ function devSec(id,eid,load,opt){ // opt={short 표시 이름, tk 정규화 이�
       ${P.length?`<div class="photostrip" style="margin:6px 0">${P.map(p=>`<div class="thumb"><img src="${p.dataUrl}" onclick="viewPhoto('${p.id}')"><button class="thx" onclick="delPhoto('${p.id}')">✕</button><button class="thx" style="top:auto;bottom:2px" onclick="photoEdit('${p.id}')">✏️</button></div>`).join('')}</div>`:''}
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn ghost sm" onclick="devAddPhoto('${k}','${c}')">＋ 사진</button>${c==='pic'?'':`<button class="btn ghost sm" onclick="devAddDoc('${k}','${c}')">＋ PDF</button><button class="btn ghost sm" onclick="devPickDoc('${k}','${c}')">문서함에서</button>`}</div></details>`;
     return `<div class="dv-p" data-k="${c}" style="${c===cur?'':'display:none'}">
-      ${o.short?`<button class="btn full" onclick="openFdoc('','${T}','${esc(o.short)}','${k}')">＋ ${nm} 작성</button>`:''}
       ${fds.map(x=>`<div class="item click" onclick="openFdoc('${x.id}','','','${k}')"><div class="t"><div class="n" style="white-space:normal">📄 ${esc(x.tag||'')} · ${esc(x.content||'')}</div><div class="d">${esc(x.date||'')}</div></div></div>`).join('')}
       ${att}</div>`;};
   const panels=DEV_KINDS.map(panel).join('');
@@ -4127,6 +4127,7 @@ function nodeMenu(id){
   const isBrk=n.type==='breaker';
   openModal(`<h3>${NODE_TYPES[n.type][0]} ${esc(n.name)}</h3>
     <div class="muted">${NODE_TYPES[n.type][1]} ${n.panelNo?'· 판넬 '+esc(n.panelNo):''} ${n.voltage?'· '+esc(n.voltage):''} ${e?'· '+esc(e.name):''}</div>
+    ${n.type==='bus'?`<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">${cardDocBtns(_kdShort((n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''),id)}<button class="btn ghost sm" onclick="addMeas('${id}')">＋ 측정</button></div>`:''}
     ${n.type==='bus'?devLoc(id,'',null,{short:(n.name||'').replace(/\s*\(.*$/,'')}):''}
     ${n.type==='bus'?devSec(id,'',null,{short:_kdShort((n.name||'').replace(/\s*\(.*$/,''),30).replace(/['"\\]/g,''),tk:_normTag((n.name||'').replace(/\s*\(.*$/,''))}):''}
     <div class="hubb">${n.type==='bus'||n.type==='source'?'':`<button class="btn" onclick="openCard('${id}')">🪪 설비 카드</button>`}<button class="btn" onclick="closeModal();openHub('${id}')">🧭 도면·로직 허브</button>
