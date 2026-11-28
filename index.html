@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v221'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v222'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -4602,8 +4602,8 @@ async function roundOpen(id){
   const key=_rndKey(c),M=S._rndM=S._rndM||{};if(!M[key])M[key]=(await dbGet('meta',key).catch(()=>null))||{id:key,res:{}};S._rnd=M[key];
   const r=_rndRes(c),done=!!_rndLog(c),n=c.devs.filter(k=>r[k]).length;
   const nx=done?'':(c.devs.filter(k=>!r[k]).map(_rndSpotOf).find(Boolean)||''); // v221: 다음 미점검 설비가 있는 층 도면
-  const row=k=>{const v=r[k];return `<div class="item"><div class="t click" onclick="openDevice('${esc(k)}')"><div class="n" style="white-space:normal">${v==='ok'?'✅ ':v==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(k),30))}</div></div>
-    ${done?'':`<button class="btn ${v==='ok'?'':'ghost '}sm" onclick="roundMark('${id}','${esc(k)}','ok')">정상</button><button class="btn ${v==='ng'?'danger':'ghost'} sm" onclick="roundNg('${id}','${esc(k)}')">이상</button>`}</div>`;};
+  const row=k=>{const v=r[k],mt=_rndMeasToday(k);return `<div class="item"><div class="t click" onclick="openDevice('${esc(k)}')"><div class="n" style="white-space:normal">${v==='ok'?'✅ ':v==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(k),30))}</div>${mt?`<div class="d">${mt}</div>`:''}</div>
+    ${done?'':`<button class="btn ghost sm" onclick="roundMeas('${id}','${esc(k)}')">📏</button><button class="btn ${v==='ok'?'':'ghost '}sm" onclick="roundMark('${id}','${esc(k)}','ok')">정상</button><button class="btn ${v==='ng'?'danger':'ghost'} sm" onclick="roundNg('${id}','${esc(k)}')">이상</button>`}</div>`;};
   openModal(`<h3>🚶 ${esc(c.name)} <span class="cnt">${n}/${c.devs.length}</span></h3>
     <div class="muted">${esc(CYCLE_KO[c.cycle]||c.cycle)} · ${esc(periodKey(c.cycle))}${done?' · 완료':''}</div>
     <div class="path-box" style="margin:6px 0">${esc(c.items||RND_ITEMS)}</div>
@@ -4622,6 +4622,16 @@ function roundNg(id,k,back){
   openModal(`<h3>⚠️ ${esc(_kdShort(_rndName(k),30))}</h3><label>이상 내용 (현안으로 등록)</label><input id="rn-t" placeholder="예: 3상 발열 차 7℃, 표시등 소등">
     <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="${back==='map'?'closeModal()':`roundOpen('${id}')`}">취소</button><div class="grow"></div><button class="btn danger sm" onclick="roundNgSave('${id}','${esc(k)}','${back||''}')">이상 등록</button></div>`);
   setTimeout(()=>{const e=document.getElementById('rn-t');if(e)e.focus();},50);
+}
+/* v222 순회 측정: 측정 키는 설비 카드와 같게(설비 마스터 id 있으면 그것, 없으면 노드 id). 저장하면 순회로 돌아오고, 주의·이상이면 이상 등록 창(값 채움) */
+const _rndMk=k=>(nodeById(k)||{}).equipId||k;
+function _rndMeasToday(k){const mk=_rndMk(k),t=todayStr();return S.measurements.filter(m=>(m.equipId===mk||m.equipId===k)&&m.date===t).map(m=>{const j=measJudge(m);return `📏 ${esc(m.type)} ${esc(String(m.value))}${esc(m.unit||'')}${j&&j!=='양호'?` <b style="color:var(--danger)">${j}</b>`:''}`;}).join(' · ');}
+function roundMeas(id,k,back){
+  const c=S.checklists.find(x=>x.id===id);
+  window._measRet={id:_rndMk(k),f:m=>{const j=m&&measJudge(m);
+    if(m&&/주의|이상/.test(j)&&_rndRes(c)[k]!=='ng'){roundNg(id,k,back);setTimeout(()=>{const e=document.getElementById('rn-t');if(e&&!e.value)e.value=`${m.type} ${m.value}${m.unit||''} ${j}`;},60);return;}
+    if(back==='map'){closeModal();render();}else roundOpen(id);}};
+  addMeas(_rndMk(k),c&&c.meas||'');
 }
 async function roundNgSave(id,k,back){
   const t=($('#rn-t').value||'').trim();if(!t){toast('이상 내용을 적으세요');return;}
@@ -4667,6 +4677,7 @@ function roundEdit(id){
     <label>이름 *</label><input id="rd-n" value="${esc(c?c.name:'')}" placeholder="예: 수처리동 주간 순회">
     <label>주기</label><select id="rd-c">${['daily','weekly','monthly'].map(v=>`<option value="${v}"${(c?c.cycle:'weekly')===v?' selected':''}>${CYCLE_KO[v]}</option>`).join('')}</select>
     <label>확인 항목</label><input id="rd-i" value="${esc(c&&c.items||RND_ITEMS)}">
+    <label>📏 기본 측정</label><select id="rd-m"><option value="">고르지 않음</option>${MEAS_TYPES.filter(t=>t.k!=='기타').map(t=>`<option${c&&c.meas===t.k?' selected':''}>${t.k}</option>`).join('')}</select>
     <label>설비 고르기 <span class="cnt" id="rd-cnt">${window._rdSel.size}</span></label>
     <select id="rd-z" onchange="roundList()"><option value="">— 설비동 —</option><option value="_sel">고른 설비만 보기</option>${Z.map(z=>`<option value="${esc(z.id)}">${esc(z.name)}</option>`).join('')}</select>
     <input id="rd-q" placeholder="이름으로 거르기" oninput="roundList()" autocomplete="off" style="margin-top:4px">
@@ -4689,7 +4700,7 @@ async function roundSave(){
   const name=$('#rd-n').value.trim(),devs=[...window._rdSel];
   if(!name){toast('이름을 적으세요');return;}if(!devs.length){toast('설비를 하나 이상 고르세요');return;}
   const id=window._rdId,c=id?S.checklists.find(x=>x.id===id):null;
-  const obj=Object.assign(c?{...c}:{id:'UC'+uid()},{name,cycle:$('#rd-c').value,items:$('#rd-i').value.trim()||RND_ITEMS,devs,detail:(c&&c.detail)||''});
+  const obj=Object.assign(c?{...c}:{id:'UC'+uid()},{name,cycle:$('#rd-c').value,items:$('#rd-i').value.trim()||RND_ITEMS,meas:$('#rd-m').value,devs,detail:(c&&c.detail)||''});
   await saveRec('checklists',obj);toast('순회 경로 저장');roundOpen(obj.id);
 }
 async function roundDel(id){
@@ -7934,7 +7945,9 @@ function measWarnList(){
 }
 /* v215: 측정 equipId = 설비 마스터 id, 없으면 계통 노드 id(카드 ＋측정). 이름·돌아갈 곳을 둘 다 처리 */
 const measName=id=>((S.equipment.find(e=>e.id===id)||nodeById(id)||{}).name)||id;
-function measBack(id){if(S.equipment.some(e=>e.id===id))openEquip(id);else if(nodeById(id))openCard(id);else closeModal();}
+function measBack(id,m){
+  const R=window._measRet;if(R&&R.id===id){window._measRet=null;return R.f(m);} // v222: 순회에서 연 측정은 순회로 돌아감(m = 저장한 측정, 취소면 없음)
+  if(S.equipment.some(e=>e.id===id))openEquip(id);else if(nodeById(id))openCard(id);else closeModal();}
 function measWarnSheet(){
   const L=measWarnList(),nm=measName;
   openModal(`<h3>⚠️ 측정 이상 <span class="cnt">${L.length}</span></h3>
@@ -7992,6 +8005,7 @@ function measHistory(equipId,type){
     <div class="row" style="margin-top:10px"><button class="btn sm" onclick="addMeas('${equipId}','${esc(type)}')">＋ 추가</button><div class="grow"></div><button class="btn ghost sm" onclick="measBack('${equipId}')">닫기</button></div>`);
 }
 function addMeas(equipId,type){
+  if(window._measRet&&window._measRet.id!==equipId)window._measRet=null; // v222: 다른 설비 측정이면 순회 복귀 해제
   openModal(`<h3>측정값 기록</h3>
     <label>유형</label><select id="me-t">${MEAS_TYPES.map(t=>`<option ${type===t.k?'selected':''}>${t.k}</option>`).join('')}</select>
     <label>날짜</label><input id="me-d" type="date" value="${todayStr()}">
@@ -8012,7 +8026,7 @@ async function saveMeas(equipId){
   if(du&&un!==du&&!(await confirmModal('단위가 기본('+du+')과 다릅니다 ('+un+'). 값은 변환되지 않고, 양호·주의 판정에서 제외됩니다. 그대로 저장할까요?')))return;
   const obj={id:'ME'+uid(),equipId,type,date:$('#me-d').value||todayStr(),value:_r6(v),unit:un,note:$('#me-n').value.trim()};
   await dbPut('measurements',obj);S.measurements.push(obj);
-  measBack(equipId);toast('측정값 저장');
+  measBack(equipId,obj);toast('측정값 저장');
 }
 async function delMeas(id,equipId){
   if(!(await confirmModal('이 측정 기록을 삭제할까요?')))return;
@@ -9024,7 +9038,7 @@ function bldSpot(fid,i){
   const ri=_spotRnd(t,_rndDevState()).L; // v221: 순회 중인 설비면 여기서 바로 정상/이상
   if(ri.length&&!window._bsSkip){openModal(`<h3>🚶 ${esc(t.name)}</h3><div class="muted">${esc(b.name)} · ${esc(f.name)}</div>
     ${ri.map(x=>{const c=S.checklists.find(y=>y.id===x.c);return `<div class="item"><div class="t"><div class="n" style="white-space:normal">${x.s==='ok'?'✅ ':x.s==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(x.k),26))}</div><div class="d">${esc(c?c.name:'')}</div></div>
-      <button class="btn ${x.s==='ok'?'':'ghost '}sm" onclick="roundMark('${x.c}','${esc(x.k)}','ok','map')">정상</button><button class="btn ${x.s==='ng'?'danger':'ghost'} sm" onclick="roundNg('${x.c}','${esc(x.k)}','map')">이상</button></div>`;}).join('')}
+      <button class="btn ghost sm" onclick="roundMeas('${x.c}','${esc(x.k)}','map')">📏</button><button class="btn ${x.s==='ok'?'':'ghost '}sm" onclick="roundMark('${x.c}','${esc(x.k)}','ok','map')">정상</button><button class="btn ${x.s==='ng'?'danger':'ghost'} sm" onclick="roundNg('${x.c}','${esc(x.k)}','map')">이상</button></div>`;}).join('')}
     <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="window._bsSkip=1;bldSpot('${fid}',${i});window._bsSkip=0">설비 카드</button><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);return;}
   if(t.dev&&!t.eq&&openDevice(t.dev))return; // 설비 카드가 정해져 있으면 바로 연다(창 없이)
   const rows=t.eq||[{no:t.no,name:t.name,spec:t.spec,q:t.q,dev:t.dev}];
