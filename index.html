@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v220'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v221'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -4601,6 +4601,7 @@ async function roundOpen(id){
   const c=S.checklists.find(x=>x.id===id);if(!c)return;
   const key=_rndKey(c),M=S._rndM=S._rndM||{};if(!M[key])M[key]=(await dbGet('meta',key).catch(()=>null))||{id:key,res:{}};S._rnd=M[key];
   const r=_rndRes(c),done=!!_rndLog(c),n=c.devs.filter(k=>r[k]).length;
+  const nx=done?'':(c.devs.filter(k=>!r[k]).map(_rndSpotOf).find(Boolean)||''); // v221: 다음 미점검 설비가 있는 층 도면
   const row=k=>{const v=r[k];return `<div class="item"><div class="t click" onclick="openDevice('${esc(k)}')"><div class="n" style="white-space:normal">${v==='ok'?'✅ ':v==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(k),30))}</div></div>
     ${done?'':`<button class="btn ${v==='ok'?'':'ghost '}sm" onclick="roundMark('${id}','${esc(k)}','ok')">정상</button><button class="btn ${v==='ng'?'danger':'ghost'} sm" onclick="roundNg('${id}','${esc(k)}')">이상</button>`}</div>`;};
   openModal(`<h3>🚶 ${esc(c.name)} <span class="cnt">${n}/${c.devs.length}</span></h3>
@@ -4609,18 +4610,45 @@ async function roundOpen(id){
     ${c.devs.map(row).join('')}
     <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
       ${done?`<button class="btn ghost sm" onclick="undoChk('${id}').then(()=>roundOpen('${id}'))">완료 취소</button>`:`<button class="btn sm" onclick="roundDone('${id}')">✓ 순회 완료</button>`}
-      <button class="btn ghost sm" onclick="roundEdit('${id}')">경로 수정</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal();render()">닫기</button></div>`);
+      ${nx?`<button class="btn ghost sm" onclick="devLocGo('${esc(nx)}')">🗺 도면</button>`:''}<button class="btn ghost sm" onclick="roundEdit('${id}')">경로 수정</button><div class="grow"></div><button class="btn ghost sm" onclick="closeModal();render()">닫기</button></div>`);
 }
-async function roundMark(id,k,v){S._rnd.res[k]=v;await dbPut('meta',S._rnd);roundOpen(id);}
-function roundNg(id,k){
+async function roundMark(id,k,v,back){ // back='map' = 층 도면에서 눌렀으면 도면으로 돌아감(v221)
+  const c=S.checklists.find(x=>x.id===id);if(!c)return;const key=_rndKey(c),M=S._rndM=S._rndM||{};
+  if(!M[key])M[key]=(await dbGet('meta',key).catch(()=>null))||{id:key,res:{}};
+  M[key].res[k]=v;await dbPut('meta',M[key]);
+  if(back==='map'){closeModal();render();}else roundOpen(id);
+}
+function roundNg(id,k,back){
   openModal(`<h3>⚠️ ${esc(_kdShort(_rndName(k),30))}</h3><label>이상 내용 (현안으로 등록)</label><input id="rn-t" placeholder="예: 3상 발열 차 7℃, 표시등 소등">
-    <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="roundOpen('${id}')">취소</button><div class="grow"></div><button class="btn danger sm" onclick="roundNgSave('${id}','${esc(k)}')">이상 등록</button></div>`);
+    <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="${back==='map'?'closeModal()':`roundOpen('${id}')`}">취소</button><div class="grow"></div><button class="btn danger sm" onclick="roundNgSave('${id}','${esc(k)}','${back||''}')">이상 등록</button></div>`);
   setTimeout(()=>{const e=document.getElementById('rn-t');if(e)e.focus();},50);
 }
-async function roundNgSave(id,k){
+async function roundNgSave(id,k,back){
   const t=($('#rn-t').value||'').trim();if(!t){toast('이상 내용을 적으세요');return;}
   await saveRec('issues',{id:uid(),date:todayStr(),title:'[순회] '+_kdShort(_rndName(k),24)+' — '+t,note:'',done:false,ref:k});
-  toast('현안 등록');roundMark(id,k,'ng');
+  toast('현안 등록');roundMark(id,k,'ng',back);
+}
+/* v221 순회 ↔ 층 도면: 도면 칸(spot)의 설비(dev)를 계통 노드 id·설비 마스터 id로 넓혀 순회 설비 키와 맞춘다 */
+const RND_COL={todo:'#ff9a1f',ok:'#3fbf5a',ng:'#e5484d'},_SK=new WeakMap();
+function _spotKeys(t){
+  if(_SK.has(t))return _SK.get(t);const s=new Set();
+  (t.eq||[t]).forEach(e=>{if(!e.dev)return;s.add(e.dev);const r=resolveDev(e.dev);if(!r||r.amb)return;
+    if(r.n){s.add(r.n.id);if(r.n.equipId)s.add(r.n.equipId);}if(r.e){s.add(r.e.id);S.tree.forEach(n=>{if(n.equipId===r.e.id)s.add(n.id);});}});
+  const L=[...s];_SK.set(t,L);return L;
+}
+function _rndActive(){return (S.checklists||[]).filter(c=>c.devs&&c.devs.length&&!_rndLog(c));}
+function _rndDevState(){ // 키 → [{c 경로id, k 순회 설비 키, s todo|ok|ng}]
+  const M={};for(const c of _rndActive()){const r=_rndRes(c);c.devs.forEach(k=>{const it={c:c.id,k,s:r[k]||'todo'};[k,(nodeById(k)||{}).equipId].filter(Boolean).forEach(x=>(M[x]=M[x]||[]).push(it));});}
+  return M;
+}
+function _spotRnd(t,M){
+  const seen=new Set(),L=_spotKeys(t).flatMap(x=>M[x]||[]).filter(x=>!seen.has(x.c+'|'+x.k)&&seen.add(x.c+'|'+x.k));
+  return {L,st:L.some(x=>x.s==='ng')?'ng':L.some(x=>x.s==='todo')?'todo':L.length?'ok':''};
+}
+function _rndSpotOf(k){ // 설비 키 → 층 도면 위치 'b|f|i'
+  const ks=new Set([k,(nodeById(k)||{}).equipId].filter(Boolean));
+  for(const b of ((S._bldg||{}).buildings||[]))for(const f of b.floors)for(let i=0;i<f.spots.length;i++)if(_spotKeys(f.spots[i]).some(x=>ks.has(x)))return b.id+'|'+f.id+'|'+i;
+  return '';
 }
 async function roundDone(id){
   const c=S.checklists.find(x=>x.id===id),r=_rndRes(c),left=c.devs.filter(k=>!r[k]).length;
@@ -8976,11 +9004,15 @@ function bldView(){
   if(!fl)return head+`<div class="card">${b.floors.map(f=>`<div class="tkid" onclick="S._bldFl='${f.id}';S._bfZ=null;render();scrollTo(0,0)"><span class="tkid-ic" style="font-weight:600;min-width:28px">${esc(f.id)}</span><span class="tkid-nm">${esc(f.name)}<span class="tpath-meta">${esc(f.spots.filter(s=>s.on).map(s=>s.name).join(' · '))}</span></span><span class="tkid-arr">›</span></div>`).join('')}</div>
     <div class="card"><h2>설비동</h2>${zc(b.zones)}</div><div class="botpad"></div>`;
   const z=S._bfZ||_bfFit(fl),idx=fl.spots.map((t,i)=>[t,i]);
+  const RS=_rndDevState(),dots=idx.filter(([t])=>t.rects&&t.rects.length).map(([t])=>{const s=_spotRnd(t,RS).st;if(!s)return '';const r=t.rects[0],rad=Math.max(9,(t.fs||24)*0.55);
+    return `<circle cx="${r[0]+r[2]}" cy="${r[1]}" r="${rad}" fill="${RND_COL[s]}" stroke="#fff" stroke-width="${rad/4}" style="pointer-events:none"/>`;}).join(''); // v221 순회 점
+  const fk=new Set(fl.spots.flatMap(_spotKeys)),rb=_rndActive().filter(c=>c.devs.some(k=>fk.has(k)));
+  const rbar=rb.length?`<div class="card" style="padding:8px 10px">${rb.map(c=>`<div class="row" style="gap:6px;align-items:center"><span class="grow">🚶 ${esc(c.name)} <span class="cnt">${roundProg(c)}</span></span><button class="btn ghost sm" onclick="roundOpen('${c.id}')">열기</button></div>`).join('')}</div>`:'';
   const g=idx.filter(([t])=>t.rects&&t.rects.length).map(([t,i])=>{const r=t.rects[0],fs=t.fs||24,on=!!t.on,tall=r[3]>r[2]*2.5,cx=r[0]+r[2]/2,cy=r[1]+r[3]/2;
     return `<g${on?` class="pf-sh" onclick="bldSpot('${fl.id}',${i})"`:''}><title>${esc(t.name)}</title>${t.rects.map(q=>{const hl=S._hl&&S._hl.f===fl.id&&S._hl.i===i;return `<rect${hl?' class="hl-rect"':''} x="${q[0]}" y="${q[1]}" width="${q[2]}" height="${q[3]}" rx="4" fill="${hl?'rgba(255,106,0,.35)':on?'rgba(31,111,255,.22)':'rgba(120,120,120,.10)'}" stroke="${hl?'#ff6a00':on?'#1f6fff':'#8d949c'}" stroke-width="${hl?7:on?3:2}"/>`;}).join('')}<text x="${cx}" y="${cy+fs/3}" text-anchor="middle" font-size="${fs}" font-weight="${on?700:600}" fill="${on?'#0b2a7a':'#555'}" paint-order="stroke" stroke="#fff" stroke-width="5"${tall?` transform="rotate(-90 ${cx} ${cy})"`:''}>${esc(t.name)}</text></g>`;}).join('');
-  return head+`<div class="card"><div class="row" style="gap:6px;margin:0 0 6px"><span class="muted">${esc(fl.dwg)}</span><div class="grow"></div><button class="btn ghost sm" onclick="bfZoom(0.8)">−</button><button class="btn ghost sm" onclick="bfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="bfZoom(0)">맞춤</button></div>
-    <div class="pf-cv" style="width:fit-content;max-width:100%;margin:0 auto"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}</svg></div>${zc(fl.zones)}</div>
-    <div class="card">${idx.filter(([t])=>t.on).map(([t,i])=>`<div class="tkid" onclick="bldSpot('${fl.id}',${i})"><span class="tkid-ic" style="min-width:24px">${t.no||''}</span><span class="tkid-nm">${esc(t.name)}${t.spec||t.eq?`<span class="tpath-meta">${esc(t.spec||t.eq.map(e=>e.name).join(' · '))}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')}</div><div class="botpad"></div>`;
+  return head+rbar+`<div class="card"><div class="row" style="gap:6px;margin:0 0 6px"><span class="muted">${esc(fl.dwg)}</span><div class="grow"></div><button class="btn ghost sm" onclick="bfZoom(0.8)">−</button><button class="btn ghost sm" onclick="bfZoom(1.25)">＋</button><button class="btn ghost sm" onclick="bfZoom(0)">맞춤</button></div>
+    <div class="pf-cv" style="width:fit-content;max-width:100%;margin:0 auto"><svg id="bf-svg" data-w="${fl.w}" viewBox="0 0 ${fl.w} ${fl.h}" style="width:${Math.round(fl.w*z)}px"><image href="${fl.img}" width="${fl.w}" height="${fl.h}"/>${g}${dots}</svg></div>${zc(fl.zones)}</div>
+    <div class="card">${idx.filter(([t])=>t.on).map(([t,i])=>`<div class="tkid" onclick="bldSpot('${fl.id}',${i})"><span class="tkid-ic" style="min-width:24px">${(s=>s?`<span style="color:${RND_COL[s]}">●</span>`:'')(_spotRnd(t,RS).st)}${t.no||''}</span><span class="tkid-nm">${esc(t.name)}${t.spec||t.eq?`<span class="tpath-meta">${esc(t.spec||t.eq.map(e=>e.name).join(' · '))}</span>`:''}</span><span class="tkid-arr">›</span></div>`).join('')}</div><div class="botpad"></div>`;
 }
 function _bfFit(fl){return Math.min((Math.min(innerWidth,1400)-(innerWidth<700?36:96))/fl.w,innerHeight*0.62/fl.h);} // 폭·높이 모두 한 화면에 들어가게
 function bfZoom(k){
@@ -8989,6 +9021,11 @@ function bfZoom(k){
 }
 function bldSpot(fid,i){
   const b=_bld(S._bld),f=b&&b.floors.find(x=>x.id===fid),t=f&&f.spots[i];if(!t)return;
+  const ri=_spotRnd(t,_rndDevState()).L; // v221: 순회 중인 설비면 여기서 바로 정상/이상
+  if(ri.length&&!window._bsSkip){openModal(`<h3>🚶 ${esc(t.name)}</h3><div class="muted">${esc(b.name)} · ${esc(f.name)}</div>
+    ${ri.map(x=>{const c=S.checklists.find(y=>y.id===x.c);return `<div class="item"><div class="t"><div class="n" style="white-space:normal">${x.s==='ok'?'✅ ':x.s==='ng'?'⚠️ ':''}${esc(_kdShort(_rndName(x.k),26))}</div><div class="d">${esc(c?c.name:'')}</div></div>
+      <button class="btn ${x.s==='ok'?'':'ghost '}sm" onclick="roundMark('${x.c}','${esc(x.k)}','ok','map')">정상</button><button class="btn ${x.s==='ng'?'danger':'ghost'} sm" onclick="roundNg('${x.c}','${esc(x.k)}','map')">이상</button></div>`;}).join('')}
+    <div class="row" style="margin-top:10px;gap:6px"><button class="btn ghost sm" onclick="window._bsSkip=1;bldSpot('${fid}',${i});window._bsSkip=0">설비 카드</button><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);return;}
   if(t.dev&&!t.eq&&openDevice(t.dev))return; // 설비 카드가 정해져 있으면 바로 연다(창 없이)
   const rows=t.eq||[{no:t.no,name:t.name,spec:t.spec,q:t.q,dev:t.dev}];
   openModal(`<h3>${esc(t.name)}</h3><div class="muted">${esc(b.name)} · ${esc(f.name)}</div>
