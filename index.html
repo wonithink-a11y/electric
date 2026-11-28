@@ -143,12 +143,12 @@ body{zoom:var(--uz,1)}
 .cal-badge{background:var(--grad);color:var(--on-accent);border-radius:4px;font-size:11px;padding:0 5px;line-height:1.5;font-weight:600;flex:none}
 .cal-legend{margin-top:10px;font-size:11px;color:var(--dim);display:flex;gap:12px}
 .cal-legend .dot{margin-right:4px}
-.hs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}
+.hs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-bottom:8px}
 /* v106 오늘 화면: 요약 칸 = 업무별 색(--tone) + 아이콘 원, 목록 = 왼쪽 색띠 */
 .hs-p{--tone:var(--accent);background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--tone);border-radius:4px;padding:6px 2px 5px;text-align:center;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:1px;box-shadow:var(--shadow-sm)}
 .hs-top{display:flex;align-items:center;gap:4px}
 .hs-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;background:color-mix(in srgb,var(--tone) 24%,transparent);flex:none}
-.t-todo,.k-todo{--tone:var(--accent)}.t-iss,.k-iss{--tone:var(--purple)}.t-wk,.k-chk{--tone:var(--ok)}.t-insp,.k-insp{--tone:var(--warn)}
+.t-todo,.k-todo{--tone:var(--accent)}.t-iss,.k-iss{--tone:var(--purple)}.t-wk,.k-chk{--tone:var(--ok)}.t-insp,.k-insp{--tone:var(--warn)}.t-warn{--tone:var(--danger)}.t-warn b{color:var(--danger)}
 .item.k{border-left:3px solid var(--tone);padding-left:9px}
 header .hd-t{flex:1;min-width:0}header .hd-tag{font-size:11px;color:var(--dim);letter-spacing:-.1px}header .hd-tag:empty{display:none}
 .hs-p b{display:block;font-size:16px;line-height:1.2}.hs-p b.hot{color:var(--danger)}
@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v211'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v212'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1412,7 +1412,8 @@ function homeSumHtml(){
   const tile=(oc,t,ic,n,l,sub)=>`<button class="hs-p ${t}" onclick="${oc}"><span class="hs-top"><span class="hs-ic">${icx(ic)}</span><b>${n}</b>${sub||''}</span><span>${l}</span></button>`; // v112: 초과 표시는 숫자 옆(칸 높이 같게)
   const p=(n,l,tab,t,ic)=>tile(`S.homeTab='${tab}';S._selDay=null;render()`,t,ic,n,l);
   const sub=over?`<em class="hs-over">초과${over}</em>`:'';
-  return `<div class="hs">${p(todo,'오늘 할일','todo','t-todo','📌')}${p(issue,'진행 현안','issue','t-iss','🔧')}${p(wk,'이번주 점검','week','t-wk','✅')}${tile("go('insp')",'t-insp','📋',mon,'이달 법정검사',sub)}</div>`;
+  const mw=measWarnList().length; // v212: 측정 이상 — 있을 때만 다섯째 칸
+  return `<div class="hs">${p(todo,'오늘 할일','todo','t-todo','📌')}${p(issue,'진행 현안','issue','t-iss','🔧')}${p(wk,'이번주 점검','week','t-wk','✅')}${tile("go('insp')",'t-insp','📋',mon,mw?'법정검사':'이달 법정검사',sub)}${mw?tile('measWarnSheet()','t-warn','⚠',mw,'측정 이상'):''}</div>`;
 }
 const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 /* v132 홈 바로가기 — 현장 문서(점검보고서·조치매뉴얼·사진대장)를 첫 화면에서 한 번에 연다. 종류 목록은 FDOC_TYPES 그대로 */
@@ -7808,6 +7809,20 @@ function measJudge(m){
   if(t.dir==='hi')return v<t.warn?'주의':'양호';
   if(t.dir==='lo')return v>t.warn?'주의':'양호';
   return '';
+}
+/* v212: 설비·유형별 가장 최근 측정이 '주의'인 것만(다시 재서 양호면 빠짐). 오늘 화면 칸·목록 */
+function measWarnList(){
+  const last={};
+  for(const m of S.measurements||[]){const k=m.equipId+'|'+m.type;if(!last[k]||(m.date||'')>=(last[k].date||''))last[k]=m;}
+  return Object.values(last).filter(m=>measJudge(m)==='주의').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function measWarnSheet(){
+  const L=measWarnList(),nm=id=>(S.equipment.find(e=>e.id===id)||{}).name||id;
+  openModal(`<h3>⚠️ 측정 이상 <span class="cnt">${L.length}</span></h3>
+    ${L.map(m=>{const t=measType(m.type);return `<div class="item click" onclick="measHistory('${esc(m.equipId)}','${esc(m.type)}')">
+      <div class="t"><div class="n">${esc(nm(m.equipId))}</div><div class="d">${esc(m.type)} ${esc(String(m.value))}${esc(t.u)} (기준 ${t.dir==='hi'?'≥':'≤'}${t.warn}) · ${esc(m.date||'')}</div></div>
+      <span class="badge b-red">주의</span></div>`;}).join('')||'<div class="empty">없음</div>'}
+    <button class="btn ghost sm full" style="margin-top:8px" onclick="closeModal()">닫기</button>`);
 }
 function measSummaryHtml(equipId){
   const ms=S.measurements.filter(m=>m.equipId===equipId);
