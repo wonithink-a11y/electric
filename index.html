@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v215'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v216'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -2168,10 +2168,32 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
   const noteRows=notes.map(n=>({date:n.date,kind:'note',noteId:n.id,label:n.content,tag:n.tag||'일반'}));
   const histRows=[...inspHistRows,...noteRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const years=Object.keys(e.grades||{}).sort();
+  /* v216: 현장에서 쓰는 것 먼저(＋버튼 → 위치·매뉴얼·기록 → 측정·이력), 사양·차단 경로·신호·도면은 접어서 아래로 */
+  const tn=S.tree.find(n=>n.equipId===id),mN=S.measurements.filter(m=>m.equipId===id).length,ms=S.docs.length?matchedDocs(e):[];
   openModal(`
     <h3>${esc(e.name)}</h3>
     <div class="muted">${esc(e.tagNo||'Tag 미지정')} · <span class="badge ${e.plant==='PB'?'b-blue':'b-purple'}">${esc(e.plant)}</span> ${esc(e.category)}</div>
-    <div class="kv">
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+      <button class="btn ghost sm" onclick="addMeas('${id}')">＋ 측정</button>
+      <button class="btn ghost sm" onclick="editFault('','${e.id}')">＋ 고장</button>
+      <button class="btn ghost sm" onclick="editNote('','${e.id}')">＋ 메모</button>
+      ${tn?`<button class="btn ghost sm" onclick="nodeMenu('${tn.id}')">🔬 분석</button>`:''}</div>
+    ${devLoc('',id,null,{short:e.tagNo||e.name||''})}
+    ${devSec('',id,null,{short:(e.tagNo||e.name||'').replace(/['"\\]/g,''),tk:_normTag(e.tagNo||e.name||'')})}
+    ${sec0(`📊 측정 <span class="cnt">${mN}</span>`,measSummaryHtml(id),mN>0)}
+    ${sec0(`🔧 고장·조치 이력 <span class="cnt">${faults.length}</span>`,`<button class="btn ghost sm" onclick="diagnoseEquip('${e.id}')">🔍 진단</button>
+    ${faults.map(f=>`<div class="item click" onclick="editFault('${f.id}','${e.id}')">
+      <div class="t"><div class="n">${esc(f.date)} ${esc(f.content)}</div>
+      <div class="d">원인: ${esc(f.cause||'-')} / 조치: ${esc(f.action||'-')}</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}`,faults.length>0)}
+    ${sec0(`📝 점검·특이사항 이력 <span class="cnt">${histRows.length}</span>`,histRows.map(r=>r.kind==='insp'
+      ?`<div class="item click" onclick="openInsp('${r.inspId}')">
+        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
+        <div class="d">${esc(r.note||'수검완료')}</div></div><span class="badge b-red">📋 법정검사</span></div>`
+      :`<div class="item click" onclick="editNote('${r.noteId}','${e.id}')">
+        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
+        <div class="d">태그: ${esc(r.tag)}</div></div><span class="badge b-gray">📝 메모</span></div>`
+    ).join('')||'<div class="empty">이력 없음</div>',histRows.length>0)}
+    ${sec0('🛡 사양·정비등급',`<div class="kv">
       <span class="k">그룹/전원</span><span>${esc(e.group||'-')}</span>
       <span class="k">전압/정격</span><span>${e.voltage?esc(e.voltage)+'kV':'-'} ${e.ratedKw?'/ '+esc(e.ratedKw)+'kW':''}</span>
       <span class="k">전압선</span><span>${esc(voltLine(e))}</span>
@@ -2183,20 +2205,17 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
       <span class="k">비고</span><span>${esc(e.remark||'-')}</span>
       <span class="k">메모</span><span>${esc(e.memo||'-')}</span>
     </div>
-    ${eqPlanHtml(e)}${years.length?`<div class="muted">정비등급 이력</div><div class="grades">${years.map(y=>`<span>${y}: ${esc(e.grades[y])}</span>`).join('')}</div>`:''}
-    ${(()=>{const tn=S.tree.find(n=>n.equipId===id);return tn?`<div class="muted" style="margin-top:8px">차단 경로 (계통 트리 연동)</div><div class="path-box">${blockPathText(tn.id)}</div>${blockPathSvg(tn.id)}`:''})()}
-    <hr>
-    <div class="row"><div class="muted grow">신호 흐름 & 보호계전기 (제어·보호 동작 추적)</div>
-      <button class="btn ghost sm" onclick="editSignal('${id}')">편집</button></div>
+    ${eqPlanHtml(e)}${years.length?`<div class="muted">정비등급 이력</div><div class="grades">${years.map(y=>`<span>${y}: ${esc(e.grades[y])}</span>`).join('')}</div>`:''}`,false)}
+    ${tn?sec0('⚡ 차단 경로',`<div class="path-box">${blockPathText(tn.id)}</div>${blockPathSvg(tn.id)}`,false):''}
+    ${sec0('🧠 신호 흐름·보호계전기',`<div class="row"><div class="grow"></div><button class="btn ghost sm" onclick="editSignal('${id}')">편집</button></div>
     ${e.signalFlow?`<div class="path-box" style="white-space:pre-wrap">${esc(e.signalFlow)}</div>`:'<div class="empty">기동/신호 흐름 노트 없음</div>'}
-    ${(e.relays&&e.relays.length)?`<div class="grades">${e.relays.map(r=>`<span>${esc(r)}</span>`).join('')}</div>`:''}
-    <hr>
-    <div class="row"><div class="muted grow">관련 도면 (자동 매칭 · 반·계통 단위)</div>
+    ${(e.relays&&e.relays.length)?`<div class="grades">${e.relays.map(r=>`<span>${esc(r)}</span>`).join('')}</div>`:''}`,false)}
+    ${sec0(`📐 관련 도면 <span class="cnt">${ms.length}</span>`,`<div class="row" style="gap:6px"><div class="grow"></div>
       <button class="btn ghost sm" onclick="openDocSearch('${esc((e.tagNo||e.name||'')).replace(/'/g,'')}')">📄 찾기</button>
       <button class="btn ghost sm" onclick="openDocPicker('${id}')">＋ 연결</button></div>
     ${(()=>{
       if(!S.docs.length)return '<div class="empty">문서함이 비어있음 — 더보기 → 도면 문서함에서 가져오기</div>';
-      const ms=matchedDocs(e);const linked=new Set(e.docRefs||[]);
+      const linked=new Set(e.docRefs||[]);
       if(!ms.length)return '<div class="empty">자동 매칭되는 도면 없음 — ＋연결로 직접 지정</div>';
       return ms.map(x=>{const d=x.d;const pin=linked.has(d.id);
         const tag=pin?'<span class="badge b-green">연결됨</span>':x.sc>=5?'<span class="badge b-blue">정밀</span>':'<span class="badge b-gray">자동</span>';
@@ -2205,43 +2224,13 @@ function openEquip(id,full){ // v94: 계통에 연결된 설비는 통합 설비
           <div class="d">${esc([d.plant,d.level,d.kind].filter(Boolean).join(' · '))} <span class="badge ${d.ext==='pdf'?'b-blue':'b-green'}">${(d.ext||'').toUpperCase()}</span></div></div>
           ${pin?`<button class="btn danger sm" onclick="unlinkDoc('${id}','${d.id}')">해제</button>`:`<button class="btn ghost sm" onclick="pinDoc('${id}','${d.id}')">고정</button>`}</div>`;
       }).join('');
-    })()}
-    <hr>
-    <div class="muted">개별 도면 4종 (이 기기 전용 — 현장 사진 등, 백업 시 "도면 제외" 가능)</div>
-    <div class="tabs">${DRAW_TYPES.map(t=>{
+    })()}`,false)}
+    ${sec0(`🗂 개별 도면 <span class="cnt">${S.drawings.filter(x=>x.equipId===id).length}</span>`,`<div class="tabs">${DRAW_TYPES.map(t=>{
       const d=S.drawings.find(x=>x.equipId===id&&x.type===t);
       return d?`<button class="on" onclick="viewDrawing('${d.id}')">${t} 📄</button>`
               :`<button onclick="uploadDrawing('${id}','${t}')">${t} +</button>`;
     }).join('')}</div>
-    ${S.drawings.filter(x=>x.equipId===id).map(d=>`<div class="item"><div class="t click" onclick="viewDrawing('${d.id}')"><div class="n">📄 ${esc(d.type)} — ${esc(d.name)}</div><div class="d">${esc(d.added)}</div></div><button class="btn danger sm" onclick="delDrawing('${d.id}','${id}')">삭제</button></div>`).join('')}
-    <hr>
-    <hr>
-    <div class="row"><div class="muted grow">📊 측정값 (절연저항·접지·온도 등)</div>
-      <button class="btn ghost sm" onclick="addMeas('${id}')">＋ 측정</button></div>
-    ${measSummaryHtml(id)}
-    <hr>
-    <div class="muted">설비 사진 (명판·현장, 기기 로컬)</div>
-    ${devLoc('',id,null,{short:e.tagNo||e.name||''})}
-    ${devSec('',id,null,{short:(e.tagNo||e.name||'').replace(/['"\\]/g,''),tk:_normTag(e.tagNo||e.name||'')})}
-    <hr>
-    <div class="row"><h3 style="font-size:14px" class="grow">고장·조치 이력 (${faults.length})</h3>
-      <button class="btn ghost sm" onclick="diagnoseEquip('${e.id}')">🔍 진단</button>
-      <button class="btn sm" onclick="editFault('','${e.id}')">+ 기록</button></div>
-    ${faults.map(f=>`<div class="item click" onclick="editFault('${f.id}','${e.id}')">
-      <div class="t"><div class="n">${esc(f.date)} ${esc(f.content)}</div>
-      <div class="d">원인: ${esc(f.cause||'-')} / 조치: ${esc(f.action||'-')}</div></div></div>`).join('')||'<div class="empty">이력 없음</div>'}
-    <hr>
-    <div class="row"><h3 style="font-size:14px" class="grow">📝 점검·특이사항 이력 (${histRows.length})</h3>
-      <button class="btn sm" onclick="editNote('','${e.id}')">+ 메모</button></div>
-    <div class="muted" style="margin-top:-4px">승강기·UPS 유지용역 등 정기 점검 특이사항 메모 + 이 설비에 연결된 법정검사 수검완료 기록을 함께 표시</div>
-    ${histRows.map(r=>r.kind==='insp'
-      ?`<div class="item click" onclick="openInsp('${r.inspId}')">
-        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
-        <div class="d">${esc(r.note||'수검완료')}</div></div><span class="badge b-red">📋 법정검사</span></div>`
-      :`<div class="item click" onclick="editNote('${r.noteId}','${e.id}')">
-        <div class="t"><div class="n">${esc(r.date)} ${esc(r.label)}</div>
-        <div class="d">태그: ${esc(r.tag)}</div></div><span class="badge b-gray">📝 메모</span></div>`
-    ).join('')||'<div class="empty">이력 없음</div>'}
+    ${S.drawings.filter(x=>x.equipId===id).map(d=>`<div class="item"><div class="t click" onclick="viewDrawing('${d.id}')"><div class="n">📄 ${esc(d.type)} — ${esc(d.name)}</div><div class="d">${esc(d.added)}</div></div><button class="btn danger sm" onclick="delDrawing('${d.id}','${id}')">삭제</button></div>`).join('')}`,false)}
     <div class="row" style="margin-top:14px">
       <button class="btn ghost sm" onclick="editEquip('${e.id}')">정보 수정</button>
       <div class="grow"></div>
@@ -4002,7 +3991,7 @@ function devPickList(){
 async function devPickDo(docId){const [key,kind,cid]=window._dpk,m=_devLk();(m[key]=m[key]||[]).push({id:docId,kind});await _devLkSave(m);_cardReopen(cid);}
 function openCard(id){
   const n=nodeById(id);if(!n){toast('노드 없음');return;}
-  if(n.type==='bus'||n.type==='source'){nodeMenu(id);return;}
+  if(n.type==='bus'||n.type==='source'){if(n.equipId&&S.equipment.some(x=>x.id===n.equipId)){openEquip(n.equipId,1);return;}nodeMenu(id);return;} // v216: MCC·L/C 판넬(설비 대장 있음)은 기록 화면으로, 분석은 그 안 🔬
   const kids=nodeKids(id),load=n.type==='load'?n:kids.find(k=>k.type==='load'),live=energizedSet([],{normal:true});
   const zp=_cardZone(n),title=(load||n).name,sec=(t,b,open,sub)=>b?`<details class="card" style="margin:8px 0;padding:8px 12px"${open?' open':''}><summary style="cursor:pointer;font-weight:600">${t}${sub?`<div class="muted" style="font-weight:400;font-size:12px;margin-top:2px">${sub}</div>`:''}</summary><div style="margin-top:8px">${b}</div></details>`:'';
   // 전원 경로: 인입 → 이 회선 (탭하면 그 노드 메뉴)
