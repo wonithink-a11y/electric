@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v223'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v224'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -4874,6 +4874,7 @@ function moreDataSheet(){
     <button class="btn ghost full" onclick="closeModal();importBackup()">📂 백업 복원 (JSON)</button>
     <button class="btn ghost full" onclick="closeModal();exportExchange()">🔁 교환 파일 내보내기 (PC↔폰, 도면·사진 제외)</button>
     <button class="btn ghost full" onclick="closeModal();importExchange()">📥 교환 파일 가져오기 (병합)</button>
+    <button class="btn ghost full" onclick="closeModal();arcRestore()">☁️ 드라이브에서 사진·현장 문서 되받기</button>
     <hr>
     <button class="btn full" onclick="closeModal();exportEncrypted()">🔐 암호화 백업 내보내기</button>
     <button class="btn ghost full" onclick="closeModal();importEncrypted()">🔓 암호화 백업 복원</button>
@@ -6305,7 +6306,7 @@ const FDOC_TYPES={
 const fdPh=id=>S.photos.filter(p=>p.refType==='fdoc'&&p.refId===id).sort((a,b)=>(a.ord??1e9)-(b.ord??1e9));
 /* v185 드라이브 자동 보관 — 켜 두면 새로 쓰거나 고친 현장 문서(PDF)와 설비 카드에 붙인 사진·첨부 파일을 드라이브 '전력앱 보고서'에 자동으로 올린다.
    기존 구글 연동(Apps Script, GC_GAS)의 op 'pdf'(문서 PDF·같은 이름은 덮어씀)·'put'(파일)을 그대로 씀 → 새 스크립트 코드가 필요 없음(v122 이상).
-   올린 기록: 문서는 d.driveAt, 사진·첨부는 meta 'arc'.done{id: 크기}. 문서 PDF 는 문서 안 사진을 품고 있음. 앱으로 되돌려 받는 기능은 없음(보관용). */
+   올린 기록: 문서는 d.driveAt, 사진·첨부는 meta 'arc'.done{id: 크기}·fid{id: 드라이브 파일 id}. v224부터 _대응표.json 으로 되받기(arcRestore). */
 const ARC={busy:false,t:0};
 const _b64=blob=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(',')[1]);fr.readAsDataURL(blob);});
 const _arcOn=()=>!!(S._arc&&S._arc.on)&&gcOn();
@@ -6313,13 +6314,14 @@ function arcKick(ms){if(!(S._arc&&S._arc.on))return;clearTimeout(ARC.t);ARC.t=se
 function arcPending(){
   const A=S._arc||{},done=A.done||{},L=[];
   S.notes.filter(x=>x.kind==='fdoc').forEach(d=>{const last=d.driveAt||(d.drive?1:0);if(!last||(d.upd||0)>last)L.push({t:'fd',id:d.id});});
-  S.photos.filter(p=>['dev','flow','equip'].includes(p.refType)&&done[p.id]!==(p.dataUrl||'').length).forEach(p=>L.push({t:'ph',id:p.id}));
+  S.photos.filter(p=>['dev','flow','equip','fdoc'].includes(p.refType)&&done[p.id]!==(p.dataUrl||'').length).forEach(p=>L.push({t:'ph',id:p.id})); // v224: 현장 문서 사진(fdoc)도 — 되받을 수 있게
   S.docs.filter(x=>x.folder==='설비 카드'&&!done[x.id]).forEach(x=>L.push({t:'dc',id:x.id}));
   return L;
 }
 function _arcName(p){
   let who='';
   if(p.refType==='flow'){const [fid,iid]=String(p.refId).split('|'),f=(S._flows||[]).find(x=>x.id===fid);f&&f.steps.forEach(st=>st.items.forEach(x=>{if(x.id===iid)who=x.name;}));}
+  else if(p.refType==='fdoc'){const d=S.notes.find(x=>x.id===p.refId);who=d?String((d.tag||'문서')+'_'+(d.content||'')).slice(0,40):'문서';}
   else{const r=resolveDev(p.refId);who=r?((r.n&&r.n.name)||(r.e&&r.e.name)||''):'';}
   const kind={rep:'점검',act:'조치',pic:'사진'}[p.kind||'pic'];
   return (`${who.replace(/\s*\(.*$/,'')||'설비'}_${kind}_${p.added||''}_${String(p.id).slice(-5)}`).replace(/[\\/:*?"<>|]/g,'_');
@@ -6335,18 +6337,65 @@ async function arcOne(it){
   }
   if(it.t==='ph'){
     const p=S.photos.find(x=>x.id===it.id),m=p&&/^data:([^;]+);base64,(.*)$/.exec(p.dataUrl||'');if(!m)return;
-    await gcCall({op:'put',folder:F,name:_arcName(p)+'.'+(m[1].includes('png')?'png':'jpg'),b64:m[2],mime:m[1]});
-    A.done[p.id]=p.dataUrl.length;await dbPut('meta',A);return;
+    const r=await gcCall({op:'put',folder:F,name:_arcPhName(p),b64:m[2],mime:m[1]});
+    A.done[p.id]=p.dataUrl.length;(A.fid=A.fid||{})[p.id]=r.id||'';ARC.dirty=1;await dbPut('meta',A);return;
   }
   const d=await dbGet('docs',it.id);if(!d||!d.blob)return;
-  await gcCall({op:'put',folder:F,name:((d.title||'문서').replace(/[\\/:*?"<>|]/g,'')+'_'+String(it.id).slice(-5)+'.'+(d.ext||'pdf')),b64:await _b64(d.blob),mime:d.blob.type||undefined});
-  A.done[it.id]=1;await dbPut('meta',A);
+  const r=await gcCall({op:'put',folder:F,name:_arcDocName(d),b64:await _b64(d.blob),mime:d.blob.type||undefined});
+  A.done[it.id]=1;(A.fid=A.fid||{})[it.id]=r.id||'';ARC.dirty=1;await dbPut('meta',A);
+}
+const _arcPhName=p=>_arcName(p)+'.'+(/^data:image\/png/.test(p.dataUrl||'')?'png':'jpg');
+const _arcDocName=d=>(d.title||'문서').replace(/[\\/:*?"<>|]/g,'')+'_'+String(d.id).slice(-5)+'.'+(d.ext||'pdf');
+/* v224 드라이브 되받기 — '전력앱 보고서/설비 기록/_대응표.json' = {v:1, ph:{id:{f 파일 이름, fid 드라이브 id, r 사진 기록(dataUrl 뺌)}},
+   dc:{id:{f,fid,r 첨부 기록(blob·글자 색인 뺌),links:[{k 설비 키,kind}]}}, fd:{id:{r 현장 문서 기록}}}.
+   올릴 때마다 드라이브 쪽과 합쳐서(지우지 않음) 다시 올린다 → 다른 폰·데이터를 지운 폰에서 없는 것만 되받는다. 새 스크립트 코드 필요 없음(list·get·put). */
+const ARC_F='전력앱 보고서/설비 기록',ARC_IDX='_대응표.json';
+async function arcIdxGet(){
+  let L;try{L=await gcCall({op:'list',folder:ARC_F});}catch(e){if(/폴더 없음/.test(e.message))return {I:null,files:[]};throw e;}
+  const f=(L.files||[]).find(x=>x.name===ARC_IDX);if(!f)return {I:null,files:L.files||[]};
+  const g=await gcCall({op:'get',id:f.id});
+  return {I:JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(g.b64),c=>c.charCodeAt(0)))),files:L.files||[]};
+}
+async function arcIdxSave(){
+  const A=S._arc,done=A.done||{},fid=A.fid||{},lk=_devLk();
+  const I=(await arcIdxGet()).I||{v:1,ph:{},dc:{},fd:{}}; // 매번 드라이브 것을 새로 읽어 합침(다른 폰이 올린 항목 보존)I.ph=I.ph||{};I.dc=I.dc||{};I.fd=I.fd||{};
+  S.photos.filter(p=>done[p.id]).forEach(p=>{const {dataUrl,...r}=p;I.ph[p.id]={f:_arcPhName(p),fid:fid[p.id]||(I.ph[p.id]||{}).fid||'',r};});
+  S.docs.filter(x=>x.folder==='설비 카드'&&done[x.id]).forEach(x=>{const {pages,text,...r}=x;
+    I.dc[x.id]={f:_arcDocName(x),fid:fid[x.id]||(I.dc[x.id]||{}).fid||'',r,links:Object.entries(lk).flatMap(([k,a])=>a.filter(y=>y.id===x.id).map(y=>({k,kind:y.kind})))};});
+  S.notes.filter(x=>x.kind==='fdoc'&&x.driveAt).forEach(d=>{I.fd[d.id]={r:d};});
+  I.at=new Date().toISOString();
+  await gcCall({op:'put',folder:ARC_F,name:ARC_IDX,b64:await _b64(new Blob([JSON.stringify(I)],{type:'application/json'})),mime:'application/json'});
+  ARC.idx=I;ARC.dirty=0;A.idxAt=Date.now();await dbPut('meta',A);
+}
+async function arcRestore(){
+  if(!gcOn()){toast('먼저 더보기 › 백업·동기화에서 구글 연동(Apps Script)을 켜세요');return;}
+  toast('드라이브 대응표 확인 중…');let R;
+  try{R=await arcIdxGet();}catch(e){toast('드라이브 확인 실패: '+e.message);return;}
+  const I=R.I;if(!I){openModal(`<h3>☁️ 드라이브에서 되받기</h3><div class="empty">드라이브에 대응표가 아직 없습니다.<br>사진을 찍은 폰에서 v224 이상으로 자동 보관이 한 번 돌아야 생깁니다.</div><button class="btn ghost sm full" onclick="closeModal()">닫기</button>`);return;}
+  const has=new Set([...S.photos.map(x=>x.id),...S.docs.map(x=>x.id),...S.notes.map(x=>x.id)]);
+  const ph=Object.entries(I.ph||{}).filter(([id])=>!has.has(id)),dc=Object.entries(I.dc||{}).filter(([id])=>!has.has(id)),fd=Object.entries(I.fd||{}).filter(([id])=>!has.has(id));
+  if(!ph.length&&!dc.length&&!fd.length){toast('되받을 것 없음 — 이 폰에 다 있습니다');return;}
+  if(!(await confirmModal(`드라이브에서 이 폰에 없는 것을 되받습니다.\n현장 문서 ${fd.length}건 · 사진 ${ph.length}장 · 첨부 ${dc.length}개\n(있는 기록은 건드리지 않음)`)))return;
+  const A=S._arc=S._arc||{id:'arc',on:false,done:{}};A.done=A.done||{};
+  const byName=Object.fromEntries((R.files||[]).map(f=>[f.name,f.id]));
+  const pull=async e=>{const id=e.fid||byName[e.f];if(!id)throw new Error('파일 없음: '+e.f);try{return await gcCall({op:'get',id});}catch(x){if(e.fid&&byName[e.f]&&byName[e.f]!==e.fid)return gcCall({op:'get',id:byName[e.f]});throw x;}};
+  let ok=0,fail=0;
+  for(const [id,e] of fd){try{const d={...e.r};await dbPut('notes',d);S.notes.push(d);ok++;}catch(x){fail++;}}
+  for(const [id,e] of ph){try{const g=await pull(e),p={...e.r,dataUrl:`data:${g.mime||'image/jpeg'};base64,${g.b64}`};await dbPut('photos',p);S.photos.push(p);A.done[id]=p.dataUrl.length;ok++;toast(`되받는 중 ${ok}/${fd.length+ph.length+dc.length}`);}catch(x){fail++;}}
+  const m=_devLk();
+  for(const [id,e] of dc){try{const g=await pull(e),rec={...e.r,blob:_b64blob(g.b64,g.mime)};
+      if(rec.ext==='pdf'){try{const pg=await extractPdfText(rec.blob);if(pg){rec.pages=pg;rec.text=pg.join(' \n ');}}catch(x){}}
+      await dbPut('docs',rec);const {blob,...meta}=rec;S.docs.push(meta);A.done[id]=1;
+      (e.links||[]).forEach(l=>{const a=m[l.k]=m[l.k]||[];if(!a.some(y=>y.id===id))a.push({id,kind:l.kind});});ok++;}catch(x){fail++;}}
+  await _devLkSave(m);await dbPut('meta',A);ARC.idx=I;
+  toast(`☁️ 되받기 ${ok}건${fail?' · 실패 '+fail:''}`);closeModal();render();
 }
 async function arcRun(){
   if(ARC.busy||!_arcOn()||!navigator.onLine)return;
-  const L=arcPending();if(!L.length){arcBarRefresh();return;}
+  const L=arcPending(),A=S._arc;if(!L.length&&A.idxAt&&!ARC.dirty){arcBarRefresh();return;} // v224: 대응표를 아직 안 올렸으면(업데이트 직후) 그것만이라도
   ARC.busy=true;let ok=0,fail=0,msg='';
-  try{for(const it of L){try{await arcOne(it);ok++;arcBarRefresh(L.length-ok-fail);}catch(e){fail++;msg=e.message;if(/옛 버전|허용|비밀키|HTTP|응답 오류/.test(msg))break;}}}
+  try{for(const it of L){try{await arcOne(it);ok++;arcBarRefresh(L.length-ok-fail);}catch(e){fail++;msg=e.message;if(/옛 버전|허용|비밀키|HTTP|응답 오류/.test(msg))break;}}
+    if(ok||ARC.dirty||!A.idxAt){try{await arcIdxSave();}catch(e){fail++;msg='대응표: '+e.message;}}}
   finally{ARC.busy=false;}
   if(ok||fail)toast(`☁️ 드라이브 보관 ${ok}건${fail?' · 실패 '+fail+(msg?' ('+msg+')':''):''}`);
   arcBarRefresh();
@@ -6355,7 +6404,7 @@ function arcBarRefresh(left){const e=document.getElementById('arc-bar');if(e)e.i
 function arcBar(left){
   if(!gcOn())return `<div class="muted" style="margin:4px 0">☁️ 자동 보관 — 더보기 › 구글 캘린더(Apps Script) 연동을 켜면 쓸 수 있습니다</div>`;
   const on=!!(S._arc&&S._arc.on),n=left!==undefined?left:arcPending().length;
-  return `<div class="row" style="gap:6px;align-items:center;margin:4px 0"><span class="muted grow">☁️ 자동 보관 ${on?'켬'+(ARC.busy?' · 올리는 중 '+n:' · 대기 '+n):'꺼짐 · 안 올린 것 '+n}</span><button class="btn ${on?'ghost ':''}sm" onclick="arcToggle()">${on?'끄기':'켜기'}</button>${on&&n&&!ARC.busy?'<button class="btn ghost sm" onclick="arcRun()">지금</button>':''}</div>`;
+  return `<div class="row" style="gap:6px;align-items:center;margin:4px 0"><span class="muted grow">☁️ 자동 보관 ${on?'켬'+(ARC.busy?' · 올리는 중 '+n:' · 대기 '+n):'꺼짐 · 안 올린 것 '+n}</span><button class="btn ${on?'ghost ':''}sm" onclick="arcToggle()">${on?'끄기':'켜기'}</button>${on&&n&&!ARC.busy?'<button class="btn ghost sm" onclick="arcRun()">지금</button>':''}<button class="btn ghost sm" onclick="arcRestore()">되받기</button></div>`;
 }
 async function arcToggle(){
   if(!gcOn()){toast('먼저 더보기에서 구글 캘린더(Apps Script) 연동을 켜세요');return;}
