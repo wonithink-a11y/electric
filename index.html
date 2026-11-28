@@ -512,7 +512,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <div id="modal-root"></div>
 <script>
 /* ================= PART 1 : IndexedDB ================= */
-const APP_VER='v222'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
+const APP_VER='v223'; // 더보기 화면 상단에 표시 — 지금 열고 있는 파일이 최신인지 눈으로 확인하기 위한 것
 const DB_NAME='pwr_work_v1', DB_VER=12; // v12: logic(로직 카드) 추가. v11=vault. (onupgradeneeded가 누락분만 생성 → 기존 데이터 유지)
 const STORES=['equipment','inspections','checklists','checklogs','issues','faults','drawings','meta','tree','laws','lotologs','docs','photos','spares','budget','todos','measurements','permits','procs','dwgnotes','notes','vault','logic'];
 let db=null;
@@ -1420,7 +1420,16 @@ const _dstr=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+St
 /* v132 홈 바로가기 — 현장 문서(점검보고서·조치매뉴얼·사진대장)를 첫 화면에서 한 번에 연다. 종류 목록은 FDOC_TYPES 그대로 */
 function quickBarHtml(){
   const b=k=>FDOC_TYPES[k]?`<button class="btn ghost" onclick="openFdoc(null,'${k}')">${icx(FDOC_TYPES[k].ic)}<span>${FDOC_TYPES[k].short}</span></button>`:'';
-  return `<div class="qk">${b('insp')}${b('man')}${b('photo')}<button class="btn ghost" onclick="go('work')">${icx('🗂️')}<span>문서 목록</span></button></div>`;
+  const R=(S.checklists||[]).filter(c=>c.devs&&c.devs.length),A=R.filter(c=>!_rndLog(c)); // v223: '문서 목록'(작업 탭과 같음) 자리에 순회
+  return `<div class="qk">${b('insp')}${b('man')}${b('photo')}<button class="btn ghost" onclick="roundQuick()">${icx('✅')}<span>순회${A.length===1?' '+roundProg(A[0]).split(' ')[0]:''}</span></button></div>`;
+}
+function roundQuick(){
+  const R=(S.checklists||[]).filter(c=>c.devs&&c.devs.length);
+  if(!R.length)return roundEdit();
+  const A=R.filter(c=>!_rndLog(c));if(R.length===1)return roundOpen(R[0].id);
+  const L=[...A,...R.filter(c=>_rndLog(c))]; // 안 끝난 것 먼저
+  openModal(`<h3>🚶 순회</h3>${L.map(c=>`<div class="item click" onclick="roundOpen('${c.id}')"><div class="t"><div class="n">${esc(c.name)}</div><div class="d">${esc(CYCLE_KO[c.cycle]||'')} · ${_rndLog(c)?'완료':roundProg(c)}</div></div><span style="color:var(--dim)">›</span></div>`).join('')}
+    <div class="row" style="margin-top:10px"><button class="btn ghost sm" onclick="roundEdit()">＋ 새 순회 경로</button><div class="grow"></div><button class="btn sm" onclick="closeModal()">닫기</button></div>`);
 }
 /* v132 달력 기본 = 2주(이번 주부터 14일). ◀▶ = 한 주씩, '한 달 ▾' = 기존 한 달 보기(S._calMonth), 거기서 '2주 ▴'로 돌아옴. 고른 값은 앱을 다시 열면 2주로 돌아감 */
 /* v157: 홈 달력 칸 — 점 + 내용 앞 2글자(최대 2줄, 넘치면 첫 줄 + '+N') */
